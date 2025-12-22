@@ -1,0 +1,118 @@
+index-Dsw0af9l.js:381 Error loading data from API: Error: Failed to fetch crews
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async Promise.all (/index 1)
+    at async index-Dsw0af9l.js:381:15471
+(anonymous) @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: You have reached the maximum number of depots (1) for your Starter plan. Upgrade to Pro for more depots.
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: You have reached the maximum number of depots (1) for your Starter plan. Upgrade to Pro for more depots.
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: You have reached the maximum number of depots (1) for your Starter plan. Upgrade to Pro for more depots.
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create crew: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async Et (index-Dsw0af9l.js:381:21336)
+Et @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create crew: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async Et (index-Dsw0af9l.js:381:21336)
+Et @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create crew: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async Et (index-Dsw0af9l.js:381:21336)
+Et @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create crew: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async Et (index-Dsw0af9l.js:381:21336)
+Et @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create crew: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async Et (index-Dsw0af9l.js:381:21336)
+Et @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: You have reached the maximum number of depots (1) for your Starter plan. Upgrade to Pro for more depots.
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: You have reached the maximum number of depots (1) for your Starter plan. Upgrade to Pro for more depots.
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: You have reached the maximum number of depots (1) for your Starter plan. Upgrade to Pro for more depots.
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: You have reached the maximum number of depots (1) for your Starter plan. Upgrade to Pro for more depots.
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: You have reached the maximum number of depots (1) for your Starter plan. Upgrade to Pro for more depots.
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create crew: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async Et (index-Dsw0af9l.js:381:21336)
+Et @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create crew: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async Et (index-Dsw0af9l.js:381:21336)
+Et @ index-Dsw0af9l.js:381
+index-Dsw0af9l.js:381 Failed to create depot: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+await in ye
+n0 @ index-Dsw0af9l.js:48
+(anonymous) @ index-Dsw0af9l.js:48
+lx @ index-Dsw0af9l.js:48
+zm @ index-Dsw0af9l.js:48
+Wm @ index-Dsw0af9l.js:49
+RA @ index-Dsw0af9l.js:49
+index-Dsw0af9l.js:381 Failed to create depot: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+await in ye
+n0 @ index-Dsw0af9l.js:48
+(anonymous) @ index-Dsw0af9l.js:48
+lx @ index-Dsw0af9l.js:48
+zm @ index-Dsw0af9l.js:48
+Wm @ index-Dsw0af9l.js:49
+RA @ index-Dsw0af9l.js:49
+index-Dsw0af9l.js:381 Failed to create crew: Error: Request failed
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async Et (index-Dsw0af9l.js:381:21336)
+Et @ index-Dsw0af9l.js:381
+await in Et
+onClick @ index-Dsw0af9l.js:375
+n0 @ index-Dsw0af9l.js:48
+(anonymous) @ index-Dsw0af9l.js:48
+lx @ index-Dsw0af9l.js:48
+zm @ index-Dsw0af9l.js:48
+Wm @ index-Dsw0af9l.js:49
+RA @ index-Dsw0af9l.js:49
+index-Dsw0af9l.js:381 Failed to create depot: Error: You have reached the maximum number of depots (1) for your Starter plan. Upgrade to Pro for more depots.
+    at nV.request (index-Dsw0af9l.js:381:12137)
+    at async ye (index-Dsw0af9l.js:381:23887)
+ye @ index-Dsw0af9l.js:381
+await in ye
+n0 @ index-Dsw0af9l.js:48
+(anonymous) @ index-Dsw0af9l.js:48
+lx @ index-Dsw0af9l.js:48
+zm @ index-Dsw0af9l.js:48
+Wm @ index-Dsw0af9l.js:49
+RA @ index-Dsw0af9l.js:49

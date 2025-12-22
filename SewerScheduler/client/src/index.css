@@ -1,0 +1,98 @@
+@import "tailwindcss";
+@import "tw-animate-css";
+
+@custom-variant dark (&:is(.dark *));
+
+@theme inline {
+  --radius-sm: calc(var(--radius) - 4px);
+  --radius-md: calc(var(--radius) - 2px);
+  --radius-lg: var(--radius);
+  --radius-xl: calc(var(--radius) + 4px);
+  
+  /* Light Mode "Sewer Swarm" Clean Theme */
+  --color-background: hsl(210 40% 98%); /* F8F9FA - Very light gray */
+  --color-foreground: hsl(222 47% 11%); /* Dark Slate */
+  
+  --color-card: hsl(0 0% 100%); /* White */
+  --color-card-foreground: hsl(222 47% 11%);
+  
+  --color-popover: hsl(0 0% 100%);
+  --color-popover-foreground: hsl(222 47% 11%);
+  
+  --color-primary: hsl(221 83% 53%); /* #2563EB Blue */
+  --color-primary-foreground: hsl(0 0% 100%);
+  
+  --color-secondary: hsl(210 40% 96.1%);
+  --color-secondary-foreground: hsl(222 47% 11.2%);
+  
+  --color-muted: hsl(210 40% 96.1%);
+  --color-muted-foreground: hsl(215.4 16.3% 46.9%);
+  
+  --color-accent: hsl(210 40% 96.1%);
+  --color-accent-foreground: hsl(222 47% 11.2%);
+  
+  --color-destructive: hsl(0 84.2% 60.2%);
+  --color-destructive-foreground: hsl(210 40% 98%);
+  
+  --color-border: hsl(214.3 31.8% 91.4%);
+  --color-input: hsl(214.3 31.8% 91.4%);
+  --color-ring: hsl(221 83% 53%);
+  
+  --color-chart-1: hsl(221 83% 53%);
+  --color-chart-2: hsl(173 58% 39%);
+  --color-chart-3: hsl(197 37% 24%);
+  --color-chart-4: hsl(43 74% 66%);
+  --color-chart-5: hsl(27 87% 67%);
+  
+  --color-sidebar: hsl(0 0% 100%);
+  --color-sidebar-foreground: hsl(222 47% 11%);
+  --color-sidebar-primary: hsl(221 83% 53%);
+  --color-sidebar-primary-foreground: hsl(0 0% 100%);
+  --color-sidebar-accent: hsl(210 40% 96.1%);
+  --color-sidebar-accent-foreground: hsl(222 47% 11%);
+  --color-sidebar-border: hsl(220 13% 91%);
+  --color-sidebar-ring: hsl(221 83% 53%);
+
+  --radius: 0.5rem;
+}
+
+/* Base Styles */
+@layer base {
+  * {
+    @apply border-border;
+  }
+  body {
+    @apply font-sans antialiased bg-background text-foreground;
+    font-feature-settings: "rlig" 1, "calt" 1;
+  }
+}
+
+/* Scrollbar */
+::-webkit-scrollbar {
+  width: 8px;
+  height: 8px;
+}
+
+::-webkit-scrollbar-track {
+  background: transparent;
+}
+
+::-webkit-scrollbar-thumb {
+  background: hsl(214 32% 85%);
+  border-radius: 4px;
+}
+
+::-webkit-scrollbar-thumb:hover {
+  background: hsl(214 32% 75%);
+}
+
+/* Pastel Job Colors (Backgrounds) */
+.bg-job-blue { background-color: #BFDBFE; color: #1E3A8A; }
+.bg-job-green { background-color: #BBF7D0; color: #14532D; }
+.bg-job-yellow { background-color: #FEF08A; color: #713F12; }
+.bg-job-orange { background-color: #FED7AA; color: #7C2D12; }
+.bg-job-red { background-color: #FECACA; color: #7F1D1D; }
+.bg-job-purple { background-color: #E9D5FF; color: #581C87; }
+.bg-job-pink { background-color: #FBCFE8; color: #831843; }
+.bg-job-teal { background-color: #99F6E4; color: #134E4A; }
+.bg-job-gray { background-color: #E2E8F0; color: #1E293B; }

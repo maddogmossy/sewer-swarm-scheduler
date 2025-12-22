@@ -1,0 +1,30 @@
+postgres=> -- See the organization
+postgres=> SELECT * FROM organizations;
+                  id                  |                     name                     |               owner_id               |  plan   | stripe_customer_id | stripe_subscription_id | subscription_status |      trial_ends_at      |         created_at
+--------------------------------------+----------------------------------------------+--------------------------------------+---------+--------------------+------------------------+---------------------+-------------------------+----------------------------
+ d7d23c19-104d-4407-bd39-a19e473524a8 | mike.moss@wilkinson-env.co.uk's Organization | 19ffd36c-04d2-4bee-ac89-600d837bcc39 | starter |                    |                        | trialing            | 2026-01-09 13:33:34.649 | 2025-12-10 13:33:34.718385
+(1 row)
+
+
+postgres=>
+postgres=> -- See the users
+postgres=> SELECT id, username, email FROM users;
+                  id                  |             username              |               email
+--------------------------------------+-----------------------------------+-----------------------------------
+ 19ffd36c-04d2-4bee-ac89-600d837bcc39 | mike.moss@wilkinson-env.co.uk     | mike.moss@wilkinson-env.co.uk
+ 7430aeb1-52b8-4d57-9549-32364a529a8d | connor.miller@wilkinson-env.co.uk | connor.miller@wilkinson-env.co.uk
+(2 rows)
+
+
+postgres=>
+postgres=> -- See the depot (Nuneaton?)
+postgres=> SELECT * FROM depots;
+                  id                  |   name    |    address    |               user_id                |           organization_id
+--------------------------------------+-----------+---------------+--------------------------------------+--------------------------------------
+ 9483f548-5ece-44d4-a9c5-f138e4040f49 | New Depot | Enter Address | 19ffd36c-04d2-4bee-ac89-600d837bcc39 | d7d23c19-104d-4407-bd39-a19e473524a8
+(1 row)
+
+
+postgres=>
+postgres=> -- Check memberships
+postgres=> SELECT * FROM organization_memberships;

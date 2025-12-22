@@ -1,0 +1,151 @@
+Please make the following changes to fix the scheduler layout:
+
+1️⃣ Do NOT modify the <table> or apply table-fixed
+
+This is not the source of the issue.
+The wrapping failure happens in the top Flex container, not the table.
+
+➡️ Remove any “table-fixed” changes
+➡️ Do not adjust the table layout algorithm
+➡️ Do not apply min-widths inside table cells
+
+The card components are not inside the table, so table changes will have no effect.
+
+2️⃣ Move the Operative/Assistant Card Container OUTSIDE the table flow (if it is injected into a cell)
+
+You need to ensure:
+
+<OperativeCard />
+<AssistantCard />
+<AddressCard />
+
+
+are placed in a pure flex container, not nested inside:
+
+a table
+
+a table cell
+
+a virtual scroll container
+
+or a container with intrinsic layout rules
+
+The container should look like:
+<div className="flex flex-wrap gap-2 w-full min-w-0">
+  <OperativeCard />
+  <AssistantCard />
+</div>
+
+
+Must NOT be inside:
+
+<td>
+
+
+or
+
+<div className="table-cell">
+
+3️⃣ Force the parent scheduler container to recalculate width when sidebar expands
+
+Add a “width recalculation hook”:
+
+In the root scheduler page (schedule.tsx):
+useEffect(() => {
+  const handleResize = () => {
+    setForceRerender(Date.now());
+  };
+
+  window.addEventListener('resize', handleResize);
+  return () => window.removeEventListener('resize', handleResize);
+}, []);
+
+
+And attach a key:
+
+<div key={forceRerender} className="w-full h-full flex">
+  {/* scheduler content */}
+</div>
+
+
+This forces the scheduler to re-render whenever the sidebar width changes.
+
+4️⃣ Ensure the Sidebar toggle dispatches a Window Resize event
+
+When the sidebar expands/collapses:
+
+const toggleSidebar = () => {
+  setSidebarOpen(!sidebarOpen);
+  setTimeout(() => {
+    window.dispatchEvent(new Event('resize'));
+  }, 10);
+};
+
+
+This is critical:
+
+When the sidebar width changes,
+➡️ The main container never receives a resize event
+➡️ So flexbox breakpoints never trigger
+➡️ Cards don’t wrap
+➡️ Address UI stays compressed
+
+This solves it.
+
+5️⃣ Ensure the main scheduler container allows flex children to shrink
+
+Apply this to the main body wrapper:
+
+<div className="flex w-full min-w-0 overflow-hidden">
+
+
+And to the cards:
+
+<div className="min-w-[160px] flex-grow">
+
+
+This prevents infinite horizontal expansion.
+
+6️⃣ Prevent Sidebar animation from blocking layout updates
+
+Replace CSS transition:
+
+transition: width 0.3s ease;
+
+
+With GPU-friendly:
+
+transition: max-width 0.3s ease;
+
+
+OR remove the width animation entirely.
+
+Animations on width can block ResizeObserver firing.
+
+7️⃣ Inspect and remove any Suspense/Hydration barriers above the scheduler grid
+
+Hydration mismatches commonly freeze container dimensions.
+
+Ensure:
+
+No <Suspense /> wrapper around the scheduler header
+
+No dynamic imports wrapping the Scheduler grid
+
+No lazy-loaded parent components
+
+No hydration errors in console
+
+If any such wrapper exists → remove for testing.
+
+🚀 If these 7 changes are applied, the Scheduler layout will work correctly.
+
+These instructions tell the developer:
+
+what to change
+
+where to change it
+
+how to fix the root issue
+
+without the wrong “table” distraction

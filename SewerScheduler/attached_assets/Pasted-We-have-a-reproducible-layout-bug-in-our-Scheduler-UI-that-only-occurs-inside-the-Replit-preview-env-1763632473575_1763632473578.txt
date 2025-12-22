@@ -1,0 +1,109 @@
+We have a reproducible layout bug in our Scheduler UI that only occurs inside the Replit preview environment. I’m attaching two screenshots showing the issue:
+
+Sidebar collapsed → layout works correctly
+
+Sidebar expanded → layout breaks
+
+Operative + Assistant cards stop wrapping
+
+Cards refuse to switch between horizontal and vertical orientation
+
+Address/job details no longer expand to full width
+
+Flexbox responsiveness stops functioning entirely
+
+What We Have Confirmed
+
+This is not a CSS or table-layout conflict.
+
+The Scheduler page uses a container with Flexbox + Tailwind responsive breakpoints that work perfectly in isolation and work perfectly in the Outlook-style calendar page, which uses almost the same layout structure.
+
+However, in the Scheduler page:
+
+When the sidebar is expanded, the parent container fails to propagate width changes
+
+The layout engine reports stale dimensions to child components
+
+Tailwind breakpoints (md:, lg:) stop activating
+
+Flexbox items behave as if they have infinite horizontal space
+
+Cards never wrap, even when forced with min-w-0, flex-1, or basis-auto
+
+The Address panel refuses to expand despite correct w-full + flex-grow rules
+
+This behaviour is identical to a ResizeObserver not firing or a hydration boundary blocking width propagation
+
+Why This Is Not a Table Issue
+
+Although <table> is used deeper in the CalendarGrid, the broken elements (OperativeCard, AssistantCard, Address UI) are not inside table cells.
+
+Also:
+
+Table expansion would cause overflow or horizontal scrolling
+
+It would NOT cause Flexbox breakpoints to stop working
+
+It would NOT cause .flex-col → .flex-row to fail
+
+It would NOT cause differences between collapsed sidebar vs open sidebar
+
+The width-propagation failure directly coincides with opening the sidebar component, which indicates:
+
+Likely Causes
+
+A hydration/suspense boundary breaking layout measurement
+
+A parent container that never recalculates width after sidebar toggle
+
+Virtualized container interfering with intrinsic size
+
+The preview iframe not dispatching a resize event
+
+A ResizeObserver not firing when the sidebar changes width
+
+SSR hydration mismatch locking the layout
+
+What Needs Auditing
+
+Please perform an audit on:
+
+The parent container of the Scheduler page
+
+The render boundary around the sidebar + main grid
+
+Whether React hydration is interfering with measurement
+
+Whether ResizeObserver fires when the sidebar width changes
+
+Whether the preview environment is failing to propagate a resize event
+
+Whether the editor iframe uses content-box vs border-box sizing
+
+The goal is to ensure that the Scheduler page receives correct, real-time width information so its Flexbox + Tailwind responsive layout can reflow correctly.
+
+Expected Layout (Works When Sidebar Is Collapsed)
+
+Operative/Assistant appear side-by-side when width allows
+
+They automatically stack vertically in narrow constraints
+
+Address UI expands fully under them
+
+Calendar cards wrap gracefully
+
+Actual Layout When Sidebar Expands (Bug)
+
+Operative/Assistant lock into horizontal mode
+
+No wrapping
+
+No breakpoint activation
+
+Address UI stays cramped
+
+The entire responsive system stops firing
+
+This matches a container measurement bug, not a CSS bug.
+
+Thank you — we need a full audit on this so we can proceed with production deployment.

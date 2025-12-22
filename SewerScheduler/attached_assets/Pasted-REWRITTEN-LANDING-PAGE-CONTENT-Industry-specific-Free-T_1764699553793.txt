@@ -1,0 +1,122 @@
+REWRITTEN LANDING PAGE CONTENT (Industry-specific + Free Trial)
+
+Paste this wording into your Replit agent for updating the existing layout.
+
+🟦 HERO HEADLINE (Home Page)
+
+Sewer Swarm Intelligent Crew Scheduling
+The ultimate drag-and-drop scheduling platform built for drainage, civils, CCTV surveying, jetting, lining, and utility contractors.
+Optimise your workforce with AI-driven logic, instant conflict alerts, and real-time crew visibility.
+
+🟦 HERO SUB-BULLETS
+Drag & Drop Simplicity
+
+Assign jobs, operatives, assistants, and vehicles in seconds. Reschedule effortlessly across days and depots.
+
+AI Logic Engine
+
+Automatically detects clashes, double-bookings, and vehicle conflicts. Suggests optimal crew setups for each job.
+
+Utility-Grade Performance
+
+Built for companies of all sizes — from single-van operators to multi-depot utility contractors.
+
+🟩 WHY CHOOSE SEWER SWARM AI?
+
+(Replace the 3 feature cards with this improved industry wording)
+
+Drag & Drop Interface
+
+A clean, intuitive calendar matrix built around drainage & civils workflows.
+Quickly move jobs, swap crews, and rebalance workloads during the working day.
+
+AI Logic Engine
+
+Smart routing and conflict detection. The system flags clashes, advises on crew availability, and prevents double-booking of vans, operatives, or assistants.
+
+Crew Optimisation
+
+Instantly see spare capacity (“free labour”), under-used vehicles, and depot-wide availability. Maximise efficiency and reduce wasted hours.
+
+🟩 PRICING SECTION (updated wording + FREE TRIAL)
+
+Flexible User Pricing
+Scalable plans for contractors of all sizes — no report fees, no per-job charges.
+
+Billing Switch (Monthly / Yearly Save 20%)
+
+(keep exactly as-is)
+
+Starter Team – £29/user/month
+
+Perfect for small contractors and 1–5 person teams.
+
+✔️ Up to 5 Users
+✔️ Basic Scheduling
+✔️ 30-Day History
+✔️ 1-Month Free Trial ← NEW
+
+Button: Start Free Trial
+
+Professional – £49/user/month (Most Popular)
+
+For growing drainage & civils teams needing automation and full visibility.
+
+✔️ Unlimited Users
+✔️ Advanced AI Logic
+✔️ Conflict Detection & Alerts
+✔️ Full History Access
+✔️ Depot-Level Job Reporting
+✔️ 1-Month Free Trial ← NEW
+
+Button: Get Started
+
+Enterprise – Custom
+
+For large contractors, multi-depot operations, or nationwide fleets.
+
+✔️ Dedicated Support Team
+✔️ Custom API Integrations
+✔️ White-Label Options
+✔️ Priority Feature Development
+
+Button: Contact Us
+
+🟦 LOGIN PAGE TEXT (updated)
+Welcome Back
+
+Sign in to manage your teams, jobs, and depot schedules.
+
+Email Placeholder:
+yourname@company.com
+
+(Replace the “admin@sewerswarm.com
+” note — it looks like a personal account.)
+
+Password Placeholder:
+••••••••
+
+Add small text under the form:
+New here? Start your free trial → Sign Up
+
+🟩 SIGNUP PAGE TEXT (new wording)
+Create Your Account
+
+Start your 1-month free trial — no credit card required.
+
+Fields:
+
+Full Name
+
+Company Name
+
+Email
+
+Password
+
+“Select your plan” (Starter / Professional)
+
+🟦 FOOTER ADDITION
+
+Add this small line in the footer:
+Sewer Swarm AI – Built for the UK Drainage, Civils & Utilities Industry

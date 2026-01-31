@@ -42,6 +42,45 @@ import {
     }
     return db;
   }
+
+  // Helper to wrap database operations with better error handling
+  async function handleDbError<T>(operation: () => Promise<T>, operationName: string): Promise<T> {
+    try {
+      return await operation();
+    } catch (error: any) {
+      // Check for DNS/connection errors
+      if (error?.code === 'ENOTFOUND' || error?.cause?.code === 'ENOTFOUND') {
+        const hostname = error?.hostname || error?.cause?.hostname || 'unknown';
+        throw new Error(
+          `Database connection failed: Cannot resolve hostname "${hostname}". ` +
+          `Please verify that:\n` +
+          `1. The DATABASE_URL environment variable is correct\n` +
+          `2. The database server exists and is accessible\n` +
+          `3. Your network connection is working\n` +
+          `Original error: ${error.message || error.cause?.message || 'Unknown error'}`
+        );
+      }
+      
+      // Check for connection refused errors
+      if (error?.code === 'ECONNREFUSED' || error?.cause?.code === 'ECONNREFUSED') {
+        throw new Error(
+          `Database connection refused. The database server may be down or not accepting connections. ` +
+          `Please verify that the database is running and accessible.`
+        );
+      }
+
+      // Check for timeout errors
+      if (error?.code === 'ETIMEDOUT' || error?.cause?.code === 'ETIMEDOUT') {
+        throw new Error(
+          `Database connection timed out. The database server may be unreachable or overloaded.`
+        );
+      }
+
+      // Re-throw with context for other errors
+      const errorMessage = error?.message || error?.cause?.message || 'Unknown database error';
+      throw new Error(`Database operation "${operationName}" failed: ${errorMessage}`);
+    }
+  }
   
   export interface IStorage {
     // Users
@@ -148,8 +187,13 @@ import {
     }
   
     async getUserByUsername(username: string): Promise<User | undefined> {
-      const result = await getDb().select().from(users).where(eq(users.username, username));
-      return result[0];
+      return await handleDbError(
+        async () => {
+          const result = await getDb().select().from(users).where(eq(users.username, username));
+          return result[0];
+        },
+        'getUserByUsername'
+      );
     }
   
     async getUserByEmail(email: string): Promise<User | undefined> {

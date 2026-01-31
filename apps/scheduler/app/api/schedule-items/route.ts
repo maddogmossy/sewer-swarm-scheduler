@@ -10,12 +10,12 @@ export async function GET() {
     const ctx = await getRequestContext();
     requireAdminOrOperations(ctx);
 
-    const vehicles = await storage.getVehiclesByOrg(ctx.organizationId);
-    return NextResponse.json(vehicles);
+    const items = await storage.getScheduleItemsByOrg(ctx.organizationId);
+    return NextResponse.json(items);
   } catch (err: any) {
     return NextResponse.json(
       { error: err.message ?? "Unauthorized" },
-      { status: 403 }
+      { status: err.message?.includes("Unauthorized") ? 401 : 403 }
     );
   }
 }
@@ -27,17 +27,19 @@ export async function POST(req: Request) {
 
     const body = await req.json();
 
-    const vehicle = await storage.createVehicle({
+    const item = await storage.createScheduleItem({
       ...body,
       organizationId: ctx.organizationId,
       userId: ctx.userId,
+      status: body.status || "approved",
     });
 
-    return NextResponse.json(vehicle, { status: 201 });
+    return NextResponse.json(item, { status: 201 });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err.message ?? "Failed to create vehicle" },
+      { error: err.message ?? "Failed to create schedule item" },
       { status: 400 }
     );
   }
 }
+

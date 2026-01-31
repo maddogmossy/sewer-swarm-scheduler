@@ -4,31 +4,31 @@ import { storage } from "@/lib/storage";
 export interface OrganizationContext {
   userId: string;
   organizationId: string;
-  role: "admin" | "user";
+  role: "admin" | "operations" | "user";
   plan: "starter" | "pro";
 }
 
 export async function getRequestContext(): Promise<OrganizationContext> {
-  // 1. Read userId from cookie (ASYNC in App Router)
   const cookieStore = await cookies();
   const userId = cookieStore.get("userId")?.value;
 
   if (!userId) {
-    throw new Error("Unauthorized: missing userId cookie");
+    throw new Error("Unauthorized");
   }
 
-  // 2. Load primary membership
   const membership = await storage.getPrimaryMembership(userId);
 
   if (!membership) {
-    throw new Error("No organization membership found");
+    throw new Error("Unauthorized");
   }
 
-  // 3. Normalize role (member → user)
+  // Normalize role (member → user)
+  const normalizedRole = membership.role === "member" ? "user" : membership.role;
+  
   return {
     userId,
     organizationId: membership.organizationId,
-    role: membership.role === "member" ? "user" : membership.role,
+    role: normalizedRole as "admin" | "operations" | "user",
     plan: membership.organization.plan,
   };
 }

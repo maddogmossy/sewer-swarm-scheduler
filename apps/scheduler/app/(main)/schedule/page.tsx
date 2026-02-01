@@ -156,10 +156,9 @@ const transformedDepots = depots.map((d) => ({
   id: d.id,
   name: d.name,
   address: d.address,
-  employees: [],
-  vehicles: [],
+  employees: employees.filter(e => e.depotId === d.id),
+  vehicles: vehicles.filter(v => v.depotId === d.id),
 }));
-
 
   // Handlers
   const handleItemUpdate = useCallback(

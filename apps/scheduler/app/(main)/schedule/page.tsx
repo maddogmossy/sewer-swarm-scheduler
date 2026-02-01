@@ -152,11 +152,14 @@ export default function SchedulePage() {
     noteContent: i.noteContent,
   }));
 
-  const transformedDepots = depots.map((d) => ({
-    id: d.id,
-    name: d.name,
-    address: d.address,
-  }));
+const transformedDepots = depots.map((d) => ({
+  id: d.id,
+  name: d.name,
+  address: d.address,
+  employees: [],
+  vehicles: [],
+}));
+
 
   // Handlers
   const handleItemUpdate = useCallback(

@@ -125,3 +125,4 @@ INSERT INTO organization_memberships (id, user_id, organization_id, role, accept
 VALUES (gen_random_uuid(), '<user_id>', '<org_id>', 'admin', NOW());
 ```
 
+

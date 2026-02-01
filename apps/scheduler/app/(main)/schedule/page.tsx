@@ -3,7 +3,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarGrid, type Crew, type ScheduleItem } from "@/components/schedule/CalendarGrid";
-import { Sidebar } from "@/components/schedule/Sidebar";
+import { Sidebar, type Depot } from "@/components/schedule/Sidebar";
 import { DepotCrewModal } from "@/components/schedule/DepotCrewModal";
 import { TeamManagement } from "@/components/schedule/TeamManagement";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
@@ -152,7 +152,7 @@ export default function SchedulePage() {
     noteContent: i.noteContent,
   }));
 
-const transformedDepots = depots.map((d) => ({
+const transformedDepots: Depot[] = depots.map((d) => ({
   id: d.id,
   name: d.name,
   address: d.address,

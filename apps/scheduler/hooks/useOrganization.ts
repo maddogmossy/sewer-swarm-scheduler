@@ -86,12 +86,26 @@ export function useQuota() {
 export function useMembers() {
   return useQuery<Member[]>({
     queryKey: ["/api/organization/members"],
+    queryFn: async () => {
+      const response = await fetch("/api/organization/members");
+      if (!response.ok) {
+        throw new Error("Failed to fetch members");
+      }
+      return response.json();
+    },
   });
 }
 
 export function useInvites() {
   return useQuery<TeamInvite[]>({
     queryKey: ["/api/organization/invites"],
+    queryFn: async () => {
+      const response = await fetch("/api/organization/invites");
+      if (!response.ok) {
+        throw new Error("Failed to fetch invites");
+      }
+      return response.json();
+    },
   });
 }
 

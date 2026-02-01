@@ -2,91 +2,127 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import Link from "next/link";
 import { api } from "@/lib/api";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardDescription, CardHeader, CardTitle, CardFooter } from "@/components/ui/card";
+import { useToast } from "@/hooks/use-toast";
+import { Loader2 } from "lucide-react";
 
 export default function RegisterPage() {
   const router = useRouter();
-  const [username, setUsername] = useState("");
-  const [password, setPassword] = useState("");
+  const { toast } = useToast();
   const [email, setEmail] = useState("");
-  const [error, setError] = useState("");
+  const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [company, setCompany] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState("starter");
   const [loading, setLoading] = useState(false);
 
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
-    setError("");
     setLoading(true);
 
     try {
-      await api.register(username, password, email || undefined);
+      // Use email as username for now
+      await api.register(email, password, email);
+      
+      toast({
+        title: "Account created!",
+        description: "Welcome to Sewer Swarm AI",
+      });
+      
       router.push("/schedule");
     } catch (err: any) {
-      setError(err.message || "Registration failed");
+      toast({
+        title: "Registration failed",
+        description: err.message || "Failed to create account",
+        variant: "destructive",
+      });
     } finally {
       setLoading(false);
     }
   };
 
   return (
-    <div className="flex min-h-screen items-center justify-center bg-gray-50">
-      <Card className="w-full max-w-md">
-        <CardHeader>
-          <CardTitle>Register</CardTitle>
-          <CardDescription>Create a new account to get started</CardDescription>
+    <div className="flex min-h-screen items-center justify-center bg-white">
+      <Card className="w-full max-w-md shadow-xl border-slate-100">
+        <CardHeader className="space-y-1">
+          <CardTitle className="text-2xl font-bold">Create Your Account</CardTitle>
+          <CardDescription>Start your 1-month free trial — no credit card required.</CardDescription>
         </CardHeader>
         <CardContent>
-          <form onSubmit={handleSubmit} className="space-y-4">
-            {error && (
-              <div className="rounded-md bg-red-50 p-3 text-sm text-red-800">
-                {error}
+          <form onSubmit={handleSubmit} className="space-y-3">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1">
+                <Label htmlFor="fullname">Full Name</Label>
+                <Input
+                  id="fullname"
+                  placeholder="John Doe"
+                  className="border-slate-200"
+                  value={fullName}
+                  onChange={(e) => setFullName(e.target.value)}
+                />
               </div>
-            )}
-            <div className="space-y-2">
-              <Label htmlFor="username">Username</Label>
-              <Input
-                id="username"
-                type="text"
-                value={username}
-                onChange={(e) => setUsername(e.target.value)}
-                required
-                autoFocus
-              />
+              <div className="space-y-1">
+                <Label htmlFor="company">Company</Label>
+                <Input
+                  id="company"
+                  placeholder="Acme Civils"
+                  className="border-slate-200"
+                  value={company}
+                  onChange={(e) => setCompany(e.target.value)}
+                />
+              </div>
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="email">Email (optional)</Label>
+            <div className="space-y-1">
+              <Label htmlFor="signup-email">Email</Label>
               <Input
-                id="email"
+                id="signup-email"
                 type="email"
+                placeholder="name@company.com"
+                className="border-slate-200"
+                required
                 value={email}
                 onChange={(e) => setEmail(e.target.value)}
               />
             </div>
-            <div className="space-y-2">
-              <Label htmlFor="password">Password</Label>
+            <div className="space-y-1">
+              <Label htmlFor="signup-pass">Password</Label>
               <Input
-                id="password"
+                id="signup-pass"
                 type="password"
-                value={password}
-                onChange={(e) => setPassword(e.target.value)}
+                className="border-slate-200"
                 required
                 minLength={6}
+                value={password}
+                onChange={(e) => setPassword(e.target.value)}
               />
             </div>
-            <Button type="submit" className="w-full" disabled={loading}>
-              {loading ? "Creating account..." : "Register"}
-            </Button>
-            <div className="text-center text-sm text-gray-600">
-              Already have an account?{" "}
-              <a href="/login" className="text-blue-600 hover:underline">
-                Login
-              </a>
+            <div className="space-y-1">
+              <Label htmlFor="plan">Select your plan</Label>
+              <select
+                id="plan"
+                className="w-full h-10 px-3 py-2 rounded-md border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                value={selectedPlan}
+                onChange={(e) => setSelectedPlan(e.target.value)}
+              >
+                <option value="starter">Starter Team (Free Trial)</option>
+                <option value="professional">Professional (Free Trial)</option>
+              </select>
             </div>
+            <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 h-11 text-base mt-2" disabled={loading}>
+              {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating account...</> : "Start Free Trial"}
+            </Button>
           </form>
         </CardContent>
+        <CardFooter className="justify-center border-t border-slate-50 pt-6 pb-6 flex-col gap-2">
+          <p className="text-sm text-slate-500">
+            Already have an account? <Link href="/login" className="text-blue-600 hover:underline font-medium">Sign In</Link>
+          </p>
+        </CardFooter>
       </Card>
     </div>
   );

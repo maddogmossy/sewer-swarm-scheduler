@@ -8,7 +8,7 @@ import { NoteCard } from "./NoteCard";
 import { ItemModal } from "./ItemModal";
 import { ResourcesModal } from "./ResourcesModal";
 import { Button } from "@/components/ui/button";
-import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Users, MoreHorizontal, Trash2, Briefcase, UserPlus, User, Truck, Settings, Edit, Search, Lock, Mail, Check, Sun, Moon, ChevronDown, ChevronRight as ChevronRightIcon, RotateCcw, RotateCw, FileText } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Users, MoreHorizontal, Trash2, Briefcase, UserPlus, User, Truck, Settings, Edit, Search, Lock, Mail, Check, Sun, Moon, ChevronDown, ChevronRight as ChevronRightIcon, RotateCcw, RotateCw, FileText, LogOut } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -89,6 +89,7 @@ interface CalendarGridProps {
   onRedo?: () => void;
   canUndo?: boolean;
   canRedo?: boolean;
+  onLogout?: () => void;
 }
 
 function DroppableCell({ id, children, className, style, onDoubleClick, disabled }: { id: string, children: React.ReactNode, className?: string, style?: React.CSSProperties, onDoubleClick?: (e: React.MouseEvent) => void, disabled?: boolean }) {
@@ -118,7 +119,7 @@ export function CalendarGrid({
     onEmployeeCreate, onEmployeeUpdate, onEmployeeDelete,
     onVehicleCreate, onVehicleUpdate, onVehicleDelete,
     onColorLabelUpdate, depots, allItems, vehicleTypes, allCrews,
-    onUndo, onRedo, canUndo, canRedo
+    onUndo, onRedo, canUndo, canRedo, onLogout
 }: CalendarGridProps) {
   // Always start on the current week - calculate fresh each time
   const getCurrentWeekStart = () => {
@@ -721,6 +722,16 @@ export function CalendarGrid({
                     <Lock className="w-3 h-3" /> Read Only View
                 </div>
             )}
+            {onLogout && (
+                <Button 
+                    variant="outline" 
+                    onClick={onLogout} 
+                    className="bg-white text-slate-700 border-slate-300 hover:bg-slate-50 gap-2"
+                    title="Logout"
+                >
+                    <LogOut className="w-4 h-4" /> Logout
+                </Button>
+            )}
         </div>
       </div>
 
@@ -870,12 +881,16 @@ export function CalendarGrid({
                                     i.crewId === crew.id
                                 );
                                 
-                                // Sort displayItems to match the visual rendering order (People first, then Jobs)
+                                // Sort displayItems to match the visual rendering order (Notes first, then People, then Jobs)
                                 const displayItems = [...cellItems].sort((a, b) => {
-                                    const aIsJob = a.type === 'job';
-                                    const bIsJob = b.type === 'job';
-                                    if (aIsJob === bIsJob) return 0;
-                                    return aIsJob ? 1 : -1; // People first, Jobs last
+                                    // Define priority: note = 0, operative/assistant = 1, job = 2
+                                    const getPriority = (type: string) => {
+                                        if (type === 'note') return 0;
+                                        if (type === 'operative' || type === 'assistant') return 1;
+                                        if (type === 'job') return 2;
+                                        return 3;
+                                    };
+                                    return getPriority(a.type) - getPriority(b.type);
                                 });
                                 
                                 const peopleItems = displayItems.filter(i => i.type !== 'job' && i.type !== 'note');
@@ -907,6 +922,20 @@ export function CalendarGrid({
                                             disabled={isReadOnly}
                                         >
                                             <div className="h-full min-h-[120px] w-full flex flex-col gap-1 min-w-0">
+                                                {/* Notes appear first, above crew names */}
+                                                {noteItems.map((item) => (
+                                                    <NoteCard 
+                                                        key={item.id} 
+                                                        item={item} 
+                                                        onEdit={handleEditItem} 
+                                                        onDelete={(id, mode) => handleDeleteItem(id, mode)} 
+                                                        onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
+                                                        isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
+                                                        isSelected={selectedItemIds.has(item.id)}
+                                                        onToggleSelection={handleToggleSelection}
+                                                    />
+                                                ))}
+                                                {/* Crew names (operatives/assistants) appear after notes */}
                                                 {peopleItems.length > 0 && (
                                                     <div className={cn(
                                                         "w-full grid gap-1",
@@ -928,18 +957,7 @@ export function CalendarGrid({
                                                         ))}
                                                     </div>
                                                 )}
-                                                {noteItems.map((item) => (
-                                                    <NoteCard 
-                                                        key={item.id} 
-                                                        item={item} 
-                                                        onEdit={handleEditItem} 
-                                                        onDelete={(id, mode) => handleDeleteItem(id, mode)} 
-                                                        onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
-                                                        isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
-                                                        isSelected={selectedItemIds.has(item.id)}
-                                                        onToggleSelection={handleToggleSelection}
-                                                    />
-                                                ))}
+                                                {/* Jobs appear last */}
                                                 {jobItems.map((item) => (
                                                     <SiteCard 
                                                         key={item.id} 
@@ -1031,12 +1049,16 @@ export function CalendarGrid({
                                     i.crewId === crew.id
                                 );
                                 
-                                // Sort displayItems to match the visual rendering order (People first, then Jobs)
+                                // Sort displayItems to match the visual rendering order (Notes first, then People, then Jobs)
                                 const displayItems = [...cellItems].sort((a, b) => {
-                                    const aIsJob = a.type === 'job';
-                                    const bIsJob = b.type === 'job';
-                                    if (aIsJob === bIsJob) return 0;
-                                    return aIsJob ? 1 : -1; // People first, Jobs last
+                                    // Define priority: note = 0, operative/assistant = 1, job = 2
+                                    const getPriority = (type: string) => {
+                                        if (type === 'note') return 0;
+                                        if (type === 'operative' || type === 'assistant') return 1;
+                                        if (type === 'job') return 2;
+                                        return 3;
+                                    };
+                                    return getPriority(a.type) - getPriority(b.type);
                                 });
                                 
                                 const peopleItems = displayItems.filter(i => i.type !== 'job' && i.type !== 'note');
@@ -1068,6 +1090,20 @@ export function CalendarGrid({
                                             disabled={isReadOnly}
                                         >
                                             <div className="h-full min-h-[120px] w-full flex flex-col gap-1 min-w-0">
+                                                {/* Notes appear first, above crew names */}
+                                                {noteItems.map((item) => (
+                                                    <NoteCard 
+                                                        key={item.id} 
+                                                        item={item} 
+                                                        onEdit={handleEditItem} 
+                                                        onDelete={(id, mode) => handleDeleteItem(id, mode)} 
+                                                        onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
+                                                        isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
+                                                        isSelected={selectedItemIds.has(item.id)}
+                                                        onToggleSelection={handleToggleSelection}
+                                                    />
+                                                ))}
+                                                {/* Crew names (operatives/assistants) appear after notes */}
                                                 {peopleItems.length > 0 && (
                                                     <div className={cn(
                                                         "w-full grid gap-1",
@@ -1089,18 +1125,7 @@ export function CalendarGrid({
                                                         ))}
                                                     </div>
                                                 )}
-                                                {noteItems.map((item) => (
-                                                    <NoteCard 
-                                                        key={item.id} 
-                                                        item={item} 
-                                                        onEdit={handleEditItem} 
-                                                        onDelete={(id, mode) => handleDeleteItem(id, mode)} 
-                                                        onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
-                                                        isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
-                                                        isSelected={selectedItemIds.has(item.id)}
-                                                        onToggleSelection={handleToggleSelection}
-                                                    />
-                                                ))}
+                                                {/* Jobs appear last */}
                                                 {jobItems.map((item) => (
                                                     <SiteCard 
                                                         key={item.id} 

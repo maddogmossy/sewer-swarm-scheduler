@@ -101,13 +101,14 @@ import {
     createOrganization(org: InsertOrganization): Promise<Organization>;
     updateOrganization(id: string, org: Partial<InsertOrganization>): Promise<Organization | undefined>;
     
-    // Organization Memberships
-    getMembership(userId: string, organizationId: string): Promise<OrganizationMembership | undefined>;
-    getMembershipsByOrg(organizationId: string): Promise<OrganizationMembership[]>;
-    getMembershipsByUser(userId: string): Promise<OrganizationMembership[]>;
-    createMembership(membership: InsertMembership): Promise<OrganizationMembership>;
-    updateMembershipRole(id: string, role: MemberRole): Promise<OrganizationMembership | undefined>;
-    deleteMembership(id: string): Promise<void>;
+  // Organization Memberships
+  getMembership(userId: string, organizationId: string): Promise<OrganizationMembership | undefined>;
+  getMembershipById(id: string): Promise<OrganizationMembership | undefined>;
+  getMembershipsByOrg(organizationId: string): Promise<OrganizationMembership[]>;
+  getMembershipsByUser(userId: string): Promise<OrganizationMembership[]>;
+  createMembership(membership: InsertMembership): Promise<OrganizationMembership>;
+  updateMembershipRole(id: string, role: MemberRole): Promise<OrganizationMembership | undefined>;
+  deleteMembership(id: string): Promise<void>;
     
     // Team Invites
     getInviteById(id: string): Promise<TeamInvite | undefined>;
@@ -242,6 +243,11 @@ import {
       const result = await getDb().select().from(organizationMemberships).where(
         and(eq(organizationMemberships.userId, userId), eq(organizationMemberships.organizationId, organizationId))
       );
+      return result[0];
+    }
+  
+    async getMembershipById(id: string): Promise<OrganizationMembership | undefined> {
+      const result = await getDb().select().from(organizationMemberships).where(eq(organizationMemberships.id, id));
       return result[0];
     }
   

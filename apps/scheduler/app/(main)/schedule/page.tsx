@@ -1,11 +1,14 @@
 "use client";
 
 import { useState, useEffect, useCallback } from "react";
+import { useRouter } from "next/navigation";
 import { CalendarGrid, type Crew, type ScheduleItem } from "@/components/schedule/CalendarGrid";
 import { Sidebar } from "@/components/schedule/Sidebar";
 import { DepotCrewModal } from "@/components/schedule/DepotCrewModal";
+import { TeamManagement } from "@/components/schedule/TeamManagement";
+import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { useScheduleData } from "@/hooks/useScheduleData";
-import { useOrganization, canManageResources } from "@/hooks/useOrganization";
+import { useOrganization, canManageResources, canManageTeam } from "@/hooks/useOrganization";
 import { api } from "@/lib/api";
 
 const INITIAL_COLOR_LABELS: Record<string, string> = {
@@ -23,8 +26,11 @@ const INITIAL_COLOR_LABELS: Record<string, string> = {
 const INITIAL_VEHICLE_TYPES = ["Van", "CCTV", "Jetting", "Recycler", "Other"];
 
 export default function SchedulePage() {
+  const router = useRouter();
   const [selectedDepotId, setSelectedDepotId] = useState<string>("");
   const [isDepotCrewModalOpen, setIsDepotCrewModalOpen] = useState(false);
+  const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
+  const [currentUserId, setCurrentUserId] = useState<string>("");
   const [vehicleTypes] = useState<string[]>(INITIAL_VEHICLE_TYPES);
   const [colorLabels, setColorLabels] = useState<Record<string, string>>(() => {
     if (typeof window !== "undefined") {
@@ -51,6 +57,25 @@ export default function SchedulePage() {
   // Determine if user can edit (admin and operations can edit, users can only view)
   // Default to false (editable) while loading to avoid blocking users
   const isReadOnly = orgLoading ? false : !canManageResources(userRole);
+  
+  // Check if user can access team management (admin only)
+  const canAccessSettings = canManageTeam(userRole);
+  
+  // Get current user ID from API
+  useEffect(() => {
+    const fetchUserId = async () => {
+      try {
+        const res = await fetch('/api/user');
+        if (res.ok) {
+          const data = await res.json();
+          setCurrentUserId(data.userId);
+        }
+      } catch (error) {
+        console.error('Failed to fetch user ID:', error);
+      }
+    };
+    fetchUserId();
+  }, []);
 
   // Select first depot if none selected
   useEffect(() => {
@@ -359,6 +384,17 @@ export default function SchedulePage() {
     setSelectedDepotId(newDepot.id);
   }, [mutations]);
 
+  const handleLogout = useCallback(async () => {
+    try {
+      await api.logout();
+      router.push("/");
+    } catch (error) {
+      console.error("Logout failed:", error);
+      // Still redirect even if logout fails
+      router.push("/");
+    }
+  }, [router]);
+
   if (isLoading) {
     return (
       <div className="flex h-screen items-center justify-center">
@@ -393,6 +429,8 @@ export default function SchedulePage() {
           setIsDepotCrewModalOpen(true);
         }}
         isReadOnly={isReadOnly}
+        onOpenSettings={() => setIsSettingsModalOpen(true)}
+        canAccessSettings={canAccessSettings}
       />
       <div className="flex-1 overflow-auto">
         <CalendarGrid
@@ -420,6 +458,7 @@ export default function SchedulePage() {
           onColorLabelUpdate={handleColorLabelUpdate}
           vehicleTypes={vehicleTypes}
           allCrews={transformedCrews}
+          onLogout={handleLogout}
         />
       </div>
       {selectedDepotId && (
@@ -443,6 +482,21 @@ export default function SchedulePage() {
           isReadOnly={isReadOnly}
         />
       )}
+      
+      {/* Settings Modal with Team Management */}
+      <Dialog open={isSettingsModalOpen} onOpenChange={setIsSettingsModalOpen}>
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Team & Settings</DialogTitle>
+          </DialogHeader>
+          {currentUserId && (
+            <TeamManagement
+              currentUserRole={userRole}
+              currentUserId={currentUserId}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

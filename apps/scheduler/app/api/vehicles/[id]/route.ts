@@ -16,30 +16,20 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
 
-    // Match Replit's approach: convert date to Date object if present
-    const updates: any = { ...body };
-    if (updates.date) {
-      updates.date = new Date(updates.date);
-    }
-
-    const item = await storage.updateScheduleItem(id, updates);
-    if (!item) {
+    console.log(`[PATCH /api/vehicles/${id}] Updating vehicle:`, body);
+    const vehicle = await storage.updateVehicle(id, body);
+    console.log(`[PATCH /api/vehicles/${id}] Updated vehicle:`, vehicle);
+    if (!vehicle) {
       return NextResponse.json(
-        { error: "Schedule item not found" },
+        { error: "Vehicle not found" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(item);
+    return NextResponse.json(vehicle);
   } catch (err: any) {
-    console.error('Error updating schedule item:', err);
-    console.error('Error details:', {
-      message: err.message,
-      stack: err.stack,
-      name: err.name,
-    });
     return NextResponse.json(
-      { error: err.message ?? "Failed to update schedule item", details: err.stack },
+      { error: err.message ?? "Failed to update vehicle" },
       { status: 400 }
     );
   }
@@ -54,14 +44,13 @@ export async function DELETE(
     requireAdminOrOperations(ctx);
 
     const { id } = await params;
-    await storage.deleteScheduleItem(id);
+    await storage.deleteVehicle(id);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err.message ?? "Failed to delete schedule item" },
+      { error: err.message ?? "Failed to delete vehicle" },
       { status: 400 }
     );
   }
 }
-
 

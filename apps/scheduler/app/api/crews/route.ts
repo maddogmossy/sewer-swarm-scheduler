@@ -34,3 +34,45 @@ export async function GET(request: Request) {
     );
   }
 }
+
+/**
+ * POST /api/crews
+ * Creates a new crew for the active organization
+ */
+export async function POST(req: Request) {
+  try {
+    const ctx = await getRequestContext();
+    requireAdminOrOperations(ctx);
+
+    const body = await req.json();
+
+    const crew = await storage.createCrew({
+      ...body,
+      organizationId: ctx.organizationId,
+      userId: ctx.userId,
+    });
+
+    return NextResponse.json(crew, { status: 201 });
+  } catch (err: any) {
+    // Ensure error message is always a string
+    let errorMsg = "Failed to create crew";
+    if (err && typeof err.message === 'string') {
+      errorMsg = err.message;
+    } else if (err && typeof err === 'string') {
+      errorMsg = err;
+    } else if (err) {
+      errorMsg = String(err);
+    }
+    
+    console.error('[POST /api/crews] Error:', {
+      message: errorMsg,
+      errorType: err?.constructor?.name,
+      body: body,
+    });
+    
+    return NextResponse.json(
+      { error: errorMsg },
+      { status: 400 }
+    );
+  }
+}

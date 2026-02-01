@@ -59,7 +59,7 @@ export function DepotCrewModal({
   const [newVehicleName, setNewVehicleName] = useState("");
   const [newVehicleType, setNewVehicleType] = useState(vehicleTypes[0] || "Van");
   const [editingCrew, setEditingCrew] = useState<{ id: string; name: string; shift?: 'day' | 'night' } | null>(null);
-  const [editingEmployee, setEditingEmployee] = useState<{ id: string; name: string; jobRole: 'operative' | 'assistant'; email?: string } | null>(null);
+  const [editingEmployee, setEditingEmployee] = useState<{ id: string; name: string; jobRole: 'operative' | 'assistant'; email?: string; status?: 'active' | 'holiday' | 'sick' } | null>(null);
   const [editingVehicle, setEditingVehicle] = useState<{ id: string; name: string; vehicleType: string; status?: 'active' | 'off_road' | 'maintenance' } | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
   const [isManageTypesOpen, setIsManageTypesOpen] = useState(false);
@@ -137,13 +137,13 @@ export function DepotCrewModal({
 
   const handleSaveEmployee = () => {
     if (!editingEmployee || !editingEmployee.name.trim()) return;
-    onEmployeeUpdate(editingEmployee.id, editingEmployee.name, undefined, editingEmployee.jobRole, editingEmployee.email);
+    onEmployeeUpdate(editingEmployee.id, editingEmployee.name, editingEmployee.status, editingEmployee.jobRole, editingEmployee.email);
     setEditingEmployee(null);
   };
 
   const handleSaveVehicle = () => {
     if (!editingVehicle || !editingVehicle.name.trim()) return;
-    onVehicleUpdate(editingVehicle.id, editingVehicle.name, undefined, editingVehicle.vehicleType);
+    onVehicleUpdate(editingVehicle.id, editingVehicle.name, editingVehicle.status, editingVehicle.vehicleType);
     setEditingVehicle(null);
   };
 
@@ -162,7 +162,7 @@ export function DepotCrewModal({
           </TabsList>
 
           {/* CREWS TAB */}
-          <TabsContent value="crews" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4 overflow-hidden">
+          <TabsContent value="crews" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4 overflow-hidden bg-white">
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Add New Crew</Label>
               <div className="flex gap-2">
@@ -203,7 +203,7 @@ export function DepotCrewModal({
                             <SelectTrigger className="w-32">
                                 <SelectValue />
                             </SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="bg-white">
                                 <SelectItem value="day">Day</SelectItem>
                                 <SelectItem value="night">Night</SelectItem>
                             </SelectContent>
@@ -265,7 +265,7 @@ export function DepotCrewModal({
           </TabsContent>
 
           {/* EMPLOYEES TAB */}
-          <TabsContent value="employees" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4 overflow-hidden">
+          <TabsContent value="employees" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4 overflow-hidden bg-white">
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Add New Employee</Label>
               <div className="flex flex-col gap-2">
@@ -281,7 +281,7 @@ export function DepotCrewModal({
                     <SelectTrigger className="w-32">
                         <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-white">
                         <SelectItem value="operative">👷 Operative</SelectItem>
                         <SelectItem value="assistant">🤝 Assistant</SelectItem>
                     </SelectContent>
@@ -325,7 +325,7 @@ export function DepotCrewModal({
                                     <SelectTrigger className="w-32">
                                     <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent>
+                                    <SelectContent className="bg-white">
                                     <SelectItem value="operative">Operative</SelectItem>
                                     <SelectItem value="assistant">Assistant</SelectItem>
                                     </SelectContent>
@@ -371,7 +371,7 @@ export function DepotCrewModal({
                             <Button
                               size="icon"
                               variant="ghost"
-                              onClick={() => setEditingEmployee(emp)}
+                              onClick={() => setEditingEmployee({ id: emp.id, name: emp.name, jobRole: emp.jobRole, email: emp.email, status: emp.status })}
                               className="h-8 w-8"
                             >
                               <Edit className="w-4 h-4 text-slate-500" />
@@ -398,7 +398,7 @@ export function DepotCrewModal({
           </TabsContent>
 
           {/* VEHICLES TAB */}
-          <TabsContent value="vehicles" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4 overflow-hidden">
+          <TabsContent value="vehicles" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4 overflow-hidden bg-white">
             <div className="space-y-2">
               <div className="flex justify-between items-center">
                 <Label className="text-sm font-semibold">Add New Vehicle</Label>
@@ -408,7 +408,7 @@ export function DepotCrewModal({
                             <Settings className="w-3 h-3 mr-1" /> Manage Types
                         </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-64 p-3" align="end">
+                    <PopoverContent className="w-64 p-3 bg-white" align="end">
                         <div className="space-y-3">
                             <h4 className="font-medium text-sm">Manage Vehicle Types</h4>
                             <div className="flex gap-2">
@@ -454,7 +454,7 @@ export function DepotCrewModal({
                   <SelectTrigger className="w-32">
                     <SelectValue />
                   </SelectTrigger>
-                  <SelectContent>
+                  <SelectContent className="bg-white">
                     {vehicleTypes.map(type => (
                         <SelectItem key={type} value={type}>{type}</SelectItem>
                     ))}
@@ -514,7 +514,7 @@ export function DepotCrewModal({
                                     <SelectTrigger className="w-32">
                                       <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent>
+                                    <SelectContent className="bg-white">
                                       {vehicleTypes.map(type => (
                                           <SelectItem key={type} value={type}>{type}</SelectItem>
                                       ))}
@@ -527,7 +527,7 @@ export function DepotCrewModal({
                                     <SelectTrigger className="w-32">
                                       <SelectValue />
                                     </SelectTrigger>
-                                    <SelectContent>
+                                    <SelectContent className="bg-white">
                                       <SelectItem value="active">Active</SelectItem>
                                       <SelectItem value="off_road">VOR</SelectItem>
                                       <SelectItem value="maintenance">Maintenance</SelectItem>

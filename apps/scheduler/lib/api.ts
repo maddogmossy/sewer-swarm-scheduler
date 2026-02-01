@@ -73,8 +73,81 @@ class API {
     });
 
     if (!response.ok) {
-      const error = await response.json().catch(() => ({ error: "Request failed" }));
-      throw new Error(error.error || `HTTP ${response.status}`);
+      let errorText = '';
+      let errorJson: any = {};
+      
+      try {
+        errorText = await response.text();
+        if (errorText) {
+          try {
+            errorJson = JSON.parse(errorText);
+          } catch (parseError) {
+            // If JSON parsing fails, use the text as error
+            errorJson = { error: errorText };
+          }
+        } else {
+          errorJson = { error: "Request failed" };
+        }
+      } catch (e) {
+        // If reading response fails, use generic error
+        errorJson = { error: "Request failed" };
+      }
+      
+      // Safely extract error message - ONLY extract primitive string values, avoid any object methods
+      let errorMessage: string = `HTTP ${response.status}: ${response.statusText}`;
+      
+      try {
+        // Only extract if errorJson has simple string properties - avoid any complex objects
+        if (errorJson && typeof errorJson === 'object' && errorJson !== null) {
+          // Only look for simple string properties, don't call any methods
+          if (typeof errorJson.error === 'string') {
+            errorMessage = errorJson.error;
+          } else if (typeof errorJson.details === 'string') {
+            errorMessage = errorJson.details;
+          } else if (typeof errorJson.message === 'string') {
+            errorMessage = errorJson.message;
+          }
+          // If none of the above are strings, keep the default errorMessage
+        } else if (typeof errorJson === 'string') {
+          errorMessage = errorJson;
+        }
+      } catch (e) {
+        // If anything fails, use default - never try to serialize objects
+        errorMessage = `HTTP ${response.status}: ${response.statusText}`;
+      }
+      
+      // Create final error message - use template literal to avoid calling any methods
+      let finalErrorMessage: string = `HTTP ${response.status}: ${response.statusText}`;
+      
+      // Only use errorMessage if it's definitely a string primitive
+      if (typeof errorMessage === 'string' && errorMessage !== '') {
+        finalErrorMessage = errorMessage;
+      }
+      
+      // Log error info - only use primitive values, no object serialization
+      try {
+        const logUrl = typeof url === 'string' ? url : `${url}`;
+        const logStatus = typeof response.status === 'number' ? response.status : Number(response.status);
+        const logStatusText = typeof response.statusText === 'string' ? response.statusText : `${response.statusText}`;
+        const logErrorMessage = finalErrorMessage;
+        
+        const logData: Record<string, string | number> = {
+          url: logUrl,
+          status: logStatus,
+          statusText: logStatusText,
+          errorMessage: logErrorMessage,
+        };
+        if (errorText && typeof errorText === 'string') {
+          logData.errorText = errorText.substring(0, 500);
+        }
+        console.error('API request failed:', logData);
+      } catch (logError) {
+        // If logging fails, just log the basics with no object serialization
+        console.error('API request failed:', url, response.status, response.statusText);
+      }
+      
+      // Throw error with guaranteed string message - use template literal to ensure it's a string
+      throw new Error(finalErrorMessage);
     }
 
     return response.json();
@@ -206,17 +279,115 @@ class API {
   }
 
   async createScheduleItem(item: Omit<ScheduleItem, "id" | "userId">): Promise<ScheduleItem> {
-    return this.request("/api/schedule-items", {
-      method: "POST",
-      body: JSON.stringify(item),
-    });
+    // Helper to convert Date objects to ISO strings - ONLY call toISOString on actual Date instances
+    const sanitizeDates = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+      
+      // ONLY call toISOString on actual Date instances - never on other objects
+      if (obj instanceof Date) {
+        if (isNaN(obj.getTime())) {
+          console.error('Invalid Date object:', obj);
+          return null;
+        }
+        return obj.toISOString();
+      }
+      
+      // DO NOT call toISOString on non-Date objects - this causes "toISOString is not a function" errors
+      // If an object has toISOString but isn't a Date, treat it as a regular object
+      
+      if (Array.isArray(obj)) {
+        return obj.map(sanitizeDates);
+      }
+      
+      if (typeof obj === 'object' && obj !== null) {
+        const sanitized: any = {};
+        for (const key in obj) {
+          if (obj.hasOwnProperty(key)) {
+            try {
+              sanitized[key] = sanitizeDates(obj[key]);
+            } catch (error) {
+              console.error(`Error sanitizing key ${key}:`, error, obj[key]);
+              // Skip invalid values or convert to string
+              try {
+                sanitized[key] = JSON.stringify(obj[key]);
+              } catch {
+                sanitized[key] = String(obj[key]);
+              }
+            }
+          }
+        }
+        return sanitized;
+      }
+      
+      return obj;
+    };
+
+    try {
+      const sanitized = sanitizeDates(item);
+      return this.request("/api/schedule-items", {
+        method: "POST",
+        body: JSON.stringify(sanitized),
+      });
+    } catch (error) {
+      console.error('Error in createScheduleItem:', error, item);
+      throw error;
+    }
   }
 
   async updateScheduleItem(id: string, item: Partial<ScheduleItem>): Promise<ScheduleItem> {
-    return this.request(`/api/schedule-items/${id}`, {
-      method: "PATCH",
-      body: JSON.stringify(item),
-    });
+    // Helper to convert Date objects to ISO strings - ONLY call toISOString on actual Date instances
+    const sanitizeDates = (obj: any): any => {
+      if (obj === null || obj === undefined) return obj;
+      
+      // ONLY call toISOString on actual Date instances - never on other objects
+      if (obj instanceof Date) {
+        if (isNaN(obj.getTime())) {
+          console.error('Invalid Date object:', obj);
+          return null;
+        }
+        return obj.toISOString();
+      }
+      
+      // DO NOT call toISOString on non-Date objects - this causes "toISOString is not a function" errors
+      // If an object has toISOString but isn't a Date, treat it as a regular object
+      
+      if (Array.isArray(obj)) {
+        return obj.map(sanitizeDates);
+      }
+      
+      if (typeof obj === 'object' && obj !== null) {
+        const sanitized: any = {};
+        for (const key in obj) {
+          if (obj.hasOwnProperty(key)) {
+            try {
+              sanitized[key] = sanitizeDates(obj[key]);
+            } catch (error) {
+              console.error(`Error sanitizing key ${key}:`, error, obj[key]);
+              // Skip invalid values or convert to string
+              try {
+                sanitized[key] = JSON.stringify(obj[key]);
+              } catch {
+                sanitized[key] = String(obj[key]);
+              }
+            }
+          }
+        }
+        return sanitized;
+      }
+      
+      return obj;
+    };
+
+    try {
+      const sanitized = sanitizeDates(item);
+      return this.request(`/api/schedule-items/${id}`, {
+        method: "PATCH",
+        body: JSON.stringify(sanitized),
+      });
+    } catch (error) {
+      console.error('Error in updateScheduleItem:', error, item);
+      throw error;
+    }
   }
 
   async deleteScheduleItem(id: string): Promise<void> {

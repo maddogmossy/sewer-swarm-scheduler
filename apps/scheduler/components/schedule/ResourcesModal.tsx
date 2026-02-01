@@ -101,7 +101,7 @@ export function ResourcesModal({
                                                 <SelectTrigger className="w-32">
                                                     <SelectValue />
                                                 </SelectTrigger>
-                                                <SelectContent>
+                                                <SelectContent className="bg-white">
                                                     <SelectItem value="active">Active</SelectItem>
                                                     <SelectItem value="holiday">Holiday</SelectItem>
                                                     <SelectItem value="sick">Sick</SelectItem>
@@ -180,7 +180,7 @@ export function ResourcesModal({
                                                 <SelectTrigger className="w-32">
                                                     <SelectValue />
                                                 </SelectTrigger>
-                                                <SelectContent>
+                                                <SelectContent className="bg-white">
                                                     <SelectItem value="active">Active</SelectItem>
                                                     <SelectItem value="off_road">VOR</SelectItem>
                                                     <SelectItem value="maintenance">Maintenance</SelectItem>

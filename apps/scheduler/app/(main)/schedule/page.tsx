@@ -3,7 +3,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { CalendarGrid, type Crew, type ScheduleItem } from "@/components/schedule/CalendarGrid";
 import { Sidebar } from "@/components/schedule/Sidebar";
+import { DepotCrewModal } from "@/components/schedule/DepotCrewModal";
 import { useScheduleData } from "@/hooks/useScheduleData";
+import { useOrganization, canManageResources } from "@/hooks/useOrganization";
 import { api } from "@/lib/api";
 
 const INITIAL_COLOR_LABELS: Record<string, string> = {
@@ -22,6 +24,7 @@ const INITIAL_VEHICLE_TYPES = ["Van", "CCTV", "Jetting", "Recycler", "Other"];
 
 export default function SchedulePage() {
   const [selectedDepotId, setSelectedDepotId] = useState<string>("");
+  const [isDepotCrewModalOpen, setIsDepotCrewModalOpen] = useState(false);
   const [vehicleTypes] = useState<string[]>(INITIAL_VEHICLE_TYPES);
   const [colorLabels, setColorLabels] = useState<Record<string, string>>(() => {
     if (typeof window !== "undefined") {
@@ -41,6 +44,14 @@ export default function SchedulePage() {
     mutations,
   } = useScheduleData();
 
+  // Get user's organization and role
+  const { data: orgData, isLoading: orgLoading } = useOrganization();
+  const userRole = orgData?.membershipRole || "user";
+  
+  // Determine if user can edit (admin and operations can edit, users can only view)
+  // Default to false (editable) while loading to avoid blocking users
+  const isReadOnly = orgLoading ? false : !canManageResources(userRole);
+
   // Select first depot if none selected
   useEffect(() => {
     if (!selectedDepotId && depots.length > 0) {
@@ -55,6 +66,21 @@ export default function SchedulePage() {
   const filteredEmployees = employees.filter((e) => e.depotId === selectedDepotId);
   const filteredVehicles = vehicles.filter((v) => v.depotId === selectedDepotId);
   const filteredItems = scheduleItems.filter((i) => i.depotId === selectedDepotId);
+  
+  // Debug logging
+  useEffect(() => {
+    if (scheduleItems.length > 0) {
+      console.log('[SchedulePage] Schedule items:', {
+        total: scheduleItems.length,
+        filtered: filteredItems.length,
+        selectedDepotId,
+        itemsByDepot: scheduleItems.reduce((acc, item) => {
+          acc[item.depotId] = (acc[item.depotId] || 0) + 1;
+          return acc;
+        }, {} as Record<string, number>),
+      });
+    }
+  }, [scheduleItems, filteredItems, selectedDepotId]);
 
   // Transform data to match CalendarGrid types
   const transformedCrews: Crew[] = filteredCrews.map((c) => ({
@@ -110,12 +136,12 @@ export default function SchedulePage() {
   // Handlers
   const handleItemUpdate = useCallback(
     async (item: ScheduleItem) => {
+      // Match Replit's approach: send the item data directly, let the server handle date conversion
+      const { id, ...itemData } = item;
+      
       await mutations.updateScheduleItem.mutateAsync({
         id: item.id,
-        data: {
-          ...item,
-          date: item.date instanceof Date ? item.date.toISOString() : item.date,
-        },
+        data: itemData,
       });
     },
     [mutations]
@@ -123,12 +149,72 @@ export default function SchedulePage() {
 
   const handleItemCreate = useCallback(
     async (item: ScheduleItem) => {
-      await mutations.createScheduleItem.mutateAsync({
-        ...item,
-        date: item.date instanceof Date ? item.date.toISOString() : item.date,
-      } as any);
+      // Remove id and ensure date is properly formatted
+      const { id, date, duration, ...itemData } = item;
+      
+      // Validate date exists
+      if (!date) {
+        console.error('[handleItemCreate] Missing date in item:', item);
+        throw new Error('Date is required to create a schedule item');
+      }
+      
+      // Use provided depotId if available, otherwise use selectedDepotId (like Replit)
+      const itemWithDepot = {
+        ...itemData,
+        depotId: (itemData.depotId && itemData.depotId !== "") ? itemData.depotId : selectedDepotId
+      };
+      
+      // Ensure date is converted to ISO string
+      let dateValue: string;
+      if (date instanceof Date) {
+        if (isNaN(date.getTime())) {
+          throw new Error('Invalid Date object');
+        }
+        dateValue = date.toISOString();
+      } else if (typeof date === 'string') {
+        // If it's already a string, validate it's a valid date string
+        const dateObj = new Date(date);
+        if (isNaN(dateObj.getTime())) {
+          throw new Error(`Invalid date: ${date}`);
+        }
+        dateValue = dateObj.toISOString();
+      } else {
+        // Fallback: try to create a Date from it
+        const dateObj = new Date(date as any);
+        if (isNaN(dateObj.getTime())) {
+          throw new Error(`Invalid date value: ${date}`);
+        }
+        dateValue = dateObj.toISOString();
+      }
+      
+      // Convert duration to number if present (only for jobs)
+      const durationValue = item.type === 'job' && duration ? Number(duration) : undefined;
+      
+      // Ensure date is included in the request
+      const requestData = {
+        ...itemWithDepot,
+        date: dateValue,
+        duration: durationValue,
+      };
+      
+      console.log('[handleItemCreate] Creating item:', {
+        type: item.type,
+        hasDate: !!requestData.date,
+        dateValue: requestData.date,
+        depotId: requestData.depotId,
+        employeeId: requestData.employeeId,
+      });
+      
+      try {
+        const createdItem = await mutations.createScheduleItem.mutateAsync(requestData as any);
+        console.log('[handleItemCreate] Item created successfully:', createdItem?.id);
+      } catch (error: any) {
+        console.error('[handleItemCreate] Failed to create item:', error);
+        // Re-throw so UI can show error if needed
+        throw error;
+      }
     },
-    [mutations]
+    [mutations, selectedDepotId]
   );
 
   const handleItemDelete = useCallback(
@@ -166,25 +252,23 @@ export default function SchedulePage() {
 
   const handleCrewUpdate = useCallback(
     async (id: string, name: string, shift: "day" | "night") => {
-      await api.updateCrew(id, { name, shift });
-      // Invalidate queries to refetch
-      window.location.reload();
+      await mutations.updateCrew.mutateAsync({ id, data: { name, shift } });
     },
-    []
+    [mutations]
   );
 
   const handleCrewDelete = useCallback(async (id: string) => {
-    await api.archiveCrew(id);
-    window.location.reload();
-  }, []);
+    await mutations.archiveCrew.mutateAsync(id);
+  }, [mutations]);
 
   const handleEmployeeCreate = useCallback(
-    async (name: string) => {
+    async (name: string, jobRole: "operative" | "assistant" = "operative", email?: string) => {
       if (!selectedDepotId) return;
       await mutations.createEmployee.mutateAsync({
         name,
         status: "active",
-        jobRole: "operative",
+        jobRole,
+        email,
         depotId: selectedDepotId,
       });
     },
@@ -199,24 +283,22 @@ export default function SchedulePage() {
       jobRole?: "operative" | "assistant",
       email?: string
     ) => {
-      await api.updateEmployee(id, { name, status, jobRole, email });
-      window.location.reload();
+      await mutations.updateEmployee.mutateAsync({ id, data: { name, status, jobRole, email } });
     },
-    []
+    [mutations]
   );
 
   const handleEmployeeDelete = useCallback(async (id: string) => {
-    await api.deleteEmployee(id);
-    window.location.reload();
-  }, []);
+    await mutations.deleteEmployee.mutateAsync(id);
+  }, [mutations]);
 
   const handleVehicleCreate = useCallback(
-    async (name: string) => {
+    async (name: string, vehicleType: string = "Van") => {
       if (!selectedDepotId) return;
       await mutations.createVehicle.mutateAsync({
         name,
         status: "active",
-        vehicleType: "Van",
+        vehicleType,
         depotId: selectedDepotId,
       });
     },
@@ -227,18 +309,17 @@ export default function SchedulePage() {
     async (
       id: string,
       name: string,
-      status?: "active" | "off_road" | "maintenance"
+      status?: "active" | "off_road" | "maintenance",
+      vehicleType?: string
     ) => {
-      await api.updateVehicle(id, { name, status });
-      window.location.reload();
+      await mutations.updateVehicle.mutateAsync({ id, data: { name, status, vehicleType } });
     },
-    []
+    [mutations]
   );
 
   const handleVehicleDelete = useCallback(async (id: string) => {
-    await api.deleteVehicle(id);
-    window.location.reload();
-  }, []);
+    await mutations.deleteVehicle.mutateAsync(id);
+  }, [mutations]);
 
   const handleColorLabelUpdate = useCallback(
     async (color: string, label: string) => {
@@ -253,6 +334,30 @@ export default function SchedulePage() {
     },
     [colorLabels, mutations]
   );
+
+  const handleDepotUpdate = useCallback(
+    async (id: string, updates: { name?: string; address?: string }) => {
+      await mutations.updateDepot.mutateAsync({ id, data: updates });
+    },
+    [mutations]
+  );
+
+  const handleDepotDelete = useCallback(
+    async (id: string) => {
+      await mutations.deleteDepot.mutateAsync(id);
+    },
+    [mutations]
+  );
+
+  const handleAddDepot = useCallback(async () => {
+    // Create a new depot with default values
+    const newDepot = await mutations.createDepot.mutateAsync({
+      name: "New Depot",
+      address: "Enter Address",
+    });
+    // Select the newly created depot
+    setSelectedDepotId(newDepot.id);
+  }, [mutations]);
 
   if (isLoading) {
     return (
@@ -280,19 +385,14 @@ export default function SchedulePage() {
       <Sidebar
         depots={transformedDepots}
         selectedDepotId={selectedDepotId}
-        onDepotSelect={setSelectedDepotId}
-        crews={transformedCrews}
-        employees={transformedEmployees}
-        vehicles={transformedVehicles}
-        onCrewCreate={handleCrewCreate}
-        onCrewUpdate={handleCrewUpdate}
-        onCrewDelete={handleCrewDelete}
-        onEmployeeCreate={handleEmployeeCreate}
-        onEmployeeUpdate={handleEmployeeUpdate}
-        onEmployeeDelete={handleEmployeeDelete}
-        onVehicleCreate={handleVehicleCreate}
-        onVehicleUpdate={handleVehicleUpdate}
-        onVehicleDelete={handleVehicleDelete}
+        onSelectDepot={setSelectedDepotId}
+        onUpdateDepot={handleDepotUpdate}
+        onDeleteDepot={handleDepotDelete}
+        onAddDepot={handleAddDepot}
+        onEditDepot={() => {
+          setIsDepotCrewModalOpen(true);
+        }}
+        isReadOnly={isReadOnly}
       />
       <div className="flex-1 overflow-auto">
         <CalendarGrid
@@ -301,7 +401,7 @@ export default function SchedulePage() {
           employees={transformedEmployees}
           vehicles={transformedVehicles}
           colorLabels={colorLabels}
-          isReadOnly={false}
+          isReadOnly={isReadOnly}
           depots={transformedDepots}
           allItems={transformedItems}
           onItemUpdate={handleItemUpdate}
@@ -322,7 +422,29 @@ export default function SchedulePage() {
           allCrews={transformedCrews}
         />
       </div>
+      {selectedDepotId && (
+        <DepotCrewModal
+          open={isDepotCrewModalOpen}
+          onOpenChange={setIsDepotCrewModalOpen}
+          depotName={transformedDepots.find(d => d.id === selectedDepotId)?.name || "Depot"}
+          crews={transformedCrews}
+          employees={transformedEmployees}
+          vehicles={transformedVehicles}
+          onCrewCreate={handleCrewCreate}
+          onCrewUpdate={handleCrewUpdate}
+          onCrewDelete={handleCrewDelete}
+          onEmployeeCreate={handleEmployeeCreate}
+          onEmployeeUpdate={handleEmployeeUpdate}
+          onEmployeeDelete={handleEmployeeDelete}
+          onVehicleCreate={handleVehicleCreate}
+          onVehicleUpdate={handleVehicleUpdate}
+          onVehicleDelete={handleVehicleDelete}
+          vehicleTypes={vehicleTypes}
+          isReadOnly={isReadOnly}
+        />
+      )}
     </div>
   );
 }
+
 

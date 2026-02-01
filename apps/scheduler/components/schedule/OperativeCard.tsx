@@ -131,7 +131,7 @@ export function OperativeCard({ item, onEdit, onDelete, onDuplicate, vehicles, e
                         <MoreHorizontal className="h-3 w-3" />
                     </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuContent align="end" className="w-48 bg-white">
                     {!isReadOnly && (
                         <>
                         <DropdownMenuItem onClick={() => onEdit(item)}>
@@ -229,7 +229,7 @@ export function OperativeCard({ item, onEdit, onDelete, onDuplicate, vehicles, e
             </div>
             </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-48">
+        <ContextMenuContent className="w-48 bg-white">
             {!isReadOnly && (
                 <>
                 <ContextMenuItem onClick={() => onEdit(item)}>

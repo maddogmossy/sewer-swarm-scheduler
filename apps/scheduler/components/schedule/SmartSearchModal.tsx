@@ -223,7 +223,7 @@ export function SmartSearchModal({
                         <SelectTrigger className="bg-white">
                             <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="bg-white">
                            <SelectItem value="any">Any Vehicle</SelectItem>
                            {availableVehicleTypes.map((type) => (
                                <SelectItem key={type} value={type}>
@@ -243,7 +243,7 @@ export function SmartSearchModal({
                         <SelectTrigger className="bg-white">
                             <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="bg-white">
                            <SelectItem value="any">Any Shift</SelectItem>
                            <SelectItem value="day">Day Shift</SelectItem>
                            <SelectItem value="night">Night Shift</SelectItem>
@@ -285,7 +285,7 @@ export function SmartSearchModal({
                         <SelectTrigger className="bg-white">
                             <SelectValue placeholder="All Depots" />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="bg-white">
                            <SelectItem value="all">All Depots</SelectItem>
                            {depots.map((depot) => (
                                <SelectItem key={depot.id} value={depot.id}>

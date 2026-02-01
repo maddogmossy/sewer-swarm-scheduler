@@ -120,9 +120,26 @@ export function CalendarGrid({
     onColorLabelUpdate, depots, allItems, vehicleTypes, allCrews,
     onUndo, onRedo, canUndo, canRedo
 }: CalendarGridProps) {
-  const [currentDate, setCurrentDate] = useState(new Date());
+  // Always start on the current week - calculate fresh each time
+  const getCurrentWeekStart = () => {
+    const now = new Date();
+    const weekStart = startOfWeek(now, { weekStartsOn: 1 });
+    return weekStart;
+  };
+
+  const [currentDate, setCurrentDate] = useState(() => {
+    // Initialize with current week start
+    return getCurrentWeekStart();
+  });
   const today = startOfDay(new Date());
   const [viewDays, setViewDays] = useState(5); // 5 or 7 day view
+
+  // Always reset to current week when component mounts (ensures it always opens on current week)
+  useEffect(() => {
+    // Force update to current week on mount
+    const currentWeekStart = getCurrentWeekStart();
+    setCurrentDate(currentWeekStart);
+  }, []); // Empty deps - only run on mount
   const [activeId, setActiveId] = useState<string | null>(null);
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
@@ -532,6 +549,12 @@ export function CalendarGrid({
         
     } else if (modalState.target) {
         // CREATE
+        // Ensure date is included - it's required
+        if (!modalState.target.date) {
+            console.error('[handleModalSubmit] Missing date in modalState.target:', modalState.target);
+            return;
+        }
+        
         onItemCreate({
             id: Math.random().toString(36).substr(2, 9),
             type: modalState.type,
@@ -662,7 +685,7 @@ export function CalendarGrid({
                 <RotateCw className="w-4 h-4" />
              </Button>
           </div>
-          <Button variant="outline" onClick={() => setCurrentDate(new Date())} className="border-slate-200 hover:bg-slate-50 text-slate-600">
+          <Button variant="outline" onClick={() => setCurrentDate(getCurrentWeekStart())} className="border-slate-200 hover:bg-slate-50 text-slate-600">
             Today
           </Button>
 
@@ -865,7 +888,7 @@ export function CalendarGrid({
                                     <DroppableCell 
                                         key={cellId}
                                         id={cellId}
-                                        disabled={!isReadOnly && isBefore(startOfDay(day), today)}
+                                        disabled={isReadOnly || isBefore(startOfDay(day), today)}
                                         onDoubleClick={(e) => {
                                             e.stopPropagation();
                                             handleCellDoubleClick(day, crew.id);
@@ -1026,7 +1049,7 @@ export function CalendarGrid({
                                     <DroppableCell 
                                         key={cellId}
                                         id={cellId}
-                                        disabled={!isReadOnly && isBefore(startOfDay(day), today)}
+                                        disabled={isReadOnly || isBefore(startOfDay(day), today)}
                                         onDoubleClick={(e) => {
                                             e.stopPropagation();
                                             handleCellDoubleClick(day, crew.id);
@@ -1221,7 +1244,7 @@ export function CalendarGrid({
                                 <SelectTrigger className="col-span-3">
                                     <SelectValue placeholder="Select shift type" />
                                 </SelectTrigger>
-                                <SelectContent>
+                                <SelectContent className="bg-white">
                                     <SelectItem value="day">Day Shift</SelectItem>
                                     <SelectItem value="night">Night Shift</SelectItem>
                                 </SelectContent>

@@ -179,7 +179,7 @@ export function TeamManagement({ currentUserRole, currentUserId }: TeamManagemen
                     <SelectTrigger id="invite-role" data-testid="select-invite-role">
                       <SelectValue />
                     </SelectTrigger>
-                    <SelectContent>
+                    <SelectContent className="bg-white">
                       <SelectItem value="admin">Admin - Full access to all features</SelectItem>
                       <SelectItem value="operations">Operations Manager - Manage schedules and approve bookings</SelectItem>
                       <SelectItem value="user">Booker - Create booking requests</SelectItem>
@@ -246,7 +246,7 @@ export function TeamManagement({ currentUserRole, currentUserId }: TeamManagemen
                         <SelectTrigger className="w-[180px]" data-testid={`select-role-${member.userId}`}>
                           <SelectValue />
                         </SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="bg-white">
                           <SelectItem value="admin">Admin</SelectItem>
                           <SelectItem value="operations">Operations Manager</SelectItem>
                           <SelectItem value="user">Booker</SelectItem>

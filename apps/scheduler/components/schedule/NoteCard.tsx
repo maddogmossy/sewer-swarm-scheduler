@@ -98,7 +98,7 @@ export function NoteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                         <MoreHorizontal className="h-3 w-3" />
                     </Button>
                     </DropdownMenuTrigger>
-                    <DropdownMenuContent align="end" className="w-48">
+                    <DropdownMenuContent align="end" className="w-48 bg-white">
                     {!isReadOnly && (
                         <>
                         <DropdownMenuItem onClick={() => onEdit(item)}>
@@ -196,7 +196,7 @@ export function NoteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
             </div>
             </div>
         </ContextMenuTrigger>
-        <ContextMenuContent className="w-48">
+        <ContextMenuContent className="w-48 bg-white">
             {!isReadOnly && (
                 <>
                 <ContextMenuItem onClick={() => onEdit(item)}>

@@ -67,6 +67,13 @@ export interface PendingScheduleItem {
 export function useOrganization() {
   return useQuery<{ id: string; name: string; plan: PlanType; subscriptionStatus: string; membershipRole: MemberRole }>({
     queryKey: ["/api/organization"],
+    queryFn: async () => {
+      const response = await fetch("/api/organization");
+      if (!response.ok) {
+        throw new Error("Failed to fetch organization");
+      }
+      return response.json();
+    },
   });
 }
 

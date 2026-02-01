@@ -16,30 +16,18 @@ export async function PATCH(
     const { id } = await params;
     const body = await req.json();
 
-    // Match Replit's approach: convert date to Date object if present
-    const updates: any = { ...body };
-    if (updates.date) {
-      updates.date = new Date(updates.date);
-    }
-
-    const item = await storage.updateScheduleItem(id, updates);
-    if (!item) {
+    const crew = await storage.updateCrew(id, body);
+    if (!crew) {
       return NextResponse.json(
-        { error: "Schedule item not found" },
+        { error: "Crew not found" },
         { status: 404 }
       );
     }
 
-    return NextResponse.json(item);
+    return NextResponse.json(crew);
   } catch (err: any) {
-    console.error('Error updating schedule item:', err);
-    console.error('Error details:', {
-      message: err.message,
-      stack: err.stack,
-      name: err.name,
-    });
     return NextResponse.json(
-      { error: err.message ?? "Failed to update schedule item", details: err.stack },
+      { error: err.message ?? "Failed to update crew" },
       { status: 400 }
     );
   }
@@ -54,14 +42,13 @@ export async function DELETE(
     requireAdminOrOperations(ctx);
 
     const { id } = await params;
-    await storage.deleteScheduleItem(id);
+    await storage.archiveCrew(id);
     return NextResponse.json({ ok: true });
   } catch (err: any) {
     return NextResponse.json(
-      { error: err.message ?? "Failed to delete schedule item" },
+      { error: err.message ?? "Failed to archive crew" },
       { status: 400 }
     );
   }
 }
-
 

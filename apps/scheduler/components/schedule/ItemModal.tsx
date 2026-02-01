@@ -298,7 +298,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                 <Plus className="w-3 h-3 mr-1" /> Add Category
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-64 p-2" align="end">
+                        <PopoverContent className="w-64 p-2 bg-white" align="end">
                             <div className="text-xs font-semibold mb-2 text-slate-500 uppercase tracking-wider">Select Color to Add</div>
                             <div className="grid grid-cols-5 gap-2">
                                 {AVAILABLE_COLORS.filter(c => !activeColors.includes(c.value)).map(c => (
@@ -390,11 +390,11 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                 <Briefcase className="ml-2 h-4 w-4 shrink-0 opacity-50" />
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[400px] p-0" align="start">
-                            <div className="flex items-center border-b px-3">
+                        <PopoverContent className="w-[400px] p-0 bg-white" align="start">
+                            <div className="flex items-center border-b px-3 bg-white">
                                 <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                                 <input
-                                    className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex h-11 w-full rounded-md bg-white py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border-0"
                                     placeholder="Search customer..."
                                     value={form.watch("customer")}
                                     onChange={(e) => form.setValue("customer", e.target.value)}
@@ -417,8 +417,8 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                     }
 
                                     return (
-                                        <div className="overflow-hidden p-1 text-foreground">
-                                            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Suggestions</div>
+                                        <div className="overflow-hidden p-1 text-foreground bg-white">
+                                            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground bg-white">Suggestions</div>
                                             {filtered.map((client) => (
                                                 <div
                                                     key={client}
@@ -427,7 +427,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                                         setOpenClient(false);
                                                     }}
                                                     className={cn(
-                                                        "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 hover:text-slate-900",
+                                                        "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 hover:text-slate-900 bg-white",
                                                         form.watch("customer") === client && "bg-slate-100"
                                                     )}
                                                 >
@@ -488,11 +488,11 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                 <MapPin className="ml-2 h-4 w-4 shrink-0 opacity-50 mt-0.5" />
                             </Button>
                         </PopoverTrigger>
-                        <PopoverContent className="w-[400px] p-0" align="start">
-                            <div className="flex items-center border-b px-3">
+                        <PopoverContent className="w-[400px] p-0 bg-white" align="start">
+                            <div className="flex items-center border-b px-3 bg-white">
                                 <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                                 <input
-                                    className="flex h-11 w-full rounded-md bg-transparent py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50"
+                                    className="flex h-11 w-full rounded-md bg-white py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border-0"
                                     placeholder="Search address (Google Maps)..."
                                     value={form.watch("address")}
                                     onChange={(e) => form.setValue("address", e.target.value)}
@@ -515,8 +515,8 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                     }
 
                                     return (
-                                        <div className="overflow-hidden p-1 text-foreground">
-                                            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground">Google Maps Suggestions</div>
+                                        <div className="overflow-hidden p-1 text-foreground bg-white">
+                                            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground bg-white">Google Maps Suggestions</div>
                                             {filtered.map((address) => (
                                                 <div
                                                     key={address}
@@ -525,7 +525,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                                         setOpenAddress(false);
                                                     }}
                                                     className={cn(
-                                                        "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 hover:text-slate-900",
+                                                        "relative flex cursor-pointer select-none items-center rounded-sm px-2 py-1.5 text-sm outline-none hover:bg-slate-100 hover:text-slate-900 bg-white",
                                                         form.watch("address") === address && "bg-slate-100"
                                                     )}
                                                 >
@@ -654,7 +654,7 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                         defaultValue={form.getValues("employeeId") || initialData?.employeeId}
                     >
                         <SelectTrigger><SelectValue placeholder="Select Person" /></SelectTrigger>
-                        <SelectContent>
+                        <SelectContent className="bg-white">
                             {employees
                                 .filter((e: any) => {
                                     // Strict role filtering
@@ -697,7 +697,7 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                             defaultValue={form.getValues("vehicleId") || initialData?.vehicleId}
                         >
                             <SelectTrigger><SelectValue placeholder="Select Vehicle" /></SelectTrigger>
-                            <SelectContent>
+                            <SelectContent className="bg-white">
                                 {Object.entries(groupedVehicles).sort(([typeA], [typeB]) => typeA.localeCompare(typeB)).map(([type, typeVehicles]) => (
                                     <div key={type}>
                                         <div className="px-2 py-1.5 text-xs font-semibold text-slate-500 bg-slate-50 sticky top-0 z-10">

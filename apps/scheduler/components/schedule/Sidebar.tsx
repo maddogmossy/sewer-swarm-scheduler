@@ -118,27 +118,27 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                     "group flex flex-col gap-1 rounded-lg cursor-pointer transition-all border",
                     isCollapsed ? "p-2 items-center justify-center" : "p-3",
                     isSelected 
-                      ? "bg-blue-50 border-blue-200 shadow-sm" 
-                      : "bg-transparent border-transparent hover:bg-slate-50 hover:border-slate-100"
+                      ? "bg-green-50 border-green-200 shadow-sm" 
+                      : "bg-blue-50 border-blue-100 hover:bg-blue-100 hover:border-blue-200"
                   )}
                   title={isCollapsed ? depot.name : undefined}
                 >
                   {isCollapsed ? (
                     // Collapsed View Item
                     <div className="flex flex-col items-center gap-1">
-                      <span className={cn("font-bold text-xs", isSelected ? "text-blue-700" : "text-slate-700")}>
+                      <span className={cn("font-bold text-xs", isSelected ? "text-green-700" : "text-blue-700")}>
                         {depot.name.substring(0, 2).toUpperCase()}
                       </span>
-                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-blue-600" />}
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-green-600" />}
                     </div>
                   ) : (
                     // Expanded View Item
                     <>
                       <div className="flex items-center justify-between">
-                        <span className={cn("font-semibold text-sm truncate", isSelected ? "text-blue-700" : "text-slate-700")}>
+                        <span className={cn("font-semibold text-sm truncate", isSelected ? "text-green-700" : "text-blue-700")}>
                           {depot.name}
                         </span>
-                        {isSelected && <Check className="w-3 h-3 text-blue-600" />}
+                        {isSelected && <Check className="w-3 h-3 text-green-600" />}
                       </div>
                       
                       <div className="flex items-center gap-1.5 text-xs text-slate-500">
@@ -148,10 +148,10 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
 
                       <div className="flex items-center justify-between mt-2">
                           <div className="flex items-center gap-3">
-                              <div className={cn("flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border", isSelected ? "bg-white border-blue-100 text-blue-600" : "bg-slate-100 border-slate-200 text-slate-500")}>
+                              <div className={cn("flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border", isSelected ? "bg-white border-green-100 text-green-600" : "bg-blue-100 border-blue-200 text-blue-600")}>
                                   <Users className="w-3 h-3" /> {depot.employees}
                               </div>
-                              <div className={cn("flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border", isSelected ? "bg-white border-blue-100 text-blue-600" : "bg-slate-100 border-slate-200 text-slate-500")}>
+                              <div className={cn("flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border", isSelected ? "bg-white border-green-100 text-green-600" : "bg-blue-100 border-blue-200 text-blue-600")}>
                                   <Truck className="w-3 h-3" /> {depot.vehicles}
                               </div>
                           </div>
@@ -168,7 +168,7 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                                     <MoreVertical className="w-4 h-4 text-slate-600" />
                                   </Button>
                                 </DropdownMenuTrigger>
-                                <DropdownMenuContent align="end" className="w-48">
+                                <DropdownMenuContent align="end" className="w-48 bg-white">
                                   {!isReadOnly && (
                                     <DropdownMenuItem
                                         onClick={(e) => {
@@ -220,7 +220,7 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                   )}
                 </div>
                 {isSelected && !isCollapsed && editingDepotId === depot.id && (
-                    <div className="flex flex-col gap-2 px-3 pb-3 bg-slate-50 rounded-b-lg -mt-1 border-x border-b border-blue-200">
+                    <div className="flex flex-col gap-2 px-3 pb-3 bg-green-50 rounded-b-lg -mt-1 border-x border-b border-green-200">
                       <div className="space-y-1">
                         <label className="text-[10px] font-semibold text-slate-500 uppercase">Depot Name</label>
                         <input

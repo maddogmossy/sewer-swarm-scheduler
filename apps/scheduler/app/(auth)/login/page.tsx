@@ -37,6 +37,7 @@ function LoginPageContent() {
   const { toast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [company, setCompany] = useState("");
   const [selectedPlan, setSelectedPlan] = useState("Starter Team (Free Trial)");
@@ -159,9 +160,30 @@ function LoginPageContent() {
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
+    
+    // Validate password confirmation
+    if (password !== confirmPassword) {
+      toast({
+        title: "Password mismatch",
+        description: "Passwords do not match. Please try again.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
+    if (password.length < 6) {
+      toast({
+        title: "Password too short",
+        description: "Password must be at least 6 characters long.",
+        variant: "destructive",
+      });
+      return;
+    }
+    
     setLoading(true);
     
     try {
+      // Use email as username if it's an email address, otherwise use email as both
       await api.register(email, password, email, company || undefined, selectedPlan);
 
       toast({
@@ -171,9 +193,23 @@ function LoginPageContent() {
       
       router.push("/schedule");
     } catch (error: any) {
+      // Clean up error message - don't expose database query details
+      let errorMessage = error.message || "Failed to create account";
+      
+      // Remove SQL query details from error messages
+      if (errorMessage.includes("Failed query:") || errorMessage.includes("Database operation")) {
+        if (errorMessage.includes("getUserByUsername") || errorMessage.includes("getUserByEmail")) {
+          errorMessage = "This email address is already registered. Please sign in instead.";
+        } else if (errorMessage.includes("Database connection")) {
+          errorMessage = "Unable to connect to the database. Please try again later or contact support.";
+        } else {
+          errorMessage = "Registration failed. Please check your information and try again.";
+        }
+      }
+      
       toast({
         title: "Registration failed",
-        description: error.message || "Failed to create account",
+        description: errorMessage,
         variant: "destructive",
       });
     } finally {
@@ -337,6 +373,21 @@ function LoginPageContent() {
                       value={password} 
                       onChange={(e) => setPassword(e.target.value)} 
                     />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="confirm-pass" className="text-slate-900 font-medium">Confirm Password</Label>
+                    <Input 
+                      id="confirm-pass" 
+                      type="password" 
+                      className="border-slate-200 text-slate-900 bg-white" 
+                      required 
+                      minLength={6} 
+                      value={confirmPassword} 
+                      onChange={(e) => setConfirmPassword(e.target.value)} 
+                    />
+                    {confirmPassword && password !== confirmPassword && (
+                      <p className="text-sm text-red-600 mt-1">Passwords do not match</p>
+                    )}
                   </div>
                   <div className="space-y-1">
                     <Label htmlFor="plan" className="text-slate-900 font-medium">Select your plan</Label>

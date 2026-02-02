@@ -76,8 +76,15 @@ import {
         );
       }
 
-      // Re-throw with context for other errors
+      // Re-throw with context for other errors, but don't expose SQL query details
       const errorMessage = error?.message || error?.cause?.message || 'Unknown database error';
+      
+      // Don't expose SQL query details to users
+      if (errorMessage.includes("Failed query:") || errorMessage.includes("params:")) {
+        // Return a generic error message instead
+        throw new Error(`Database operation failed. Please try again or contact support if the problem persists.`);
+      }
+      
       throw new Error(`Database operation "${operationName}" failed: ${errorMessage}`);
     }
   }

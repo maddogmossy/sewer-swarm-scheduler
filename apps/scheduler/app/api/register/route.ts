@@ -22,35 +22,68 @@ export async function POST(request: Request) {
     const body = await request.json();
     const { username, password, email, role, company, plan } = registerSchema.parse(body);
 
-    // Check if user already exists by username
-    const existingByUsername = await storage.getUserByUsername(username);
-    if (existingByUsername) {
-      return NextResponse.json(
-        { error: "Username already exists" },
-        { status: 400 }
-      );
+    // If username looks like an email, treat it as email and use it for both
+    const isEmailFormat = username.includes("@");
+    const finalEmail = email || (isEmailFormat ? username : undefined);
+    const finalUsername = isEmailFormat ? username : username; // Use email as username if it's an email
+
+    // Check if email already exists (prioritize email check)
+    if (finalEmail) {
+      try {
+        const existingByEmail = await storage.getUserByEmail(finalEmail);
+        if (existingByEmail) {
+          return NextResponse.json(
+            { error: "This email address is already registered. Please sign in instead." },
+            { status: 400 }
+          );
+        }
+      } catch (dbError: any) {
+        // If it's a connection error, return a user-friendly message
+        if (dbError.message?.includes("Database connection") || 
+            dbError.message?.includes("ENOTFOUND") || 
+            dbError.message?.includes("ECONNREFUSED")) {
+          return NextResponse.json(
+            { error: "Unable to connect to the database. Please try again later." },
+            { status: 503 }
+          );
+        }
+        throw dbError; // Re-throw other errors
+      }
     }
 
-    // Check if email already exists (if email is provided)
-    if (email) {
-      const existingByEmail = await storage.getUserByEmail(email);
-      if (existingByEmail) {
-        return NextResponse.json(
-          { error: "Email already registered" },
-          { status: 400 }
-        );
+    // Check if user already exists by username (only if username is not an email)
+    if (!isEmailFormat) {
+      try {
+        const existingByUsername = await storage.getUserByUsername(finalUsername);
+        if (existingByUsername) {
+          return NextResponse.json(
+            { error: "This username is already taken. Please choose another." },
+            { status: 400 }
+          );
+        }
+      } catch (dbError: any) {
+        // If it's a connection error, return a user-friendly message
+        if (dbError.message?.includes("Database connection") || 
+            dbError.message?.includes("ENOTFOUND") || 
+            dbError.message?.includes("ECONNREFUSED")) {
+          return NextResponse.json(
+            { error: "Unable to connect to the database. Please try again later." },
+            { status: 503 }
+          );
+        }
+        throw dbError; // Re-throw other errors
       }
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
+    // Create user - use email as username if username is an email
     const user = await storage.createUser({
       id: randomUUID(),
-      username,
+      username: finalUsername,
       password: hashedPassword,
-      email,
+      email: finalEmail,
       role: role || "user",
     });
 
@@ -58,8 +91,8 @@ export async function POST(request: Request) {
     const trialEndsAt = new Date();
     trialEndsAt.setDate(trialEndsAt.getDate() + 30);
 
-    // Use company name if provided, otherwise use username
-    const organizationName = company?.trim() || `${username}'s Organization`;
+    // Use company name if provided, otherwise use a friendly name
+    const organizationName = company?.trim() || (finalEmail ? `${finalEmail.split('@')[0]}'s Organization` : `${finalUsername}'s Organization`);
     // Determine plan: "pro" if plan contains "professional" or "pro", otherwise "starter"
     const selectedPlan = plan && (plan.toLowerCase().includes("professional") || plan.toLowerCase().includes("pro")) ? "pro" : "starter";
 
@@ -104,13 +137,37 @@ export async function POST(request: Request) {
   } catch (error: any) {
     if (error instanceof z.ZodError) {
       return NextResponse.json(
-        { error: "Invalid request data", details: error.errors },
+        { error: "Invalid request data. Please check all fields are filled correctly." },
         { status: 400 }
       );
     }
-    console.error("Registration error:", error);
+    
+    // Log detailed error for debugging (server-side only)
+    console.error("Registration error:", {
+      message: error.message,
+      code: error.code,
+      name: error.name,
+    });
+    
+    // Return user-friendly error message (don't expose internal details)
+    let errorMessage = "Registration failed. Please try again.";
+    
+    if (error.message?.includes("Database connection") || 
+        error.message?.includes("ENOTFOUND") || 
+        error.message?.includes("ECONNREFUSED")) {
+      errorMessage = "Unable to connect to the database. Please try again later or contact support.";
+      return NextResponse.json({ error: errorMessage }, { status: 503 });
+    }
+    
+    if (error.message?.includes("already registered") || 
+        error.message?.includes("already exists") ||
+        error.message?.includes("already taken")) {
+      errorMessage = error.message; // Use the friendly message we created
+      return NextResponse.json({ error: errorMessage }, { status: 400 });
+    }
+    
     return NextResponse.json(
-      { error: error.message || "Registration failed" },
+      { error: errorMessage },
       { status: 500 }
     );
   }

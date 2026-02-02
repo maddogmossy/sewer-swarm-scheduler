@@ -1,0 +1,6 @@
+cd apps/scheduler
+npm run dev
+
+
+Github push
+git add .

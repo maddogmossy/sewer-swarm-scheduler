@@ -39,6 +39,7 @@ function LoginPageContent() {
   const [password, setPassword] = useState("");
   const [fullName, setFullName] = useState("");
   const [company, setCompany] = useState("");
+  const [selectedPlan, setSelectedPlan] = useState("Starter Team (Free Trial)");
   const [isYearly, setIsYearly] = useState(true);
   const [isLoginMode, setIsLoginMode] = useState(true);
   const [loading, setLoading] = useState(false);
@@ -161,7 +162,7 @@ function LoginPageContent() {
     setLoading(true);
     
     try {
-      await api.register(email, password, email);
+      await api.register(email, password, email, company || undefined, selectedPlan);
 
       toast({
         title: "Account created!",
@@ -252,8 +253,8 @@ function LoginPageContent() {
         <div className="flex justify-center md:justify-end">
           <Card className="w-full max-w-md shadow-xl border-slate-100">
             <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl font-bold">{isLoginMode ? "Welcome Back" : "Create Your Account"}</CardTitle>
-              <CardDescription>
+              <CardTitle className="text-2xl font-bold text-slate-900">{isLoginMode ? "Welcome Back" : "Create Your Account"}</CardTitle>
+              <CardDescription className="text-slate-700">
                 {isLoginMode ? "Sign in to manage your teams, jobs, and depot schedules." : "Start your 1-month free trial — no credit card required."}
               </CardDescription>
             </CardHeader>
@@ -261,7 +262,7 @@ function LoginPageContent() {
               {isLoginMode ? (
                 <form onSubmit={handleLogin} className="space-y-4">
                   <div className="space-y-2">
-                    <Label htmlFor="email">Email</Label>
+                    <Label htmlFor="email" className="text-slate-900 font-medium">Email</Label>
                     <Input 
                       id="email" 
                       type="email" 
@@ -269,12 +270,12 @@ function LoginPageContent() {
                       value={email}
                       onChange={(e) => setEmail(e.target.value)}
                       required
-                      className="border-slate-200 focus:ring-blue-600"
+                      className="border-slate-200 text-slate-900 bg-white focus:ring-blue-600"
                       autoFocus
                     />
                   </div>
                   <div className="space-y-2">
-                    <Label htmlFor="password">Password</Label>
+                    <Label htmlFor="password" className="text-slate-900 font-medium">Password</Label>
                     <Input 
                       id="password" 
                       type="password" 
@@ -282,7 +283,7 @@ function LoginPageContent() {
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
                       required
-                      className="border-slate-200 focus:ring-blue-600"
+                      className="border-slate-200 text-slate-900 bg-white focus:ring-blue-600"
                     />
                   </div>
                   <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 h-11 text-base" disabled={loading}>
@@ -293,44 +294,44 @@ function LoginPageContent() {
                 <form onSubmit={handleRegister} className="space-y-3">
                   <div className="grid grid-cols-2 gap-3">
                     <div className="space-y-1">
-                      <Label htmlFor="fullname">Full Name</Label>
+                      <Label htmlFor="fullname" className="text-slate-900 font-medium">Full Name</Label>
                       <Input 
                         id="fullname" 
                         placeholder="John Doe" 
-                        className="border-slate-200" 
+                        className="border-slate-200 text-slate-900 bg-white" 
                         value={fullName} 
                         onChange={(e) => setFullName(e.target.value)} 
                       />
                     </div>
                     <div className="space-y-1">
-                      <Label htmlFor="company">Company</Label>
+                      <Label htmlFor="company" className="text-slate-900 font-medium">Company</Label>
                       <Input 
                         id="company" 
                         placeholder="Acme Civils" 
-                        className="border-slate-200" 
+                        className="border-slate-200 text-slate-900 bg-white" 
                         value={company} 
                         onChange={(e) => setCompany(e.target.value)} 
                       />
                     </div>
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="signup-email">Email</Label>
+                    <Label htmlFor="signup-email" className="text-slate-900 font-medium">Email</Label>
                     <Input 
                       id="signup-email" 
                       type="email" 
                       placeholder="name@company.com" 
-                      className="border-slate-200" 
+                      className="border-slate-200 text-slate-900 bg-white" 
                       required 
                       value={email} 
                       onChange={(e) => setEmail(e.target.value)} 
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="signup-pass">Password</Label>
+                    <Label htmlFor="signup-pass" className="text-slate-900 font-medium">Password</Label>
                     <Input 
                       id="signup-pass" 
                       type="password" 
-                      className="border-slate-200" 
+                      className="border-slate-200 text-slate-900 bg-white" 
                       required 
                       minLength={6} 
                       value={password} 
@@ -338,8 +339,13 @@ function LoginPageContent() {
                     />
                   </div>
                   <div className="space-y-1">
-                    <Label htmlFor="plan">Select your plan</Label>
-                    <select className="w-full h-10 px-3 py-2 rounded-md border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none">
+                    <Label htmlFor="plan" className="text-slate-900 font-medium">Select your plan</Label>
+                    <select 
+                      id="plan" 
+                      value={selectedPlan}
+                      onChange={(e) => setSelectedPlan(e.target.value)}
+                      className="w-full h-10 px-3 py-2 rounded-md border border-slate-200 bg-white text-slate-900 text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none"
+                    >
                       <option>Starter Team (Free Trial)</option>
                       <option>Professional (Free Trial)</option>
                     </select>

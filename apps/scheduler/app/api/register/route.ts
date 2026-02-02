@@ -13,12 +13,14 @@ const registerSchema = z.object({
   password: z.string().min(6),
   email: z.string().email().optional(),
   role: z.string().optional().default("user"),
+  company: z.string().optional(),
+  plan: z.string().optional(),
 });
 
 export async function POST(request: Request) {
   try {
     const body = await request.json();
-    const { username, password, email, role } = registerSchema.parse(body);
+    const { username, password, email, role, company, plan } = registerSchema.parse(body);
 
     // Check if user already exists by username
     const existingByUsername = await storage.getUserByUsername(username);
@@ -56,11 +58,16 @@ export async function POST(request: Request) {
     const trialEndsAt = new Date();
     trialEndsAt.setDate(trialEndsAt.getDate() + 30);
 
+    // Use company name if provided, otherwise use username
+    const organizationName = company?.trim() || `${username}'s Organization`;
+    // Determine plan: "pro" if plan contains "professional" or "pro", otherwise "starter"
+    const selectedPlan = plan && (plan.toLowerCase().includes("professional") || plan.toLowerCase().includes("pro")) ? "pro" : "starter";
+
     const organization = await storage.createOrganization({
       id: randomUUID(),
-      name: `${username}'s Organization`,
+      name: organizationName,
       ownerId: user.id,
-      plan: "starter",
+      plan: selectedPlan,
       subscriptionStatus: "trialing",
       trialEndsAt,
     });

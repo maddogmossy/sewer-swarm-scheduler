@@ -161,10 +161,10 @@ class API {
     });
   }
 
-  async register(username: string, password: string, email?: string): Promise<User> {
+  async register(username: string, password: string, email?: string, company?: string, plan?: string): Promise<User> {
     return this.request("/api/register", {
       method: "POST",
-      body: JSON.stringify({ username, password, email, role: "user" }),
+      body: JSON.stringify({ username, password, email, role: "user", company, plan }),
     });
   }
 

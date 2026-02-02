@@ -10,6 +10,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/u
 import { useScheduleData } from "@/hooks/useScheduleData";
 import { useOrganization, canManageResources, canManageTeam } from "@/hooks/useOrganization";
 import { api } from "@/lib/api";
+import { startOfWeek, startOfDay, isBefore, isAfter, isSameDay, addDays } from "date-fns";
 
 const INITIAL_COLOR_LABELS: Record<string, string> = {
   blue: "Standard Job",
@@ -53,6 +54,19 @@ export default function SchedulePage() {
   // Get user's organization and role
   const { data: orgData, isLoading: orgLoading } = useOrganization();
   const userRole = orgData?.membershipRole || "user";
+  
+  // Debug: Log role information
+  useEffect(() => {
+    if (!orgLoading && orgData) {
+      console.log("🔐 User Role Debug:", {
+        role: userRole,
+        canManageResources: canManageResources(userRole),
+        canManageTeam: canManageTeam(userRole),
+        isReadOnly: !canManageResources(userRole),
+        organization: orgData.name
+      });
+    }
+  }, [orgData, orgLoading, userRole]);
   
   // Determine if user can edit (admin and operations can edit, users can only view)
   // Default to false (editable) while loading to avoid blocking users
@@ -156,8 +170,8 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   id: d.id,
   name: d.name,
   address: d.address,
-  employees: employees.filter(e => e.depotId === d.id),
-  vehicles: vehicles.filter(v => v.depotId === d.id),
+  employees: employees.filter(e => e.depotId === d.id).length,
+  vehicles: vehicles.filter(v => v.depotId === d.id).length,
 }));
 
   // Handlers
@@ -285,8 +299,25 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   );
 
   const handleCrewDelete = useCallback(async (id: string) => {
+    // Check if crew has any schedule items in the current week or future
+    const today = startOfDay(new Date());
+    const currentWeekStart = startOfWeek(today, { weekStartsOn: 1 });
+    
+    const crewItems = scheduleItems.filter(item => item.crewId === id);
+    const hasCurrentOrFutureItems = crewItems.some(item => {
+      const itemDate = startOfDay(new Date(item.date));
+      // Check if item is in current week or future
+      return !isBefore(itemDate, currentWeekStart);
+    });
+    
+    if (hasCurrentOrFutureItems) {
+      alert("Cannot delete this crew. It has scheduled work in the current week or future. Only crews with past work only can be deleted.");
+      return;
+    }
+    
+    // Only allow deletion if crew has no current/future items
     await mutations.archiveCrew.mutateAsync(id);
-  }, [mutations]);
+  }, [mutations, scheduleItems]);
 
   const handleEmployeeCreate = useCallback(
     async (name: string, jobRole: "operative" | "assistant" = "operative", email?: string) => {
@@ -421,6 +452,7 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   return (
     <div className="flex h-screen overflow-hidden">
       <Sidebar
+        key={`sidebar-${userRole}-${isReadOnly}`}
         depots={transformedDepots}
         selectedDepotId={selectedDepotId}
         onSelectDepot={setSelectedDepotId}

@@ -66,6 +66,7 @@ class API {
   private async request<T>(url: string, options?: RequestInit): Promise<T> {
     const response = await fetch(url, {
       ...options,
+      credentials: "include", // Required for cookies to work
       headers: {
         "Content-Type": "application/json",
         ...options?.headers,
@@ -131,19 +132,18 @@ class API {
         const logStatusText = typeof response.statusText === 'string' ? response.statusText : `${response.statusText}`;
         const logErrorMessage = finalErrorMessage;
         
-        const logData: Record<string, string | number> = {
+        // Log with individual properties to avoid serialization issues
+        console.error('API request failed:', {
           url: logUrl,
           status: logStatus,
           statusText: logStatusText,
           errorMessage: logErrorMessage,
-        };
-        if (errorText && typeof errorText === 'string') {
-          logData.errorText = errorText.substring(0, 500);
-        }
-        console.error('API request failed:', logData);
+          errorText: errorText && typeof errorText === 'string' ? errorText.substring(0, 500) : undefined,
+          errorJson: errorJson && typeof errorJson === 'object' ? JSON.stringify(errorJson) : errorJson,
+        });
       } catch (logError) {
         // If logging fails, just log the basics with no object serialization
-        console.error('API request failed:', url, response.status, response.statusText);
+        console.error('API request failed:', url, response.status, response.statusText, errorText || 'No error text');
       }
       
       // Throw error with guaranteed string message - use template literal to ensure it's a string

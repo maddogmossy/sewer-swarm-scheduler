@@ -201,8 +201,12 @@ export default function HomePage() {
           <a href="#" className="hover:text-blue-600 transition-colors">Standards</a>
         </nav>
         <div className="flex items-center gap-4">
-          <Button variant="ghost" className="text-slate-600 hover:text-blue-600" onClick={() => setIsLoginMode(true)}>Sign In</Button>
-          <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setIsLoginMode(false)}>Get Started</Button>
+          <Link href="/login">
+            <Button variant="ghost" className="text-slate-600 hover:text-blue-600">Sign In</Button>
+          </Link>
+          <Link href="/login?mode=register">
+            <Button className="bg-blue-600 hover:bg-blue-700 text-white">Get Started</Button>
+          </Link>
         </div>
       </header>
 
@@ -460,17 +464,14 @@ export default function HomePage() {
                   </>
                 )}
                 <p className="text-sm text-slate-600 mb-4 italic">Perfect for small contractors and 1–5 person teams.</p>
-                <Button 
-                  variant="outline" 
-                  className="w-full mb-6"
-                  onClick={() => {
-                    setIsLoginMode(false);
-                    // Scroll to the login card
-                    document.getElementById('login-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  }}
-                >
-                  Start Free Trial
-                </Button>
+                <Link href="/login?mode=register">
+                  <Button 
+                    variant="outline" 
+                    className="w-full mb-6"
+                  >
+                    Start Free Trial
+                  </Button>
+                </Link>
                 <ul className="text-left space-y-3 text-sm text-slate-600">
                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Up to 5 Users</li>
                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Basic Scheduling</li>
@@ -504,16 +505,13 @@ export default function HomePage() {
                   </>
                 )}
                 <p className="text-sm text-slate-600 mb-4 italic">For growing drainage & civils teams needing automation and full visibility.</p>
-                <Button 
-                  className="w-full bg-blue-600 hover:bg-blue-700 mb-6"
-                  onClick={() => {
-                    setIsLoginMode(false);
-                    // Scroll to the login card
-                    document.getElementById('login-card')?.scrollIntoView({ behavior: 'smooth', block: 'center' });
-                  }}
-                >
-                  Get Started
-                </Button>
+                <Link href="/login?mode=register">
+                  <Button 
+                    className="w-full bg-blue-600 hover:bg-blue-700 mb-6"
+                  >
+                    Get Started
+                  </Button>
+                </Link>
                 <ul className="text-left space-y-3 text-sm text-slate-600">
                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Unlimited Users</li>
                   <li className="flex items-center gap-2"><Check className="w-4 h-4 text-green-500" /> Advanced AI Logic</li>

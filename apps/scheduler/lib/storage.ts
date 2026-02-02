@@ -198,8 +198,13 @@ import {
     }
   
     async getUserByEmail(email: string): Promise<User | undefined> {
-      const result = await getDb().select().from(users).where(eq(users.email, email));
-      return result[0];
+      return await handleDbError(
+        async () => {
+          const result = await getDb().select().from(users).where(eq(users.email, email));
+          return result[0];
+        },
+        'getUserByEmail'
+      );
     }
   
     async createUser(insertUser: InsertUser): Promise<User> {

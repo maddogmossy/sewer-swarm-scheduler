@@ -33,13 +33,25 @@ interface Product {
 
 export default function LoginPage() {
   const router = useRouter();
+  const searchParams = useSearchParams();
   const { toast } = useToast();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [fullName, setFullName] = useState("");
+  const [company, setCompany] = useState("");
   const [isYearly, setIsYearly] = useState(true);
+  const [isLoginMode, setIsLoginMode] = useState(true);
   const [loading, setLoading] = useState(false);
   const [checkoutLoading, setCheckoutLoading] = useState<string | null>(null);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
+
+  // Check URL params to determine if we should show registration form
+  useEffect(() => {
+    const mode = searchParams.get('mode');
+    if (mode === 'register' || searchParams.get('signup') === 'true') {
+      setIsLoginMode(false);
+    }
+  }, [searchParams]);
 
   const { data: productsData, isLoading: productsLoading } = useQuery<{ data: Product[] }>({
     queryKey: ['/api/stripe/products'],
@@ -144,6 +156,30 @@ export default function LoginPage() {
     }
   };
 
+  const handleRegister = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    
+    try {
+      await api.register(email, password, email);
+
+      toast({
+        title: "Account created!",
+        description: "Welcome to Sewer Swarm AI",
+      });
+      
+      router.push("/schedule");
+    } catch (error: any) {
+      toast({
+        title: "Registration failed",
+        description: error.message || "Failed to create account",
+        variant: "destructive",
+      });
+    } finally {
+      setLoading(false);
+    }
+  };
+
   // If authenticated, don't render (will redirect)
   if (isAuthenticated) {
     return null;
@@ -165,10 +201,8 @@ export default function LoginPage() {
           <a href="#" className="hover:text-blue-600 transition-colors">Standards</a>
         </nav>
         <div className="flex items-center gap-4">
-          <Button variant="ghost" className="text-slate-600 hover:text-blue-600">Sign In</Button>
-          <Link href="/register">
-            <Button className="bg-blue-600 hover:bg-blue-700 text-white">Get Started</Button>
-          </Link>
+          <Button variant="ghost" className="text-slate-600 hover:text-blue-600" onClick={() => setIsLoginMode(true)}>Sign In</Button>
+          <Button className="bg-blue-600 hover:bg-blue-700 text-white" onClick={() => setIsLoginMode(false)}>Get Started</Button>
         </div>
       </header>
 
@@ -214,49 +248,118 @@ export default function LoginPage() {
           </div>
         </div>
 
-        {/* Login Card */}
+        {/* Login/Signup Card */}
         <div className="flex justify-center md:justify-end">
           <Card className="w-full max-w-md shadow-xl border-slate-100">
             <CardHeader className="space-y-1">
-              <CardTitle className="text-2xl font-bold">Welcome Back</CardTitle>
-              <CardDescription>Sign in to manage your teams, jobs, and depot schedules.</CardDescription>
+              <CardTitle className="text-2xl font-bold">{isLoginMode ? "Welcome Back" : "Create Your Account"}</CardTitle>
+              <CardDescription>
+                {isLoginMode ? "Sign in to manage your teams, jobs, and depot schedules." : "Start your 1-month free trial — no credit card required."}
+              </CardDescription>
             </CardHeader>
             <CardContent>
-              <form onSubmit={handleLogin} className="space-y-4">
-                <div className="space-y-2">
-                  <Label htmlFor="email">Email</Label>
-                  <Input 
-                    id="email" 
-                    type="email" 
-                    placeholder="yourname@company.com" 
-                    value={email}
-                    onChange={(e) => setEmail(e.target.value)}
-                    required
-                    className="border-slate-200 focus:ring-blue-600"
-                    autoFocus
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input 
-                    id="password" 
-                    type="password" 
-                    placeholder="••••••••"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    required
-                    className="border-slate-200 focus:ring-blue-600"
-                  />
-                </div>
-                <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 h-11 text-base" disabled={loading}>
-                  {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Signing in...</> : "Sign In"}
-                </Button>
-              </form>
+              {isLoginMode ? (
+                <form onSubmit={handleLogin} className="space-y-4">
+                  <div className="space-y-2">
+                    <Label htmlFor="email">Email</Label>
+                    <Input 
+                      id="email" 
+                      type="email" 
+                      placeholder="yourname@company.com" 
+                      value={email}
+                      onChange={(e) => setEmail(e.target.value)}
+                      required
+                      className="border-slate-200 focus:ring-blue-600"
+                      autoFocus
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password">Password</Label>
+                    <Input 
+                      id="password" 
+                      type="password" 
+                      placeholder="••••••••"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      required
+                      className="border-slate-200 focus:ring-blue-600"
+                    />
+                  </div>
+                  <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 h-11 text-base" disabled={loading}>
+                    {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Signing in...</> : "Sign In"}
+                  </Button>
+                </form>
+              ) : (
+                <form onSubmit={handleRegister} className="space-y-3">
+                  <div className="grid grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <Label htmlFor="fullname">Full Name</Label>
+                      <Input 
+                        id="fullname" 
+                        placeholder="John Doe" 
+                        className="border-slate-200" 
+                        value={fullName} 
+                        onChange={(e) => setFullName(e.target.value)} 
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <Label htmlFor="company">Company</Label>
+                      <Input 
+                        id="company" 
+                        placeholder="Acme Civils" 
+                        className="border-slate-200" 
+                        value={company} 
+                        onChange={(e) => setCompany(e.target.value)} 
+                      />
+                    </div>
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="signup-email">Email</Label>
+                    <Input 
+                      id="signup-email" 
+                      type="email" 
+                      placeholder="name@company.com" 
+                      className="border-slate-200" 
+                      required 
+                      value={email} 
+                      onChange={(e) => setEmail(e.target.value)} 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="signup-pass">Password</Label>
+                    <Input 
+                      id="signup-pass" 
+                      type="password" 
+                      className="border-slate-200" 
+                      required 
+                      minLength={6} 
+                      value={password} 
+                      onChange={(e) => setPassword(e.target.value)} 
+                    />
+                  </div>
+                  <div className="space-y-1">
+                    <Label htmlFor="plan">Select your plan</Label>
+                    <select className="w-full h-10 px-3 py-2 rounded-md border border-slate-200 bg-white text-sm focus:ring-2 focus:ring-blue-600 focus:outline-none">
+                      <option>Starter Team (Free Trial)</option>
+                      <option>Professional (Free Trial)</option>
+                    </select>
+                  </div>
+                  <Button type="submit" className="w-full bg-blue-600 hover:bg-blue-700 h-11 text-base mt-2" disabled={loading}>
+                    {loading ? <><Loader2 className="w-4 h-4 mr-2 animate-spin" /> Creating account...</> : "Start Free Trial"}
+                  </Button>
+                </form>
+              )}
             </CardContent>
             <CardFooter className="justify-center border-t border-slate-50 pt-6 pb-6 flex-col gap-2">
-              <p className="text-sm text-slate-500">
-                New here? <Link href="/register" className="text-blue-600 hover:underline font-medium">Start your free trial → Sign Up</Link>
-              </p>
+              {isLoginMode ? (
+                <p className="text-sm text-slate-500">
+                  New here? <button onClick={() => setIsLoginMode(false)} className="text-blue-600 hover:underline font-medium">Start your free trial → Sign Up</button>
+                </p>
+              ) : (
+                <p className="text-sm text-slate-500">
+                  Already have an account? <button onClick={() => setIsLoginMode(true)} className="text-blue-600 hover:underline font-medium">Sign In</button>
+                </p>
+              )}
             </CardFooter>
           </Card>
         </div>

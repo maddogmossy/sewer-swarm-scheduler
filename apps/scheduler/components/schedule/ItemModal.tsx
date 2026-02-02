@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format, isSameDay } from "date-fns";
+import { format, isSameDay, isBefore, startOfDay } from "date-fns";
 import { CalendarIcon, MapPin, Briefcase, Check, User, Truck, Edit2, AlertCircle, Plus, X, Trash2, Search, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScheduleItem } from "./CalendarGrid";
@@ -181,6 +181,10 @@ function NoteForm({ open, onOpenChange, onSubmit, initialData }: any) {
 
 function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onColorLabelUpdate }: any) {
   const [applyToWeek, setApplyToWeek] = useState(false);
+  
+  // Check if item is in the past (only allow color changes for past items)
+  const isPastItem = initialData?.date ? isBefore(startOfDay(new Date(initialData.date)), startOfDay(new Date())) : false;
+  
   const form = useForm({
     resolver: zodResolver(siteSchema),
     defaultValues: {
@@ -374,6 +378,15 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                 </div>
             </div>
 
+            {isPastItem && (
+                <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
+                    <div className="flex items-center gap-2 text-amber-800 text-sm">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>This is a past job. Only the category color can be changed.</span>
+                    </div>
+                </div>
+            )}
+
             <div className="grid grid-cols-2 gap-4">
                 {/* Customer Autocomplete */}
                 <div className="space-y-2 col-span-2">
@@ -384,7 +397,8 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                 variant="outline"
                                 role="combobox"
                                 aria-expanded={openClient}
-                                className="w-full justify-between font-normal text-slate-900 border-slate-200 bg-white hover:bg-slate-50"
+                                disabled={isPastItem}
+                                className="w-full justify-between font-normal text-slate-900 border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {form.watch("customer") || "Select or type customer..."}
                                 <Briefcase className="ml-2 h-4 w-4 shrink-0 opacity-50" />
@@ -398,6 +412,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                     placeholder="Search customer..."
                                     value={form.watch("customer")}
                                     onChange={(e) => form.setValue("customer", e.target.value)}
+                                    disabled={isPastItem}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
@@ -450,27 +465,27 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
 
                 <div className="space-y-2">
                     <Label>Job Number</Label>
-                    <Input {...form.register("jobNumber")} placeholder="J-1234" />
+                    <Input {...form.register("jobNumber")} placeholder="J-1234" disabled={isPastItem} />
                 </div>
                 
                 <div className="grid grid-cols-3 gap-2">
                     <div className="space-y-2">
                         <Label>Start Time</Label>
-                        <Input type="time" {...form.register("startTime")} />
+                        <Input type="time" {...form.register("startTime")} disabled={isPastItem} />
                     </div>
                     <div className="space-y-2">
                         <Label>Onsite Time</Label>
-                        <Input type="time" {...form.register("onsiteTime")} />
+                        <Input type="time" {...form.register("onsiteTime")} disabled={isPastItem} />
                     </div>
                     <div className="space-y-2">
                         <Label>PM Initials</Label>
-                        <Input {...form.register("projectManager")} placeholder="e.g. JD" maxLength={5} />
+                        <Input {...form.register("projectManager")} placeholder="e.g. JD" maxLength={5} disabled={isPastItem} />
                     </div>
                 </div>
                 
                 <div className="space-y-2">
                     <Label>Duration (Hrs)</Label>
-                    <Input type="number" {...form.register("duration")} min="1" max="24" />
+                    <Input type="number" {...form.register("duration")} min="1" max="24" disabled={isPastItem} />
                 </div>
 
                 {/* Address Autocomplete */}
@@ -482,7 +497,8 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                 variant="outline"
                                 role="combobox"
                                 aria-expanded={openAddress}
-                                className="w-full justify-between font-normal text-slate-900 border-slate-200 bg-white hover:bg-slate-50 h-auto min-h-[80px] items-start p-3 whitespace-normal text-left"
+                                disabled={isPastItem}
+                                className="w-full justify-between font-normal text-slate-900 border-slate-200 bg-white hover:bg-slate-50 h-auto min-h-[80px] items-start p-3 whitespace-normal text-left disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {form.watch("address") || "Search address..."}
                                 <MapPin className="ml-2 h-4 w-4 shrink-0 opacity-50 mt-0.5" />
@@ -496,6 +512,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                     placeholder="Search address (Google Maps)..."
                                     value={form.watch("address")}
                                     onChange={(e) => form.setValue("address", e.target.value)}
+                                    disabled={isPastItem}
                                     onKeyDown={(e) => {
                                         if (e.key === 'Enter') {
                                             e.preventDefault();
@@ -547,7 +564,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
 
             <DialogFooter className="flex items-center justify-between sm:justify-between gap-4">
                 <div className="flex items-center space-x-2">
-                    <Checkbox id="applyToWeek" checked={applyToWeek} onCheckedChange={(c) => setApplyToWeek(!!c)} />
+                    <Checkbox id="applyToWeek" checked={applyToWeek} onCheckedChange={(c) => setApplyToWeek(!!c)} disabled={isPastItem} />
                     <label
                         htmlFor="applyToWeek"
                         className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"

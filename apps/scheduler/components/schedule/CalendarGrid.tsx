@@ -378,7 +378,15 @@ export function CalendarGrid({
 
   const handleEditItem = (item: ScheduleItem) => {
     if (isReadOnly) return;
-    if (isBefore(startOfDay(item.date), startOfDay(new Date()))) return;
+    const itemDate = startOfDay(new Date(item.date));
+    const today = startOfDay(new Date());
+    const isPast = isBefore(itemDate, today);
+    
+    // Allow editing past items only if it's a job (for color changes)
+    if (isPast && item.type !== 'job') {
+      return;
+    }
+    
     setModalState({ isOpen: true, type: item.type, data: item });
   };
 
@@ -643,6 +651,30 @@ export function CalendarGrid({
   const handleModalSubmit = (data: any, applyToWeek: boolean = false) => {
     if (modalState.data) {
         // UPDATE
+        const itemDate = startOfDay(new Date(modalState.data.date));
+        const today = startOfDay(new Date());
+        const isPast = isBefore(itemDate, today);
+        
+        // For past items, only allow color changes for jobs
+        if (isPast) {
+          if (modalState.data.type !== 'job') {
+            alert("Cannot edit past items. Only category colors can be changed for past jobs.");
+            return;
+          }
+          
+          // Check if only color is being changed
+          const hasNonColorChanges = Object.keys(data).some(key => {
+            if (key === 'color') return false;
+            // Check if the value actually changed
+            return data[key] !== modalState.data[key];
+          });
+          
+          if (hasNonColorChanges) {
+            alert("Cannot edit past jobs. Only category colors can be changed.");
+            return;
+          }
+        }
+        
         const updatedItem = { ...modalState.data, ...data };
         
         // Check if color changed and if it's a job with a job number

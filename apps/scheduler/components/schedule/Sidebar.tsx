@@ -30,6 +30,11 @@ interface SidebarProps {
 export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = () => {}, onDeleteDepot = () => {}, onUpdateDepot = () => {}, onAddDepot = () => {}, isReadOnly = false, onOpenSettings, canAccessSettings = false }: SidebarProps) {
   const [search, setSearch] = useState("");
   const [isCollapsed, setIsCollapsed] = useState(false);
+  
+  // Debug: Log isReadOnly value
+  useEffect(() => {
+    console.log("🔐 Sidebar Debug:", { isReadOnly, canAccessSettings });
+  }, [isReadOnly, canAccessSettings]);
   const [editingDepotId, setEditingDepotId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{ name: string, address: string }>({ name: "", address: "" });
 
@@ -169,44 +174,43 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                                   </Button>
                                 </DropdownMenuTrigger>
                                 <DropdownMenuContent align="end" className="w-48 bg-white">
-                                  {!isReadOnly && (
-                                    <DropdownMenuItem
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onEditDepot();
-                                        }}
-                                        className="cursor-pointer flex items-center gap-2"
-                                    >
-                                        <Settings className="w-4 h-4" />
-                                        <span>Manage Crews & Vehicles</span>
-                                    </DropdownMenuItem>
-                                  )}
-                                  {!isReadOnly && <DropdownMenuSeparator />}
-                                  {!isReadOnly && (
-                                    <DropdownMenuItem
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            setEditingDepotId(depot.id);
-                                            setEditForm({ name: depot.name, address: depot.address });
-                                        }}
-                                        className="cursor-pointer flex items-center gap-2"
-                                    >
-                                        <Edit className="w-4 h-4" />
-                                        <span>Edit Depot Details</span>
-                                    </DropdownMenuItem>
-                                  )}
-                                  {!isReadOnly && (
-                                    <DropdownMenuItem
-                                        onClick={(e) => {
-                                            e.stopPropagation();
-                                            onDeleteDepot(depot.id);
-                                        }}
-                                        className="cursor-pointer flex items-center gap-2 text-red-600 focus:text-red-600 focus:bg-red-50"
-                                    >
-                                        <Trash2 className="w-4 h-4" />
-                                        <span>Delete Depot</span>
-                                    </DropdownMenuItem>
-                                  )}
+                                  {!isReadOnly ? (
+                                    <>
+                                      <DropdownMenuItem
+                                          onClick={(e) => {
+                                              e.stopPropagation();
+                                              onEditDepot();
+                                          }}
+                                          className="cursor-pointer flex items-center gap-2 hover:bg-slate-50 text-black"
+                                      >
+                                          <Settings className="w-4 h-4" />
+                                          <span>Manage Crews & Vehicles</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                          onClick={(e) => {
+                                              e.stopPropagation();
+                                              setEditingDepotId(depot.id);
+                                              setEditForm({ name: depot.name, address: depot.address });
+                                          }}
+                                          className="cursor-pointer flex items-center gap-2 hover:bg-slate-50 text-black"
+                                      >
+                                          <Edit className="w-4 h-4" />
+                                          <span>Edit Depot Details</span>
+                                      </DropdownMenuItem>
+                                      <DropdownMenuSeparator />
+                                      <DropdownMenuItem
+                                          onClick={(e) => {
+                                              e.stopPropagation();
+                                              onDeleteDepot(depot.id);
+                                          }}
+                                          className="cursor-pointer flex items-center gap-2 text-red-600 focus:text-red-600 focus:bg-red-50 hover:bg-red-50"
+                                      >
+                                          <Trash2 className="w-4 h-4" />
+                                          <span>Delete Depot</span>
+                                      </DropdownMenuItem>
+                                    </>
+                                  ) : null}
                                   {isReadOnly && (
                                     <DropdownMenuItem disabled className="text-xs text-slate-400">
                                         Read Only Mode

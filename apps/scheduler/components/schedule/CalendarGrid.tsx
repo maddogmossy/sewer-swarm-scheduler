@@ -8,7 +8,7 @@ import { NoteCard } from "./NoteCard";
 import { ItemModal } from "./ItemModal";
 import { ResourcesModal } from "./ResourcesModal";
 import { Button } from "@/components/ui/button";
-import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Users, MoreHorizontal, Trash2, Briefcase, UserPlus, User, Truck, Settings, Edit, Search, Lock, Mail, Check, Sun, Moon, ChevronDown, ChevronRight as ChevronRightIcon, RotateCcw, RotateCw, FileText, LogOut } from "lucide-react";
+import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Users, MoreHorizontal, Trash2, Briefcase, UserPlus, User, Truck, Settings, Edit, Search, Lock, Mail, Check, Sun, Moon, ChevronDown, ChevronRight as ChevronRightIcon, RotateCcw, RotateCw, FileText, LogOut, Copy, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 import { SmartSearchModal } from "./SmartSearchModal";
 import { EmailPreviewModal } from "./EmailPreviewModal";
+import { GroupingDialog } from "./GroupingDialog";
 
 export interface Crew {
     id: string;
@@ -189,6 +190,15 @@ export function CalendarGrid({
   const [resourcesModalOpen, setResourcesModalOpen] = useState(false);
   const [smartSearchOpen, setSmartSearchOpen] = useState(false);
   const [expandedShifts, setExpandedShifts] = useState<{ night: boolean, day: boolean }>({ night: true, day: true });
+  
+  // Grouping dialog state
+  const [groupingDialog, setGroupingDialog] = useState<{
+    open: boolean;
+    type: 'delete' | 'color';
+    itemId: string;
+    groupCount: number;
+    onConfirm: (applyToGroup: boolean) => void;
+  } | null>(null);
 
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: viewDays }).map((_, i) => addDays(weekStart, i));
@@ -323,8 +333,16 @@ export function CalendarGrid({
   // --- HANDLERS ---
 
   const handleCellDoubleClick = (date: Date, crewId: string) => {
-     if (isReadOnly) return;
-     if (isBefore(startOfDay(date), startOfDay(new Date()))) return;
+     console.log("🔐 handleCellDoubleClick:", { isReadOnly, date, crewId });
+     if (isReadOnly) {
+       console.log("❌ Blocked: isReadOnly is true");
+       return;
+     }
+     if (isBefore(startOfDay(date), startOfDay(new Date()))) {
+       console.log("❌ Blocked: date is in the past");
+       return;
+     }
+     console.log("✅ Opening selection menu");
      setSelectionMenu({ isOpen: true, date, crewId });
   };
 
@@ -443,6 +461,17 @@ export function CalendarGrid({
     itemsToCreate.forEach(newItem => onItemCreate(newItem));
   };
 
+  // Helper function to find items with the same job number
+  const findItemsWithSameJobNumber = (item: ScheduleItem): ScheduleItem[] => {
+    if (item.type !== 'job' || !item.jobNumber) return [item];
+    return items.filter(i => 
+      i.type === 'job' && 
+      i.jobNumber === item.jobNumber &&
+      i.jobNumber !== undefined &&
+      i.jobNumber !== ''
+    );
+  };
+
   const handleDeleteItem = (id: string, mode: 'single' | 'week' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year' = 'single') => {
       if (isReadOnly) return;
       
@@ -460,6 +489,43 @@ export function CalendarGrid({
 
       if (validTargetIds.length === 0) return;
       
+      // For single delete mode, check if it's a job with a job number group
+      if (mode === 'single' && validTargetIds.length === 1) {
+        const itemToDelete = items.find(i => i.id === validTargetIds[0]);
+        if (itemToDelete && itemToDelete.type === 'job' && itemToDelete.jobNumber) {
+          const groupItems = findItemsWithSameJobNumber(itemToDelete);
+          if (groupItems.length > 1) {
+            // Show grouping dialog
+            setGroupingDialog({
+              open: true,
+              type: 'delete',
+              itemId: validTargetIds[0],
+              groupCount: groupItems.length,
+              onConfirm: (applyToGroup: boolean) => {
+                if (applyToGroup) {
+                  // Delete all items with the same job number
+                  groupItems.forEach(item => {
+                    const itemDate = new Date(item.date);
+                    if (!isBefore(startOfDay(itemDate), startOfDay(new Date()))) {
+                      onItemDelete(item.id);
+                    }
+                  });
+                } else {
+                  // Delete just this one
+                  onItemDelete(validTargetIds[0]);
+                }
+                // Clear selection if we deleted selected items
+                if (isSelected) {
+                  setSelectedItemIds(new Set());
+                }
+              }
+            });
+            return;
+          }
+        }
+      }
+      
+      // Normal delete flow (no grouping or bulk delete)
       validTargetIds.forEach(targetId => {
           if (mode === 'single') {
               onItemDelete(targetId);
@@ -509,10 +575,130 @@ export function CalendarGrid({
       }
   };
 
+  // Duplicate selected items
+  const handleDuplicateSelected = (mode: 'single' | 'week' | 'following_week' | 'custom' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year', days?: number) => {
+    if (selectedItemIds.size === 0) return;
+    
+    const selectedItems = items.filter(i => selectedItemIds.has(i.id));
+    selectedItems.forEach(item => {
+      handleDuplicateItem(item, mode, days);
+    });
+    setSelectedItemIds(new Set());
+  };
+
+  // Delete selected items
+  const handleDeleteSelected = (mode: 'single' | 'week' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year') => {
+    if (selectedItemIds.size === 0) return;
+    
+    const selectedIds = Array.from(selectedItemIds);
+    selectedIds.forEach(id => {
+      handleDeleteItem(id, mode);
+    });
+    setSelectedItemIds(new Set());
+  };
+
+  // Copy selected items to week/month (keeping for backward compatibility but not using toolbar)
+  const handleCopySelected = (mode: 'week' | 'month') => {
+    if (selectedItemIds.size === 0) return;
+    
+    const selectedItems = items.filter(i => selectedItemIds.has(i.id));
+    const itemsToCreate: ScheduleItem[] = [];
+    
+    selectedItems.forEach(sourceItem => {
+      const sourceDate = new Date(sourceItem.date);
+      const dayOfWeek = sourceDate.getDay(); // 0 = Sunday, 1 = Monday, etc.
+      const weekStartOfSource = startOfWeek(sourceDate, { weekStartsOn: 1 });
+      
+      let endDate: Date;
+      if (mode === 'week') {
+        endDate = addDays(weekStart, viewDays - 1);
+      } else {
+        endDate = endOfMonth(sourceDate);
+      }
+      
+      // Copy to the same day of week in each week within the range
+      let currentWeekStart = new Date(weekStartOfSource);
+      while (currentWeekStart <= endDate) {
+        // Calculate the target date (same day of week in this week)
+        const targetDate = addDays(currentWeekStart, dayOfWeek === 0 ? 6 : dayOfWeek - 1);
+        
+        // Only copy to future dates
+        if (!isBefore(startOfDay(targetDate), startOfDay(new Date())) && targetDate <= endDate) {
+          itemsToCreate.push({
+            ...sourceItem,
+            id: Math.random().toString(36).substr(2, 9),
+            date: targetDate
+          });
+        }
+        
+        // Move to next week
+        currentWeekStart = addDays(currentWeekStart, 7);
+      }
+    });
+    
+    itemsToCreate.forEach(newItem => onItemCreate(newItem));
+    setSelectedItemIds(new Set());
+  };
+
   const handleModalSubmit = (data: any, applyToWeek: boolean = false) => {
     if (modalState.data) {
         // UPDATE
         const updatedItem = { ...modalState.data, ...data };
+        
+        // Check if color changed and if it's a job with a job number
+        if (data.color && data.color !== modalState.data.color && 
+            updatedItem.type === 'job' && updatedItem.jobNumber) {
+          // Show grouping dialog for color change
+          const groupItems = findItemsWithSameJobNumber(updatedItem);
+          if (groupItems.length > 1) {
+            setGroupingDialog({
+              open: true,
+              type: 'color',
+              itemId: updatedItem.id,
+              groupCount: groupItems.length,
+              onConfirm: (applyToGroup: boolean) => {
+                if (applyToGroup) {
+                  // Change color for all items with the same job number
+                  groupItems.forEach(groupItem => {
+                    onItemUpdate({ ...groupItem, color: data.color });
+                  });
+                } else {
+                  // Change color for just this one
+                  onItemUpdate(updatedItem);
+                }
+                // Also handle applyToWeek if needed
+                if (applyToWeek) {
+                  // Apply changes to future occurrences in this week
+                  const startDate = new Date(updatedItem.date);
+                  const currentViewEnd = addDays(weekStart, viewDays - 1);
+                  
+                  items.forEach(i => {
+                    if (i.id === updatedItem.id) return;
+                    
+                    const iDate = new Date(i.date);
+                    const isFuture = isAfter(iDate, startDate) && (isBefore(iDate, currentViewEnd) || isSameDay(iDate, currentViewEnd));
+                    
+                    if (isFuture && i.crewId === updatedItem.crewId && i.type === updatedItem.type) {
+                      let isMatch = false;
+                      
+                      if (i.type === 'job') {
+                        if (i.customer === modalState.data?.customer) isMatch = true;
+                      } else {
+                        if (i.employeeId === modalState.data?.employeeId) isMatch = true;
+                      }
+                      
+                      if (isMatch) {
+                        onItemUpdate({ ...i, color: data.color });
+                      }
+                    }
+                  });
+                }
+              }
+            });
+            return;
+          }
+        }
+        
         onItemUpdate(updatedItem);
         
         if (applyToWeek) {
@@ -933,6 +1119,9 @@ export function CalendarGrid({
                                                         isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
                                                         isSelected={selectedItemIds.has(item.id)}
                                                         onToggleSelection={handleToggleSelection}
+                                                        selectedItemIds={selectedItemIds}
+                                                        onDuplicateSelected={handleDuplicateSelected}
+                                                        onDeleteSelected={handleDeleteSelected}
                                                     />
                                                 ))}
                                                 {/* Crew names (operatives/assistants) appear after notes */}
@@ -953,6 +1142,9 @@ export function CalendarGrid({
                                                                 isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
                                                                 isSelected={selectedItemIds.has(item.id)}
                                                                 onToggleSelection={handleToggleSelection}
+                                                                selectedItemIds={selectedItemIds}
+                                                                onDuplicateSelected={handleDuplicateSelected}
+                                                                onDeleteSelected={handleDeleteSelected}
                                                             />
                                                         ))}
                                                     </div>
@@ -968,6 +1160,9 @@ export function CalendarGrid({
                                                         isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
                                                         isSelected={selectedItemIds.has(item.id)}
                                                         onToggleSelection={handleToggleSelection}
+                                                        selectedItemIds={selectedItemIds}
+                                                        onDuplicateSelected={handleDuplicateSelected}
+                                                        onDeleteSelected={handleDeleteSelected}
                                                     />
                                                 ))}
                                             </div>
@@ -1101,6 +1296,9 @@ export function CalendarGrid({
                                                         isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
                                                         isSelected={selectedItemIds.has(item.id)}
                                                         onToggleSelection={handleToggleSelection}
+                                                        selectedItemIds={selectedItemIds}
+                                                        onDuplicateSelected={handleDuplicateSelected}
+                                                        onDeleteSelected={handleDeleteSelected}
                                                     />
                                                 ))}
                                                 {/* Crew names (operatives/assistants) appear after notes */}
@@ -1121,6 +1319,9 @@ export function CalendarGrid({
                                                                 isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
                                                                 isSelected={selectedItemIds.has(item.id)}
                                                                 onToggleSelection={handleToggleSelection}
+                                                                selectedItemIds={selectedItemIds}
+                                                                onDuplicateSelected={handleDuplicateSelected}
+                                                                onDeleteSelected={handleDeleteSelected}
                                                             />
                                                         ))}
                                                     </div>
@@ -1136,6 +1337,9 @@ export function CalendarGrid({
                                                         isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
                                                         isSelected={selectedItemIds.has(item.id)}
                                                         onToggleSelection={handleToggleSelection}
+                                                        selectedItemIds={selectedItemIds}
+                                                        onDuplicateSelected={handleDuplicateSelected}
+                                                        onDeleteSelected={handleDeleteSelected}
                                                     />
                                                 ))}
                                             </div>
@@ -1183,21 +1387,64 @@ export function CalendarGrid({
                 <DialogTitle>Add Item to Schedule</DialogTitle>
             </DialogHeader>
             <div className="grid gap-3 py-4">
-                <Button onClick={() => handleSelection('operative')} className="justify-start h-12 text-lg bg-slate-50 text-slate-700 hover:bg-slate-100 border border-slate-200 shadow-sm">
+                <Button 
+                    onClick={() => {
+                        console.log("🔐 Add Operative clicked, isReadOnly:", isReadOnly);
+                        handleSelection('operative');
+                    }} 
+                    disabled={isReadOnly}
+                    className="justify-start h-12 text-lg bg-slate-50 text-black hover:bg-slate-100 border border-slate-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                     <User className="mr-3 w-5 h-5" /> Add Operative
                 </Button>
-                <Button onClick={() => handleSelection('assistant')} className="justify-start h-12 text-lg bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200 shadow-sm">
+                <Button 
+                    onClick={() => {
+                        console.log("🔐 Add Assistant clicked, isReadOnly:", isReadOnly);
+                        handleSelection('assistant');
+                    }} 
+                    disabled={isReadOnly}
+                    className="justify-start h-12 text-lg bg-amber-50 text-black hover:bg-amber-100 border border-amber-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                     <UserPlus className="mr-3 w-5 h-5" /> Add Assistant
                 </Button>
-                <Button onClick={() => handleSelection('note')} className="justify-start h-12 text-lg bg-red-50 text-red-700 hover:bg-red-100 border border-red-200 shadow-sm">
+                <Button 
+                    onClick={() => {
+                        console.log("🔐 Add Note clicked, isReadOnly:", isReadOnly);
+                        handleSelection('note');
+                    }} 
+                    disabled={isReadOnly}
+                    className="justify-start h-12 text-lg bg-red-50 text-black hover:bg-red-100 border border-red-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                     <FileText className="mr-3 w-5 h-5" /> Add Note
                 </Button>
-                <Button onClick={() => handleSelection('job')} className="justify-start h-12 text-lg bg-blue-50 text-blue-700 hover:bg-blue-100 border border-blue-200 shadow-sm">
+                <Button 
+                    onClick={() => {
+                        console.log("🔐 Add Job clicked, isReadOnly:", isReadOnly);
+                        handleSelection('job');
+                    }} 
+                    disabled={isReadOnly}
+                    className="justify-start h-12 text-lg bg-blue-50 text-black hover:bg-blue-100 border border-blue-200 shadow-sm disabled:opacity-50 disabled:cursor-not-allowed"
+                >
                     <Briefcase className="mr-3 w-5 h-5" /> Add Site / Job
                 </Button>
             </div>
         </DialogContent>
       </Dialog>
+
+      {/* Grouping Dialog */}
+      {groupingDialog && (
+        <GroupingDialog
+          open={groupingDialog.open}
+          onOpenChange={(open) => {
+            if (!open) {
+              setGroupingDialog(null);
+            }
+          }}
+          onConfirm={groupingDialog.onConfirm}
+          itemType={groupingDialog.type}
+          groupCount={groupingDialog.groupCount}
+        />
+      )}
 
       {/* Item Editor Modal */}
       <ItemModal 

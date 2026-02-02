@@ -64,6 +64,16 @@ export interface ScheduleItem {
 
 class API {
   private async request<T>(url: string, options?: RequestInit): Promise<T> {
+    // Log request details in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('🔵 API Request:', {
+        method: options?.method || 'GET',
+        url,
+        hasBody: !!options?.body,
+        bodyPreview: options?.body ? (typeof options.body === 'string' ? options.body.substring(0, 200) : 'Non-string body') : undefined,
+      });
+    }
+    
     const response = await fetch(url, {
       ...options,
       credentials: "include", // Required for cookies to work
@@ -125,29 +135,53 @@ class API {
         finalErrorMessage = errorMessage;
       }
       
-      // Log error info - only use primitive values, no object serialization
-      try {
-        const logUrl = typeof url === 'string' ? url : `${url}`;
-        const logStatus = typeof response.status === 'number' ? response.status : Number(response.status);
-        const logStatusText = typeof response.statusText === 'string' ? response.statusText : `${response.statusText}`;
-        const logErrorMessage = finalErrorMessage;
-        
-        // Log with individual properties to avoid serialization issues
-        console.error('API request failed:', {
-          url: logUrl,
-          status: logStatus,
-          statusText: logStatusText,
-          errorMessage: logErrorMessage,
-          errorText: errorText && typeof errorText === 'string' ? errorText.substring(0, 500) : undefined,
-          errorJson: errorJson && typeof errorJson === 'object' ? JSON.stringify(errorJson) : errorJson,
-        });
-      } catch (logError) {
-        // If logging fails, just log the basics with no object serialization
-        console.error('API request failed:', url, response.status, response.statusText, errorText || 'No error text');
+      // Log error info with better formatting
+      const logUrl = typeof url === 'string' ? url : `${url}`;
+      const logStatus = typeof response.status === 'number' ? response.status : Number(response.status);
+      const logStatusText = typeof response.statusText === 'string' ? response.statusText : `${response.statusText}`;
+      
+      // Log error in a structured way that's easy to read
+      console.group('❌ API Request Failed');
+      console.error('URL:', logUrl);
+      console.error('Method:', options?.method || 'GET');
+      console.error('Status:', logStatus, logStatusText);
+      console.error('Error Message:', finalErrorMessage);
+      
+      if (errorText && typeof errorText === 'string' && errorText.length > 0) {
+        console.error('Response Text:', errorText.substring(0, 1000));
       }
+      
+      if (errorJson && typeof errorJson === 'object') {
+        try {
+          console.error('Response JSON:', JSON.stringify(errorJson, null, 2));
+        } catch (e) {
+          console.error('Response JSON (parse failed):', errorJson);
+        }
+      }
+      
+      // Log request body if available (for debugging)
+      if (options?.body && process.env.NODE_ENV === 'development') {
+        try {
+          const bodyStr = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+          console.error('Request Body:', bodyStr.substring(0, 500));
+        } catch (e) {
+          console.error('Request Body: (could not serialize)');
+        }
+      }
+      
+      console.groupEnd();
       
       // Throw error with guaranteed string message - use template literal to ensure it's a string
       throw new Error(finalErrorMessage);
+    }
+
+    // Log successful requests in development
+    if (process.env.NODE_ENV === 'development') {
+      console.log('✅ API Request Success:', {
+        method: options?.method || 'GET',
+        url,
+        status: response.status,
+      });
     }
 
     return response.json();

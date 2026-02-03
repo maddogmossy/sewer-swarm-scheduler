@@ -4,7 +4,7 @@ import { sql } from "drizzle-orm";
 
 export const runtime = "nodejs";
 
-export async function POST() {
+async function runMigration() {
   try {
     if (!db || !pool) {
       return NextResponse.json(
@@ -229,5 +229,11 @@ export async function POST() {
   }
 }
 
+// Allow both POST (for programmatic use) and GET (for simple browser triggering)
+export async function POST() {
+  return runMigration();
+}
 
-
+export async function GET() {
+  return runMigration();
+}

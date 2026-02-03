@@ -451,21 +451,10 @@ import {
     }
   
     async archiveCrew(id: string): Promise<Crew | undefined> {
-      const database = getDb();
-      const today = new Date();
-      today.setHours(0, 0, 0, 0);
-      
-      // Use transaction to ensure atomicity
-      return await database.transaction(async (tx) => {
-        // Delete future schedule items for this crew (preserve historical data)
-        await tx.delete(scheduleItems).where(
-          and(eq(scheduleItems.crewId, id), gte(scheduleItems.date, today))
-        );
-        
-        // Archive the crew
-        const result = await tx.update(crews).set({ archivedAt: new Date() }).where(eq(crews.id, id)).returning();
-        return result[0];
-      });
+      // Just archive the crew - item moving/deletion is handled in the frontend
+      // This preserves all items (current week, past weeks, and future weeks that weren't moved)
+      const result = await getDb().update(crews).set({ archivedAt: new Date() }).where(eq(crews.id, id)).returning();
+      return result[0];
     }
   
     async restoreCrew(id: string): Promise<Crew | undefined> {

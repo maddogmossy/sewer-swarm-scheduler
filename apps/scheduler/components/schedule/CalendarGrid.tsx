@@ -10,7 +10,7 @@ import { ResourcesModal } from "./ResourcesModal";
 import { Button } from "@/components/ui/button";
 import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Users, MoreHorizontal, Trash2, Briefcase, UserPlus, User, Truck, Settings, Edit, Search, Lock, Mail, Check, Sun, Moon, ChevronDown, ChevronRight as ChevronRightIcon, RotateCcw, RotateCw, FileText, LogOut, Copy, X } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -200,6 +200,24 @@ export function CalendarGrid({
     onConfirm: (applyToGroup: boolean) => void;
   } | null>(null);
 
+  const [crewDeleteDialog, setCrewDeleteDialog] = useState<{
+    open: boolean;
+    crewId: string;
+    crewName: string;
+    hasPastItems: boolean;
+    hasFutureItems: boolean;
+    futureItemsCount: number;
+    futureItems: Array<{ type: string; date: string; displayDate: string; customer?: string; employeeId?: string }>;
+    previousCrewId: string | null;
+    onConfirm: (moveItemsUp: boolean) => void;
+  } | null>(null);
+
+  const [crewDeleteErrorDialog, setCrewDeleteErrorDialog] = useState<{
+    open: boolean;
+    title: string;
+    message: string;
+  } | null>(null);
+
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: viewDays }).map((_, i) => addDays(weekStart, i));
 
@@ -374,6 +392,117 @@ export function CalendarGrid({
           }
           return newSet;
       });
+  };
+
+  const handleCrewDeleteWithValidation = (crewId: string, shift: 'day' | 'night', currentIndex: number) => {
+    if (isReadOnly) return;
+    
+    const crew = crews.find(c => c.id === crewId);
+    if (!crew) return;
+    
+    // Use the week being viewed in the calendar, not today's week
+    const viewedWeekStart = weekStart; // This is the start of the week being displayed
+    const viewedWeekEnd = addDays(viewedWeekStart, viewDays - 1); // End of the viewed week
+    const nextWeekStart = addDays(viewedWeekEnd, 1); // Start of the week after the viewed week
+    
+    // Only check operatives, assistants, and jobs - notes don't prevent deletion
+    // Only check items in FUTURE weeks (after viewed week ends) - current week items are allowed
+    const crewItems = items.filter(item => {
+      if (item.crewId !== crewId) return false;
+      if (item.type !== 'operative' && item.type !== 'assistant' && item.type !== 'job') return false;
+      
+      const itemDate = startOfDay(new Date(item.date));
+      // Only include items on or after the start of the next week (future weeks only)
+      // Use >= to include items starting from the day after viewedWeekEnd
+      return !isBefore(itemDate, nextWeekStart);
+    });
+    
+    // Future items are items in future weeks (after viewed week)
+    const futureItems = crewItems;
+    
+    // Debug logging
+    console.log('Crew Delete Validation:', {
+      crewId,
+      crewName: crew.name,
+      viewedWeekStart: format(viewedWeekStart, 'yyyy-MM-dd'),
+      viewedWeekEnd: format(viewedWeekEnd, 'yyyy-MM-dd'),
+      nextWeekStart: format(nextWeekStart, 'yyyy-MM-dd'),
+      viewDays,
+      totalCrewItems: crewItems.length,
+      futureItems: futureItems.length,
+      futureItemDates: futureItems.map(i => format(new Date(i.date), 'yyyy-MM-dd')),
+      allCrewItemDates: crewItems.map(i => format(new Date(i.date), 'yyyy-MM-dd')),
+      allItemsForCrew: items.filter(i => i.crewId === crewId).map(i => ({
+        type: i.type,
+        date: format(new Date(i.date), 'yyyy-MM-dd')
+      }))
+    });
+    
+    // If there are items in future weeks (after viewed week), ask if user wants to move them up
+    if (futureItems.length > 0) {
+      // Find the previous crew in the same shift (keep original order, don't sort)
+      const sameShiftCrews = crews
+        .filter(c => (c.shift === shift || (shift === 'night' ? c.shift === 'night' : c.shift !== 'night')));
+      
+      const currentCrewIndex = sameShiftCrews.findIndex(c => c.id === crewId);
+      const previousCrew = currentCrewIndex > 0 ? sameShiftCrews[currentCrewIndex - 1] : null;
+      
+      if (!previousCrew) {
+        setCrewDeleteErrorDialog({
+          open: true,
+          title: "Cannot Delete Crew",
+          message: `This crew has ${futureItems.length} scheduled item(s) in future weeks, and there is no previous crew to move them to.`
+        });
+        return;
+      }
+      
+      // Prepare future items details for display
+      const futureItemsDetails = futureItems.map(item => {
+        let displayName = '';
+        if (item.type === 'job') {
+          displayName = item.customer || 'Job';
+        } else if (item.type === 'operative' || item.type === 'assistant') {
+          const employee = employees.find(e => e.id === item.employeeId);
+          displayName = employee?.name || item.employeeId || item.type;
+        } else {
+          displayName = item.type;
+        }
+        
+        return {
+          type: item.type,
+          date: format(new Date(item.date), 'yyyy-MM-dd'),
+          displayDate: format(new Date(item.date), 'EEE, MMM d'),
+          customer: displayName
+        };
+      });
+      
+      setCrewDeleteDialog({
+        open: true,
+        crewId,
+        crewName: crew.name,
+        hasPastItems: false,
+        hasFutureItems: true,
+        futureItemsCount: futureItems.length,
+        futureItems: futureItemsDetails,
+        previousCrewId: previousCrew.id,
+        onConfirm: (moveItemsUp: boolean) => {
+          if (moveItemsUp) {
+            // Only move future items (after viewed week) to the previous crew
+            // futureItems already contains only items after viewedWeekEnd
+            futureItems.forEach(item => {
+              onItemUpdate({ ...item, crewId: previousCrew.id });
+            });
+          }
+          // Delete the crew
+          onCrewDelete(crewId);
+          setCrewDeleteDialog(null);
+        }
+      });
+      return;
+    }
+    
+    // No items, safe to delete
+    onCrewDelete(crewId);
   };
 
   const handleEditItem = (item: ScheduleItem) => {
@@ -1020,7 +1149,6 @@ export function CalendarGrid({
 
                     {expandedShifts.night && [...crews]
                         .filter(c => c.shift === 'night')
-                        .sort((a, b) => a.name.localeCompare(b.name))
                         .map((crew, index) => {
                             const isFirstRow = index === 0;
                             const nightCrews = crews.filter(c => c.shift === 'night');
@@ -1071,28 +1199,35 @@ export function CalendarGrid({
                                     </TooltipProvider>
                                     {/* Add button on first row */}
                                     {isFirstRow && !isReadOnly && (
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            className="h-6 w-6 rounded-full hover:bg-indigo-100 hover:text-indigo-600 text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setCrewModal({ isOpen: true, mode: 'create', name: "", shift: 'night' });
-                                            }}
-                                            title="Add Night Crew"
-                                        >
-                                            <Plus className="h-3 w-3" />
-                                        </Button>
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-6 w-6 rounded-full hover:bg-indigo-100 hover:text-indigo-600 text-indigo-400"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setCrewModal({ isOpen: true, mode: 'create', name: "", shift: 'night' });
+                                                }}
+                                                title="Add Night Crew"
+                                            >
+                                                <Plus className="h-3 w-3" />
+                                            </Button>
+                                            <span className="text-[10px] font-semibold text-indigo-600">{index + 1}</span>
+                                        </div>
+                                    )}
+                                    {/* Show number on non-first rows */}
+                                    {!isFirstRow && (
+                                        <span className="text-[10px] font-semibold text-indigo-600">{index + 1}</span>
                                     )}
                                     {/* Delete button on extra rows */}
                                     {!isFirstRow && !isReadOnly && !crew.archivedAt && (
                                         <Button
                                             size="icon"
                                             variant="ghost"
-                                            className="h-6 w-6 rounded-full hover:bg-red-100 hover:text-red-600 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            className="h-6 w-6 rounded-full hover:bg-red-100 hover:text-red-600 text-red-400"
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                onCrewDelete(crew.id);
+                                                handleCrewDeleteWithValidation(crew.id, 'night', index);
                                             }}
                                             title="Delete Crew"
                                         >
@@ -1233,7 +1368,6 @@ export function CalendarGrid({
 
                     {expandedShifts.day && [...crews]
                         .filter(c => c.shift !== 'night')
-                        .sort((a, b) => a.name.localeCompare(b.name))
                         .map((crew, index) => {
                             const isFirstRow = index === 0;
                             const dayCrews = crews.filter(c => c.shift !== 'night');
@@ -1284,28 +1418,35 @@ export function CalendarGrid({
                                     </TooltipProvider>
                                     {/* Add button on first row */}
                                     {isFirstRow && !isReadOnly && (
-                                        <Button
-                                            size="icon"
-                                            variant="ghost"
-                                            className="h-6 w-6 rounded-full hover:bg-amber-100 hover:text-amber-600 text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity"
-                                            onClick={(e) => {
-                                                e.stopPropagation();
-                                                setCrewModal({ isOpen: true, mode: 'create', name: "", shift: 'day' });
-                                            }}
-                                            title="Add Day Crew"
-                                        >
-                                            <Plus className="h-3 w-3" />
-                                        </Button>
+                                        <div className="flex flex-col items-center gap-0.5">
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="h-6 w-6 rounded-full hover:bg-amber-100 hover:text-amber-600 text-amber-400"
+                                                onClick={(e) => {
+                                                    e.stopPropagation();
+                                                    setCrewModal({ isOpen: true, mode: 'create', name: "", shift: 'day' });
+                                                }}
+                                                title="Add Day Crew"
+                                            >
+                                                <Plus className="h-3 w-3" />
+                                            </Button>
+                                            <span className="text-[10px] font-semibold text-amber-600">{index + 1}</span>
+                                        </div>
+                                    )}
+                                    {/* Show number on non-first rows */}
+                                    {!isFirstRow && (
+                                        <span className="text-[10px] font-semibold text-amber-600">{index + 1}</span>
                                     )}
                                     {/* Delete button on extra rows */}
                                     {!isFirstRow && !isReadOnly && !crew.archivedAt && (
                                         <Button
                                             size="icon"
                                             variant="ghost"
-                                            className="h-6 w-6 rounded-full hover:bg-red-100 hover:text-red-600 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            className="h-6 w-6 rounded-full hover:bg-red-100 hover:text-red-600 text-red-400"
                                             onClick={(e) => {
                                                 e.stopPropagation();
-                                                onCrewDelete(crew.id);
+                                                handleCrewDeleteWithValidation(crew.id, 'day', index);
                                             }}
                                             title="Delete Crew"
                                         >
@@ -1524,6 +1665,101 @@ export function CalendarGrid({
           itemType={groupingDialog.type}
           groupCount={groupingDialog.groupCount}
         />
+      )}
+
+      {/* Crew Delete Confirmation Dialog */}
+      {crewDeleteDialog && (
+        <Dialog open={crewDeleteDialog.open} onOpenChange={(open) => {
+          if (!open) {
+            setCrewDeleteDialog(null);
+          }
+        }}>
+          <DialogContent className="bg-white">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl font-bold text-slate-900">
+                Delete Crew: {crewDeleteDialog.crewName}
+              </DialogTitle>
+              <DialogDescription className="text-slate-600">
+                This crew has <strong>{crewDeleteDialog.futureItemsCount}</strong> scheduled item(s) in the future.
+              </DialogDescription>
+            </DialogHeader>
+            <div className="space-y-4 py-4">
+              {crewDeleteDialog.futureItems.length > 0 && (
+                <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
+                  <p className="text-sm font-semibold text-slate-700 mb-2">Scheduled items:</p>
+                  <ul className="space-y-1">
+                    {crewDeleteDialog.futureItems.map((item, idx) => (
+                      <li key={idx} className="text-sm text-slate-600 flex items-center gap-2">
+                        <span className="font-medium text-slate-900">{item.displayDate}</span>
+                        <span className="text-slate-400">•</span>
+                        <span className="capitalize">{item.type}</span>
+                        {item.customer && (
+                          <>
+                            <span className="text-slate-400">•</span>
+                            <span className="text-slate-600">{item.customer}</span>
+                          </>
+                        )}
+                      </li>
+                    ))}
+                  </ul>
+                </div>
+              )}
+              <p className="text-slate-700">
+                Would you like to move these items to the previous crew row before deleting?
+              </p>
+            </div>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button 
+                variant="outline" 
+                onClick={() => setCrewDeleteDialog(null)}
+                className="border-slate-200 text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </Button>
+              <Button 
+                variant="outline"
+                onClick={() => crewDeleteDialog.onConfirm(false)}
+                className="text-red-600 border-red-200 hover:bg-red-50 hover:text-red-700"
+              >
+                Delete Without Moving
+              </Button>
+              <Button 
+                onClick={() => crewDeleteDialog.onConfirm(true)}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                Move Items Up & Delete
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
+
+      {/* Crew Delete Error Dialog */}
+      {crewDeleteErrorDialog && (
+        <Dialog open={crewDeleteErrorDialog.open} onOpenChange={(open) => {
+          if (!open) {
+            setCrewDeleteErrorDialog(null);
+          }
+        }}>
+          <DialogContent className="bg-white">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2 text-xl font-bold text-slate-900">
+                {crewDeleteErrorDialog.title}
+              </DialogTitle>
+              <DialogDescription className="text-slate-600">
+                {crewDeleteErrorDialog.message}
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter>
+              <Button 
+                onClick={() => setCrewDeleteErrorDialog(null)}
+                className="bg-blue-600 text-white hover:bg-blue-700"
+              >
+                OK
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
 
       {/* Item Editor Modal */}

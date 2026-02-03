@@ -160,10 +160,10 @@ function AcceptInviteContent() {
 
   if (loading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen bg-white font-sans text-slate-900 flex items-center justify-center">
         <div className="text-center">
           <Loader2 className="h-8 w-8 animate-spin text-blue-600 mx-auto mb-4" />
-          <p className="text-slate-600">Loading invite...</p>
+          <p className="text-slate-700 font-medium">Loading invite...</p>
         </div>
       </div>
     );
@@ -171,14 +171,17 @@ function AcceptInviteContent() {
 
   if (error) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Card className="w-full max-w-md">
+      <div className="min-h-screen bg-white font-sans text-slate-900 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl border-slate-100">
           <CardHeader>
-            <CardTitle className="text-red-600">Invalid Invite</CardTitle>
-            <CardDescription>{error}</CardDescription>
+            <CardTitle className="text-2xl font-bold text-red-600">Invalid Invite</CardTitle>
+            <CardDescription className="text-slate-700">{error}</CardDescription>
           </CardHeader>
           <CardContent>
-            <Button onClick={() => router.push("/")} className="w-full">
+            <Button 
+              onClick={() => router.push("/")} 
+              className="w-full bg-blue-600 hover:bg-blue-700 h-11 text-base"
+            >
               Go to Home
             </Button>
           </CardContent>
@@ -189,20 +192,22 @@ function AcceptInviteContent() {
 
   if (success) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <Card className="w-full max-w-md">
-          <CardHeader className="text-center">
+      <div className="min-h-screen bg-white font-sans text-slate-900 flex items-center justify-center p-4">
+        <Card className="w-full max-w-md shadow-xl border-slate-100">
+          <CardHeader className="text-center space-y-1">
             <CheckCircle2 className="h-16 w-16 text-green-600 mx-auto mb-4" />
-            <CardTitle>Success!</CardTitle>
-            <CardDescription>
+            <CardTitle className="text-2xl font-bold text-slate-900">Success!</CardTitle>
+            <CardDescription className="text-slate-700">
               You've successfully joined {inviteInfo?.organizationName}
             </CardDescription>
           </CardHeader>
           <CardContent>
-            <p className="text-center text-slate-600 mb-4">
+            <p className="text-center text-slate-700 mb-4 font-medium">
               Redirecting to your schedule...
             </p>
-            <Loader2 className="h-6 w-6 animate-spin text-blue-600 mx-auto" />
+            <div className="flex justify-center">
+              <Loader2 className="h-6 w-6 animate-spin text-blue-600" />
+            </div>
           </CardContent>
         </Card>
       </div>
@@ -214,110 +219,125 @@ function AcceptInviteContent() {
   }
 
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50 p-4">
-      <Card className="w-full max-w-md">
-        <CardHeader className="text-center">
-          <div className="w-16 h-16 bg-blue-100 rounded-full flex items-center justify-center mx-auto mb-4">
-            <Mail className="h-8 w-8 text-blue-600" />
+    <div className="min-h-screen bg-white font-sans text-slate-900">
+      {/* Header */}
+      <header className="flex items-center justify-between px-6 py-4 max-w-7xl mx-auto">
+        <div className="flex items-center gap-2">
+          <div className="w-8 h-8 bg-blue-600 rounded-lg flex items-center justify-center shadow-sm shrink-0">
+            <span className="text-white font-bold text-lg">≈</span>
           </div>
-          <CardTitle>You've been invited!</CardTitle>
-          <CardDescription>
-            Join <strong>{inviteInfo.organizationName}</strong> as {getRoleLabel(inviteInfo.role)}
-          </CardDescription>
-        </CardHeader>
-        <CardContent>
-          <form onSubmit={handleAccept} className="space-y-4">
-            <div className="p-3 bg-slate-50 rounded-lg">
-              <p className="text-sm text-slate-600 mb-1">Invited email:</p>
-              <p className="font-medium text-slate-900">{inviteInfo.email}</p>
+          <span className="text-xl font-bold text-blue-900 tracking-tight">Sewer Swarm AI</span>
+        </div>
+      </header>
+
+      {/* Main Content */}
+      <div className="flex items-center justify-center px-6 py-12 min-h-[calc(100vh-80px)]">
+        <Card className="w-full max-w-md shadow-xl border-slate-100">
+          <CardHeader className="space-y-1">
+            <div className="flex items-center justify-center mb-4">
+              <div className="w-16 h-16 bg-blue-600 rounded-full flex items-center justify-center shadow-lg">
+                <Mail className="h-8 w-8 text-white" />
+              </div>
             </div>
-
-            {inviteInfo.userExists ? (
-              // Existing user - just need password
-              <div className="space-y-4">
-                <p className="text-sm text-slate-600">
-                  You already have an account. Please enter your password to accept this invite.
-                </p>
-                <div className="space-y-2">
-                  <Label htmlFor="existingPassword">Password</Label>
-                  <Input
-                    id="existingPassword"
-                    type="password"
-                    value={existingPassword}
-                    onChange={(e) => setExistingPassword(e.target.value)}
-                    placeholder="Enter your password"
-                    required
-                    className="bg-white"
-                  />
-                </div>
+            <CardTitle className="text-2xl font-bold text-slate-900 text-center">You've been invited!</CardTitle>
+            <CardDescription className="text-slate-700 text-center">
+              Join <strong className="text-slate-900">{inviteInfo.organizationName}</strong> as {getRoleLabel(inviteInfo.role)}
+            </CardDescription>
+          </CardHeader>
+          <CardContent>
+            <form onSubmit={handleAccept} className="space-y-4">
+              <div className="p-4 bg-blue-50 rounded-lg border border-blue-100">
+                <p className="text-xs font-semibold text-slate-600 mb-1 uppercase tracking-wide">Invited Email</p>
+                <p className="font-semibold text-slate-900 text-lg">{inviteInfo.email}</p>
               </div>
-            ) : (
-              // New user - need username and password
-              <div className="space-y-4">
-                <p className="text-sm text-slate-600">
-                  Create your account to join this organization.
-                </p>
-                <div className="space-y-2">
-                  <Label htmlFor="username">Username</Label>
-                  <Input
-                    id="username"
-                    type="text"
-                    value={username}
-                    onChange={(e) => setUsername(e.target.value)}
-                    placeholder="Choose a username"
-                    required
-                    className="bg-white"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="password">Password</Label>
-                  <Input
-                    id="password"
-                    type="password"
-                    value={password}
-                    onChange={(e) => setPassword(e.target.value)}
-                    placeholder="Create a password (min 6 characters)"
-                    required
-                    minLength={6}
-                    className="bg-white"
-                  />
-                </div>
-                <div className="space-y-2">
-                  <Label htmlFor="confirmPassword">Confirm Password</Label>
-                  <Input
-                    id="confirmPassword"
-                    type="password"
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                    placeholder="Confirm your password"
-                    required
-                    minLength={6}
-                    className="bg-white"
-                  />
-                </div>
-              </div>
-            )}
 
-            <Button
-              type="submit"
-              className="w-full"
-              disabled={submitting}
-            >
-              {submitting ? (
-                <>
-                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
-                  Accepting...
-                </>
+              {inviteInfo.userExists ? (
+                // Existing user - just need password
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-700 font-medium">
+                    You already have an account. Please enter your password to accept this invite.
+                  </p>
+                  <div className="space-y-2">
+                    <Label htmlFor="existingPassword" className="text-slate-900 font-medium">Password</Label>
+                    <Input
+                      id="existingPassword"
+                      type="password"
+                      value={existingPassword}
+                      onChange={(e) => setExistingPassword(e.target.value)}
+                      placeholder="Enter your password"
+                      required
+                      className="border-slate-200 text-slate-900 bg-white focus:ring-blue-600"
+                    />
+                  </div>
+                </div>
               ) : (
-                <>
-                  <UserPlus className="h-4 w-4 mr-2" />
-                  Accept Invite
-                </>
+                // New user - need username and password
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-700 font-medium">
+                    Create your account to join this organization.
+                  </p>
+                  <div className="space-y-2">
+                    <Label htmlFor="username" className="text-slate-900 font-medium">Username</Label>
+                    <Input
+                      id="username"
+                      type="text"
+                      value={username}
+                      onChange={(e) => setUsername(e.target.value)}
+                      placeholder="Choose a username"
+                      required
+                      className="border-slate-200 text-slate-900 bg-white focus:ring-blue-600"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="password" className="text-slate-900 font-medium">Password</Label>
+                    <Input
+                      id="password"
+                      type="password"
+                      value={password}
+                      onChange={(e) => setPassword(e.target.value)}
+                      placeholder="Create a password (min 6 characters)"
+                      required
+                      minLength={6}
+                      className="border-slate-200 text-slate-900 bg-white focus:ring-blue-600"
+                    />
+                  </div>
+                  <div className="space-y-2">
+                    <Label htmlFor="confirmPassword" className="text-slate-900 font-medium">Confirm Password</Label>
+                    <Input
+                      id="confirmPassword"
+                      type="password"
+                      value={confirmPassword}
+                      onChange={(e) => setConfirmPassword(e.target.value)}
+                      placeholder="Confirm your password"
+                      required
+                      minLength={6}
+                      className="border-slate-200 text-slate-900 bg-white focus:ring-blue-600"
+                    />
+                  </div>
+                </div>
               )}
-            </Button>
-          </form>
-        </CardContent>
-      </Card>
+
+              <Button
+                type="submit"
+                className="w-full bg-blue-600 hover:bg-blue-700 h-11 text-base font-semibold"
+                disabled={submitting}
+              >
+                {submitting ? (
+                  <>
+                    <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                    Accepting...
+                  </>
+                ) : (
+                  <>
+                    <UserPlus className="h-4 w-4 mr-2" />
+                    Accept Invite
+                  </>
+                )}
+              </Button>
+            </form>
+          </CardContent>
+        </Card>
+      </div>
     </div>
   );
 }
@@ -325,7 +345,7 @@ function AcceptInviteContent() {
 export default function AcceptInvitePage() {
   return (
     <Suspense fallback={
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
+      <div className="min-h-screen bg-white font-sans text-slate-900 flex items-center justify-center">
         <Loader2 className="h-8 w-8 animate-spin text-blue-600" />
       </div>
     }>

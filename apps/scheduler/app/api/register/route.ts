@@ -147,28 +147,33 @@ export async function POST(request: Request) {
       message: error.message,
       code: error.code,
       name: error.name,
+      cause: error.cause,
+      stack: error.stack?.substring(0, 1000), // First 1000 chars of stack
     });
     
     // Return user-friendly error message (don't expose internal details)
     let errorMessage = "Registration failed. Please try again.";
+    let statusCode = 500;
     
     if (error.message?.includes("Database connection") || 
         error.message?.includes("ENOTFOUND") || 
-        error.message?.includes("ECONNREFUSED")) {
+        error.message?.includes("ECONNREFUSED") ||
+        error.message?.includes("Database not configured")) {
       errorMessage = "Unable to connect to the database. Please try again later or contact support.";
-      return NextResponse.json({ error: errorMessage }, { status: 503 });
-    }
-    
-    if (error.message?.includes("already registered") || 
+      statusCode = 503;
+    } else if (error.message?.includes("already registered") || 
         error.message?.includes("already exists") ||
         error.message?.includes("already taken")) {
       errorMessage = error.message; // Use the friendly message we created
-      return NextResponse.json({ error: errorMessage }, { status: 400 });
+      statusCode = 400;
+    } else if (error.message && process.env.NODE_ENV === 'development') {
+      // In development, show more details
+      errorMessage = error.message;
     }
     
     return NextResponse.json(
       { error: errorMessage },
-      { status: 500 }
+      { status: statusCode }
     );
   }
 }

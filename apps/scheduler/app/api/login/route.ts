@@ -100,20 +100,33 @@ export async function POST(request: Request) {
       message: error.message,
       code: error.code,
       name: error.name,
-      stack: error.stack?.substring(0, 500), // First 500 chars of stack
+      cause: error.cause,
+      stack: error.stack?.substring(0, 1000), // First 1000 chars of stack
     });
     
     // Provide more specific error messages
-    let errorMessage = "Login failed";
+    let errorMessage = "Database operation failed. Please try again or contact support if the problem persists.";
+    let statusCode = 500;
+    
     if (error.message?.includes("Database not configured")) {
       errorMessage = "Database connection error. Please contact support.";
+      statusCode = 503;
+    } else if (error.message?.includes("Database connection")) {
+      errorMessage = "Database connection error. Please try again later.";
+      statusCode = 503;
+    } else if (error.message?.includes("ENOTFOUND") || error.message?.includes("ECONNREFUSED")) {
+      errorMessage = "Database connection error. Please try again later.";
+      statusCode = 503;
     } else if (error.message) {
-      errorMessage = error.message;
+      // For development, show more details; for production, use generic message
+      if (process.env.NODE_ENV === 'development') {
+        errorMessage = error.message;
+      }
     }
     
     return NextResponse.json(
       { error: errorMessage },
-      { status: 500 }
+      { status: statusCode }
     );
   }
 }

@@ -215,8 +215,13 @@ import {
     }
   
     async createUser(insertUser: InsertUser): Promise<User> {
-      const result = await getDb().insert(users).values(insertUser).returning();
-      return result[0];
+      return await handleDbError(
+        async () => {
+          const result = await getDb().insert(users).values(insertUser).returning();
+          return result[0];
+        },
+        'createUser'
+      );
     }
   
     async updateUserStripeInfo(userId: string, stripeInfo: {
@@ -241,8 +246,13 @@ import {
     }
   
     async createOrganization(org: InsertOrganization): Promise<Organization> {
-      const result = await getDb().insert(organizations).values(org).returning();
-      return result[0];
+      return await handleDbError(
+        async () => {
+          const result = await getDb().insert(organizations).values(org).returning();
+          return result[0];
+        },
+        'createOrganization'
+      );
     }
   
     async updateOrganization(id: string, org: Partial<InsertOrganization>): Promise<Organization | undefined> {
@@ -293,8 +303,13 @@ import {
     }
   
     async createMembership(membership: InsertMembership): Promise<OrganizationMembership> {
-      const result = await getDb().insert(organizationMemberships).values(membership).returning();
-      return result[0];
+      return await handleDbError(
+        async () => {
+          const result = await getDb().insert(organizationMemberships).values(membership).returning();
+          return result[0];
+        },
+        'createMembership'
+      );
     }
   
     async updateMembershipRole(id: string, role: MemberRole): Promise<OrganizationMembership | undefined> {

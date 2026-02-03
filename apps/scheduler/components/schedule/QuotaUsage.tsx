@@ -3,6 +3,7 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Building2, Users, Truck, Loader2, ArrowUpCircle, Crown } from "lucide-react";
 import { useQuota, getPlanDisplayName } from "@/hooks/useOrganization";
+import { useUpgrade } from "@/hooks/useUpgrade";
 
 interface QuotaUsageProps {
   onUpgrade?: () => void;
@@ -10,6 +11,10 @@ interface QuotaUsageProps {
 
 export function QuotaUsage({ onUpgrade }: QuotaUsageProps) {
   const { data: quota, isLoading } = useQuota();
+  const { handleUpgrade, loading: upgradeLoading } = useUpgrade();
+  
+  // Use provided onUpgrade or default to handleUpgrade
+  const upgradeHandler = onUpgrade || handleUpgrade;
 
   if (isLoading) {
     return (
@@ -77,10 +82,24 @@ export function QuotaUsage({ onUpgrade }: QuotaUsageProps) {
               {quota.requiresApproval ? "Bookings require approval" : "Bookings auto-approved"}
             </CardDescription>
           </div>
-          {quota.plan === "starter" && onUpgrade && (
-            <Button size="sm" onClick={onUpgrade} data-testid="button-upgrade">
-              <ArrowUpCircle className="h-4 w-4 mr-2" />
-              Upgrade
+          {quota.plan === "starter" && (
+            <Button 
+              size="sm" 
+              onClick={upgradeHandler} 
+              disabled={upgradeLoading}
+              data-testid="button-upgrade"
+            >
+              {upgradeLoading ? (
+                <>
+                  <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+                  Loading...
+                </>
+              ) : (
+                <>
+                  <ArrowUpCircle className="h-4 w-4 mr-2" />
+                  Upgrade
+                </>
+              )}
             </Button>
           )}
         </div>

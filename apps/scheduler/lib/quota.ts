@@ -7,6 +7,7 @@ export interface PlanLimits {
   maxCrews: number;
   maxEmployees: number;
   maxVehicles: number;
+  maxMembers: number; // Team members (includes admin)
   requiresApproval: boolean;
 }
 
@@ -16,6 +17,7 @@ export const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
     maxCrews: 3,
     maxEmployees: 25,
     maxVehicles: 10,
+    maxMembers: 5, // 1 admin + 4 other members
     requiresApproval: false,
   },
   pro: {
@@ -23,6 +25,7 @@ export const PLAN_LIMITS: Record<PlanType, PlanLimits> = {
     maxCrews: 30,
     maxEmployees: 250,
     maxVehicles: 100,
+    maxMembers: 999, // Unlimited
     requiresApproval: true,
   },
 };
@@ -133,6 +136,25 @@ export async function canCreateVehicle(organizationId: string, plan: PlanType): 
       reason: `You have reached the maximum number of vehicles (${limits.maxVehicles}) for your ${plan === "starter" ? "Starter" : "Pro"} plan.${plan === "starter" ? " Upgrade to Pro for more vehicles." : ""}`,
       currentUsage: vehicles.length,
       limit: limits.maxVehicles,
+    };
+  }
+  
+  return { allowed: true };
+}
+
+export async function canInviteMember(organizationId: string, plan: PlanType): Promise<QuotaCheckResult> {
+  const limits = PLAN_LIMITS[plan];
+  const members = await storage.getMembershipsByOrg(organizationId);
+  
+  // Count active members (those who have accepted)
+  const activeMembers = members.filter(m => m.acceptedAt !== null);
+  
+  if (activeMembers.length >= limits.maxMembers) {
+    return {
+      allowed: false,
+      reason: `You have reached the maximum number of team members (${limits.maxMembers}) for your ${plan === "starter" ? "Starter" : "Pro"} plan.${plan === "starter" ? " Upgrade to Pro for unlimited team members." : ""}`,
+      currentUsage: activeMembers.length,
+      limit: limits.maxMembers,
     };
   }
   

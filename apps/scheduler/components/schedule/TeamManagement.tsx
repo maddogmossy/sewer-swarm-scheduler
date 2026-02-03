@@ -53,12 +53,28 @@ export function TeamManagement({ currentUserRole, currentUserId }: TeamManagemen
 
     try {
       await createInviteMutation.mutateAsync({ email: inviteEmail.trim(), role: inviteRole });
-      toast({ title: "Invite sent", description: `Invitation sent to ${inviteEmail}` });
+      toast({ 
+        title: "Invite sent", 
+        description: `Invitation email sent to ${inviteEmail}. They can also use the invite link if needed.` 
+      });
       setInviteDialogOpen(false);
       setInviteEmail("");
       setInviteRole("user");
     } catch (error: any) {
-      toast({ title: "Error", description: error.message || "Failed to create invite", variant: "destructive" });
+      // Check if it's a quota error
+      if (error.message?.includes("team member limit") || error.message?.includes("Team member limit")) {
+        toast({ 
+          title: "Team member limit reached", 
+          description: error.message || "You've reached the maximum number of team members for your plan. Upgrade to Pro for unlimited members.",
+          variant: "destructive" 
+        });
+      } else {
+        toast({ 
+          title: "Error", 
+          description: error.message || "Failed to create invite", 
+          variant: "destructive" 
+        });
+      }
     }
   };
 

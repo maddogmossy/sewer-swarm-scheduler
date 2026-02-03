@@ -1,6 +1,8 @@
 import { NextResponse } from "next/server";
 import { getRequestContext } from "@/lib/request-context";
 import { storage } from "@/lib/storage";
+import { canInviteMember } from "@/lib/quota";
+import { sendEmail, generateInviteEmailHtml } from "@/lib/email";
 import type { MemberRole } from "@/shared/schema";
 
 export const runtime = "nodejs";
@@ -87,6 +89,28 @@ export async function POST(request: Request) {
       );
     }
 
+    // Check team member quota
+    const org = await storage.getOrganization(ctx.organizationId);
+    if (!org) {
+      return NextResponse.json(
+        { error: "Organization not found" },
+        { status: 404 }
+      );
+    }
+
+    const quotaCheck = await canInviteMember(ctx.organizationId, org.plan);
+    if (!quotaCheck.allowed) {
+      return NextResponse.json(
+        { 
+          error: quotaCheck.reason || "Team member limit reached",
+          quotaExceeded: true,
+          currentUsage: quotaCheck.currentUsage,
+          limit: quotaCheck.limit,
+        },
+        { status: 403 }
+      );
+    }
+
     // Generate invite token
     const token = `${ctx.organizationId}_${Date.now()}_${Math.random().toString(36).substring(2, 15)}`;
     const expiresAt = new Date();
@@ -99,6 +123,23 @@ export async function POST(request: Request) {
       invitedBy: ctx.userId,
       token,
       expiresAt,
+    });
+
+    // Get inviter info for email
+    const inviter = await storage.getUser(ctx.userId);
+    const inviterName = inviter?.username || "A team member";
+
+    // Send invite email
+    const baseUrl = process.env.NEXT_PUBLIC_APP_URL || 
+                   (process.env.VERCEL_URL ? `https://${process.env.VERCEL_URL}` : 'http://localhost:3000');
+    const inviteUrl = `${baseUrl}/invite/${token}`;
+    const emailHtml = generateInviteEmailHtml(inviteUrl, org.name, role, inviterName);
+    
+    await sendEmail({
+      to: email,
+      subject: `You've been invited to join ${org.name} on Sewer Swarm AI`,
+      html: emailHtml,
+      text: `You've been invited to join ${org.name} on Sewer Swarm AI. Click here to accept: ${inviteUrl}`,
     });
 
     return NextResponse.json(invite);

@@ -13,8 +13,10 @@ export function middleware(req: NextRequest) {
   // Allow public routes
   if (
     pathname.startsWith("/api/health") ||
+    pathname.startsWith("/api/invites") ||
     pathname.startsWith("/login") ||
     pathname.startsWith("/register") ||
+    pathname.startsWith("/invite") ||
     pathname.startsWith("/_next")
   ) {
     return NextResponse.next();

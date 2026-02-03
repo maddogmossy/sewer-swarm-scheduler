@@ -2,27 +2,45 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { api } from "@/lib/api";
 import type { ScheduleItem, Depot, Crew, Employee, Vehicle } from "@/lib/api";
 
+// Helper to check if we're in production
+function getPollingInterval(): number | false {
+  if (typeof window === 'undefined') return false;
+  
+  const isProduction = 
+    window.location.hostname.includes('vercel.app') ||
+    window.location.hostname.includes('sewer-swarm') ||
+    process.env.NODE_ENV === 'production';
+  
+  // Poll every 5 seconds in production, disabled in development
+  return isProduction ? 5000 : false;
+}
+
 export function useScheduleData() {
   const queryClient = useQueryClient();
+  const pollingInterval = getPollingInterval();
 
   const depots = useQuery({
     queryKey: ["depots"],
     queryFn: () => api.getDepots(),
+    refetchInterval: pollingInterval,
   });
 
   const crews = useQuery({
     queryKey: ["crews"],
     queryFn: () => api.getCrews(true),
+    refetchInterval: pollingInterval,
   });
 
   const employees = useQuery({
     queryKey: ["employees"],
     queryFn: () => api.getEmployees(),
+    refetchInterval: pollingInterval,
   });
 
   const vehicles = useQuery({
     queryKey: ["vehicles"],
     queryFn: () => api.getVehicles(),
+    refetchInterval: pollingInterval,
   });
 
   const scheduleItems = useQuery({
@@ -35,11 +53,13 @@ export function useScheduleData() {
         date: new Date(item.date),
       }));
     },
+    refetchInterval: pollingInterval,
   });
 
   const colorLabels = useQuery({
     queryKey: ["colorLabels"],
     queryFn: () => api.getColorLabels(),
+    refetchInterval: pollingInterval,
   });
 
   // Mutations

@@ -230,10 +230,10 @@ async function runMigration() {
 }
 
 export async function POST() {
-  return runMigration();
+  return await runMigration();
 }
 
 export async function GET() {
-  return runMigration();
+  return await runMigration();
 }
 

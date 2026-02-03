@@ -40,7 +40,8 @@ export const config = {
      * - api routes
      * - static files
      * - next internals
+     * - public routes (login, register, invite)
      */
-    "/((?!api|_next/static|_next/image|favicon.ico).*)",
+    "/((?!api|_next/static|_next/image|favicon.ico|login|register|invite).*)",
   ],
 };

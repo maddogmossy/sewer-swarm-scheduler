@@ -63,7 +63,10 @@ export async function POST(request: Request) {
     if (!isValid) {
       console.log("Login attempt failed: Invalid password", { 
         userId: user.id,
-        username: username.substring(0, 5) + "***"
+        username: username.substring(0, 5) + "***",
+        userEmail: user.email,
+        userStoredUsername: user.username,
+        passwordHashLength: user.password?.length || 0,
       });
       return NextResponse.json(
         { error: "Invalid username or password" },

@@ -382,7 +382,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
                     <div className="flex items-center gap-2 text-amber-800 text-sm">
                         <AlertCircle className="w-4 h-4" />
-                        <span>This is a past job. Only the category color can be changed.</span>
+                        <span>This is a past job. Only the category color can be changed. If this job is part of a group, you'll be asked if you want to apply the color change to all items in the group.</span>
                     </div>
                 </div>
             )}

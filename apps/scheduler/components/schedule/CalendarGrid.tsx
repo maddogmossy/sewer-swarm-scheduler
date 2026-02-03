@@ -677,12 +677,11 @@ export function CalendarGrid({
         
         const updatedItem = { ...modalState.data, ...data };
         
-        // Check if color changed and if it's a job with a job number
-        if (data.color && data.color !== modalState.data.color && 
-            updatedItem.type === 'job' && updatedItem.jobNumber) {
-          // Show grouping dialog for color change
+        // Check if color changed - for ANY job (past or future), show grouping dialog if there's a group
+        if (data.color && data.color !== modalState.data.color && updatedItem.type === 'job') {
           const groupItems = findItemsWithSameJobNumber(updatedItem);
           if (groupItems.length > 1) {
+            // Show grouping dialog for color change
             setGroupingDialog({
               open: true,
               type: 'color',
@@ -690,7 +689,7 @@ export function CalendarGrid({
               groupCount: groupItems.length,
               onConfirm: (applyToGroup: boolean) => {
                 if (applyToGroup) {
-                  // Change color for all items with the same job number
+                  // Change color for all items with the same job number (including past items)
                   groupItems.forEach(groupItem => {
                     onItemUpdate({ ...groupItem, color: data.color });
                   });
@@ -698,35 +697,12 @@ export function CalendarGrid({
                   // Change color for just this one
                   onItemUpdate(updatedItem);
                 }
-                // Also handle applyToWeek if needed
-                if (applyToWeek) {
-                  // Apply changes to future occurrences in this week
-                  const startDate = new Date(updatedItem.date);
-                  const currentViewEnd = addDays(weekStart, viewDays - 1);
-                  
-                  items.forEach(i => {
-                    if (i.id === updatedItem.id) return;
-                    
-                    const iDate = new Date(i.date);
-                    const isFuture = isAfter(iDate, startDate) && (isBefore(iDate, currentViewEnd) || isSameDay(iDate, currentViewEnd));
-                    
-                    if (isFuture && i.crewId === updatedItem.crewId && i.type === updatedItem.type) {
-                      let isMatch = false;
-                      
-                      if (i.type === 'job') {
-                        if (i.customer === modalState.data?.customer) isMatch = true;
-                      } else {
-                        if (i.employeeId === modalState.data?.employeeId) isMatch = true;
-                      }
-                      
-                      if (isMatch) {
-                        onItemUpdate({ ...i, color: data.color });
-                      }
-                    }
-                  });
-                }
               }
             });
+            return;
+          } else {
+            // No group, just update this one item
+            onItemUpdate(updatedItem);
             return;
           }
         }
@@ -1045,10 +1021,15 @@ export function CalendarGrid({
                     {expandedShifts.night && [...crews]
                         .filter(c => c.shift === 'night')
                         .sort((a, b) => a.name.localeCompare(b.name))
-                        .map((crew) => (
+                        .map((crew, index) => {
+                            const isFirstRow = index === 0;
+                            const nightCrews = crews.filter(c => c.shift === 'night');
+                            const isLastRow = index === nightCrews.length - 1;
+                            
+                            return (
                         <tr key={crew.id} className="group">
                             <td className="p-2 border-b border-r border-slate-200 bg-white font-medium text-slate-700 align-top sticky left-0 z-10 w-14">
-                                <div className="flex items-center justify-center h-full group relative">
+                                <div className="flex flex-col items-center justify-center h-full group relative gap-1">
                                     <TooltipProvider>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
@@ -1088,6 +1069,36 @@ export function CalendarGrid({
                                             </TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
+                                    {/* Add button on first row */}
+                                    {isFirstRow && !isReadOnly && (
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-6 w-6 rounded-full hover:bg-indigo-100 hover:text-indigo-600 text-indigo-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setCrewModal({ isOpen: true, mode: 'create', name: "", shift: 'night' });
+                                            }}
+                                            title="Add Night Crew"
+                                        >
+                                            <Plus className="h-3 w-3" />
+                                        </Button>
+                                    )}
+                                    {/* Delete button on extra rows */}
+                                    {!isFirstRow && !isReadOnly && !crew.archivedAt && (
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-6 w-6 rounded-full hover:bg-red-100 hover:text-red-600 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onCrewDelete(crew.id);
+                                            }}
+                                            title="Delete Crew"
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    )}
                                 </div>
                             </td>
 
@@ -1203,7 +1214,8 @@ export function CalendarGrid({
                                 );
                             })}
                         </tr>
-                    ))}
+                            );
+                        })}
 
                     {/* Day Shift Header */}
                     <tr 
@@ -1222,10 +1234,15 @@ export function CalendarGrid({
                     {expandedShifts.day && [...crews]
                         .filter(c => c.shift !== 'night')
                         .sort((a, b) => a.name.localeCompare(b.name))
-                        .map((crew) => (
+                        .map((crew, index) => {
+                            const isFirstRow = index === 0;
+                            const dayCrews = crews.filter(c => c.shift !== 'night');
+                            const isLastRow = index === dayCrews.length - 1;
+                            
+                            return (
                         <tr key={crew.id} className="group">
                             <td className="p-2 border-b border-r border-slate-200 bg-white font-medium text-slate-700 align-top sticky left-0 z-10 w-14">
-                                <div className="flex items-center justify-center h-full group relative">
+                                <div className="flex flex-col items-center justify-center h-full group relative gap-1">
                                     <TooltipProvider>
                                         <Tooltip>
                                             <TooltipTrigger asChild>
@@ -1265,6 +1282,36 @@ export function CalendarGrid({
                                             </TooltipContent>
                                         </Tooltip>
                                     </TooltipProvider>
+                                    {/* Add button on first row */}
+                                    {isFirstRow && !isReadOnly && (
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-6 w-6 rounded-full hover:bg-amber-100 hover:text-amber-600 text-amber-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                setCrewModal({ isOpen: true, mode: 'create', name: "", shift: 'day' });
+                                            }}
+                                            title="Add Day Crew"
+                                        >
+                                            <Plus className="h-3 w-3" />
+                                        </Button>
+                                    )}
+                                    {/* Delete button on extra rows */}
+                                    {!isFirstRow && !isReadOnly && !crew.archivedAt && (
+                                        <Button
+                                            size="icon"
+                                            variant="ghost"
+                                            className="h-6 w-6 rounded-full hover:bg-red-100 hover:text-red-600 text-red-400 opacity-0 group-hover:opacity-100 transition-opacity"
+                                            onClick={(e) => {
+                                                e.stopPropagation();
+                                                onCrewDelete(crew.id);
+                                            }}
+                                            title="Delete Crew"
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </Button>
+                                    )}
                                 </div>
                             </td>
 
@@ -1380,7 +1427,8 @@ export function CalendarGrid({
                                 );
                             })}
                         </tr>
-                    ))}
+                            );
+                        })}
                 </tbody>
             </table>
         </div>

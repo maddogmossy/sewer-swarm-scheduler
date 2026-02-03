@@ -154,15 +154,14 @@ export function DepotCrewModal({
           <DialogTitle>Manage Depot - {depotName}</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="crews" className="flex-1 flex flex-col min-h-0">
-          <TabsList className="grid w-full grid-cols-3">
-            <TabsTrigger value="crews">Crews</TabsTrigger>
+        <Tabs defaultValue="employees" className="flex-1 flex flex-col min-h-0">
+          <TabsList className="grid w-full grid-cols-2">
             <TabsTrigger value="employees">Employees</TabsTrigger>
             <TabsTrigger value="vehicles">Vehicles</TabsTrigger>
           </TabsList>
 
-          {/* CREWS TAB */}
-          <TabsContent value="crews" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4 overflow-hidden bg-white">
+          {/* CREWS TAB - REMOVED */}
+          <TabsContent value="crews" className="hidden">
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Add New Crew</Label>
               <div className="flex gap-2">

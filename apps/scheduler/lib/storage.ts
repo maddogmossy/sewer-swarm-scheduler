@@ -48,6 +48,18 @@ import {
     try {
       return await operation();
     } catch (error: any) {
+      // Log the FULL error details server-side for debugging (this goes to Vercel logs)
+      console.error(`[handleDbError] ${operationName} failed:`, {
+        operation: operationName,
+        errorCode: error?.code,
+        errorName: error?.name,
+        errorMessage: error?.message,
+        errorCause: error?.cause,
+        errorStack: error?.stack?.substring(0, 500),
+        // Log the full error object (for server-side debugging only)
+        fullError: JSON.stringify(error, Object.getOwnPropertyNames(error)).substring(0, 1000),
+      });
+      
       // Check for DNS/connection errors
       if (error?.code === 'ENOTFOUND' || error?.cause?.code === 'ENOTFOUND') {
         const hostname = error?.hostname || error?.cause?.hostname || 'unknown';
@@ -79,8 +91,10 @@ import {
       // Re-throw with context for other errors, but don't expose SQL query details
       const errorMessage = error?.message || error?.cause?.message || 'Unknown database error';
       
-      // Don't expose SQL query details to users
+      // Don't expose SQL query details to users, but log them server-side
       if (errorMessage.includes("Failed query:") || errorMessage.includes("params:")) {
+        // Log the actual SQL error for debugging (server-side only)
+        console.error(`[handleDbError] SQL error details (hidden from client):`, errorMessage.substring(0, 500));
         // Return a generic error message instead
         throw new Error(`Database operation failed. Please try again or contact support if the problem persists.`);
       }

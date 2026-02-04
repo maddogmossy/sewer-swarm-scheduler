@@ -168,24 +168,7 @@ export function CalendarGrid({
   
   const [crewModal, setCrewModal] = useState<{ isOpen: boolean, mode: 'create' | 'edit', id?: string, name: string, shift: 'day' | 'night' }>({ isOpen: false, mode: 'create', name: "", shift: 'day' });
 
-  // Auto-generate name when shift changes in Create mode
-  useEffect(() => {
-      if (crewModal.isOpen && crewModal.mode === 'create') {
-          const prefix = crewModal.shift === 'night' ? "Night" : "Day";
-          // Count existing crews of this shift type to find the next number
-          // Simple heuristic: Count how many start with the prefix
-          const count = crews.filter(c => c.shift === crewModal.shift || (crewModal.shift === 'night' ? c.name.toLowerCase().includes("night") : !c.name.toLowerCase().includes("night"))).length;
-          
-          // Only auto-fill if name is empty or matches the pattern of the OTHER shift
-          const otherPrefix = crewModal.shift === 'night' ? "Day" : "Night";
-          if (!crewModal.name || crewModal.name.startsWith(otherPrefix)) {
-               const numberWords = ["One", "Two", "Three", "Four", "Five", "Six", "Seven", "Eight", "Nine", "Ten"];
-               const nextNumWord = numberWords[count] || (count + 1).toString();
-               
-               setCrewModal(prev => ({ ...prev, name: `${prefix} ${nextNumWord}` }));
-          }
-      }
-  }, [crewModal.shift, crewModal.isOpen, crewModal.mode]); // Depend on shift change
+  // Removed auto-generate name useEffect - create mode is no longer used (users use + button directly)
   
   const [resourcesModalOpen, setResourcesModalOpen] = useState(false);
   const [smartSearchOpen, setSmartSearchOpen] = useState(false);
@@ -406,36 +389,109 @@ export function CalendarGrid({
     const nextWeekStart = addDays(viewedWeekEnd, 1); // Start of the week after the viewed week
     
     // Only check operatives, assistants, and jobs - notes don't prevent deletion
-    // Only check items in FUTURE weeks (after viewed week ends) - current week items are allowed
+    // CRITICAL: Only check items in FUTURE weeks (after viewed week ends)
+    // Items from the viewed week or past weeks should NEVER be moved or deleted
+    const viewedWeekEndDay = startOfDay(viewedWeekEnd);
+    const nextWeekStartDay = startOfDay(nextWeekStart);
+    
     const crewItems = items.filter(item => {
       if (item.crewId !== crewId) return false;
       if (item.type !== 'operative' && item.type !== 'assistant' && item.type !== 'job') return false;
       
       const itemDate = startOfDay(new Date(item.date));
-      // Only include items on or after the start of the next week (future weeks only)
-      // Use >= to include items starting from the day after viewedWeekEnd
-      return !isBefore(itemDate, nextWeekStart);
+      const viewedWeekStartDay = startOfDay(viewedWeekStart);
+      
+      // CRITICAL: Only include items that are STRICTLY AFTER the viewed week ends
+      // Items from the viewed week (viewedWeekStart to viewedWeekEnd) should NOT be included
+      // Items from past weeks should NOT be included
+      // Only items on or after nextWeekStart (the day after viewedWeekEnd) should be included
+      
+      // EXPLICIT EXCLUSION: Items from viewed week or before are NEVER included
+      // Check if item is in the viewed week (including viewedWeekEnd)
+      const isInViewedWeek = (isAfter(itemDate, viewedWeekStartDay) || isSameDay(itemDate, viewedWeekStartDay)) && 
+                            (isBefore(itemDate, viewedWeekEndDay) || isSameDay(itemDate, viewedWeekEndDay));
+      
+      // Check if item is before viewed week
+      const isBeforeViewedWeek = isBefore(itemDate, viewedWeekStartDay);
+      
+      // CRITICAL: If item is in viewed week OR before viewed week, EXCLUDE it
+      if (isInViewedWeek || isBeforeViewedWeek) {
+        // This item is from the viewed week or a past week - EXCLUDE it
+        return false;
+      }
+      
+      // Only include items that are strictly after viewedWeekEnd (not including viewedWeekEnd itself)
+      // OR on nextWeekStart (the day after viewedWeekEnd)
+      const isStrictlyAfterViewedWeek = isAfter(itemDate, viewedWeekEndDay);
+      const isOnNextWeekStart = isSameDay(itemDate, nextWeekStartDay);
+      
+      // Final check: item must be on or after nextWeekStart
+      const isOnOrAfterNextWeekStart = !isBefore(itemDate, nextWeekStartDay);
+      
+      return (isStrictlyAfterViewedWeek || isOnNextWeekStart) && isOnOrAfterNextWeekStart;
     });
     
     // Future items are items in future weeks (after viewed week)
     const futureItems = crewItems;
     
-    // Debug logging
-    console.log('Crew Delete Validation:', {
+    // Debug logging with explicit date checks
+    const allCrewItems = items.filter(i => i.crewId === crewId);
+    const viewedWeekStartDay = startOfDay(viewedWeekStart);
+    const allCrewItemDates = allCrewItems.map(i => {
+      const itemDate = startOfDay(new Date(i.date));
+      const isInViewedWeek = !isBefore(itemDate, viewedWeekStartDay) && !isAfter(itemDate, viewedWeekEndDay);
+      const isBeforeViewedWeek = isBefore(itemDate, viewedWeekStartDay);
+      const isAfterViewedWeek = isAfter(itemDate, viewedWeekEndDay);
+      const isOnNextWeekStart = isSameDay(itemDate, nextWeekStartDay);
+      const includedInValidation = crewItems.some(ci => ci.id === i.id);
+      
+      return {
+        type: i.type,
+        date: format(new Date(i.date), 'yyyy-MM-dd'),
+        dateObj: format(itemDate, 'yyyy-MM-dd'), // Convert to string for logging
+        isInViewedWeek,
+        isBeforeViewedWeek,
+        isAfterViewedWeek,
+        isOnNextWeekStart,
+        includedInValidation,
+        shouldBeExcluded: isInViewedWeek || isBeforeViewedWeek
+      };
+    });
+    
+    // Check for violations - items from current week should NEVER be included
+    const violations = allCrewItemDates.filter(item => 
+      (item.isInViewedWeek || item.isBeforeViewedWeek) && item.includedInValidation
+    );
+    
+    if (violations.length > 0) {
+      console.error('🚨 DATA PRESERVATION VIOLATION: Items from current/past weeks are in validation:', violations);
+    }
+    
+    console.log('🔍 Crew Delete Validation - DETAILED:', {
       crewId,
       crewName: crew.name,
-      viewedWeekStart: format(viewedWeekStart, 'yyyy-MM-dd'),
-      viewedWeekEnd: format(viewedWeekEnd, 'yyyy-MM-dd'),
-      nextWeekStart: format(nextWeekStart, 'yyyy-MM-dd'),
+      viewedWeekStart: format(viewedWeekStartDay, 'yyyy-MM-dd'),
+      viewedWeekEnd: format(viewedWeekEndDay, 'yyyy-MM-dd'),
+      nextWeekStart: format(nextWeekStartDay, 'yyyy-MM-dd'),
       viewDays,
       totalCrewItems: crewItems.length,
       futureItems: futureItems.length,
       futureItemDates: futureItems.map(i => format(new Date(i.date), 'yyyy-MM-dd')),
-      allCrewItemDates: crewItems.map(i => format(new Date(i.date), 'yyyy-MM-dd')),
-      allItemsForCrew: items.filter(i => i.crewId === crewId).map(i => ({
-        type: i.type,
-        date: format(new Date(i.date), 'yyyy-MM-dd')
-      }))
+      allCrewItems: allCrewItemDates,
+      violations: violations.length,
+      warning: 'Items from viewed week or past weeks should NOT be in futureItems',
+      // Add explicit date comparisons for debugging
+      dateComparisons: allCrewItems.map(i => {
+        const itemDate = startOfDay(new Date(i.date));
+        return {
+          date: format(new Date(i.date), 'yyyy-MM-dd'),
+          isAfterViewedWeekEnd: isAfter(itemDate, viewedWeekEndDay),
+          isBeforeViewedWeekEnd: isBefore(itemDate, viewedWeekEndDay),
+          isSameAsViewedWeekEnd: isSameDay(itemDate, viewedWeekEndDay),
+          isOnOrAfterNextWeekStart: !isBefore(itemDate, nextWeekStartDay),
+          shouldBeIncluded: crewItems.some(ci => ci.id === i.id)
+        };
+      })
     });
     
     // If there are items in future weeks (after viewed week), ask if user wants to move them up
@@ -489,11 +545,181 @@ export function CalendarGrid({
           if (moveItemsUp) {
             // Only move future items (after viewed week) to the previous crew
             // futureItems already contains only items after viewedWeekEnd
-            futureItems.forEach(item => {
-              onItemUpdate({ ...item, crewId: previousCrew.id });
+            // CRITICAL SAFEGUARD: Triple-check to ensure we NEVER move items from current week or past weeks
+            const viewedWeekStartDay = startOfDay(viewedWeekStart);
+            const viewedWeekEndDay = startOfDay(viewedWeekEnd);
+            const nextWeekStartDay = startOfDay(nextWeekStart);
+            
+            // FIRST: Check if ANY items in futureItems are from current/past weeks (this should never happen)
+            const invalidItems = futureItems.filter(item => {
+              const itemDate = startOfDay(new Date(item.date));
+              const isInViewedWeek = (isAfter(itemDate, viewedWeekStartDay) || isSameDay(itemDate, viewedWeekStartDay)) && 
+                                    (isBefore(itemDate, viewedWeekEndDay) || isSameDay(itemDate, viewedWeekEndDay));
+              const isBeforeViewedWeek = isBefore(itemDate, viewedWeekStartDay);
+              const isOnOrBeforeViewedWeekEnd = isBefore(itemDate, viewedWeekEndDay) || isSameDay(itemDate, viewedWeekEndDay);
+              return isInViewedWeek || isBeforeViewedWeek || isOnOrBeforeViewedWeekEnd;
             });
+            
+            if (invalidItems.length > 0) {
+              console.error('🚨 CRITICAL ERROR: futureItems contains items from current/past weeks! This should never happen:', {
+                invalidItems: invalidItems.map(i => ({
+                  id: i.id,
+                  date: format(new Date(i.date), 'yyyy-MM-dd'),
+                  type: i.type
+                })),
+                viewedWeekStart: format(viewedWeekStartDay, 'yyyy-MM-dd'),
+                viewedWeekEnd: format(viewedWeekEndDay, 'yyyy-MM-dd'),
+                message: 'BLOCKING ALL ITEM MOVES - Items remain with archived crew'
+              });
+              // DO NOT MOVE ANY ITEMS - there's a bug in the validation
+              onCrewDelete(crewId);
+              setCrewDeleteDialog(null);
+              return;
+            }
+            
+            const itemsToMove = futureItems.filter(item => {
+              const itemDate = startOfDay(new Date(item.date));
+              
+              // CRITICAL SAFEGUARDS: Only move items that are STRICTLY AFTER the viewed week ends
+              // This ensures items from the viewed week (viewedWeekStart to viewedWeekEnd) are NOT moved
+              // This ensures items from past weeks are NOT moved
+              
+              // SAFETY CHECK 1: Check if item is in the viewed week (including viewedWeekEnd)
+              const isInViewedWeek = (isAfter(itemDate, viewedWeekStartDay) || isSameDay(itemDate, viewedWeekStartDay)) && 
+                                    (isBefore(itemDate, viewedWeekEndDay) || isSameDay(itemDate, viewedWeekEndDay));
+              
+              // SAFETY CHECK 2: Check if item is before viewed week
+              const isBeforeViewedWeek = isBefore(itemDate, viewedWeekStartDay);
+              
+              // SAFETY CHECK 3: Item must be strictly after viewedWeekEnd (not including viewedWeekEnd)
+              const isStrictlyAfterViewedWeek = isAfter(itemDate, viewedWeekEndDay);
+              
+              // SAFETY CHECK 4: Item can be on nextWeekStart (the day after viewedWeekEnd)
+              const isOnNextWeekStart = isSameDay(itemDate, nextWeekStartDay);
+              
+              // SAFETY CHECK 5: Double-check - item must be on or after nextWeekStart
+              const isOnOrAfterNextWeekStart = !isBefore(itemDate, nextWeekStartDay);
+              
+              // CRITICAL: If item is in viewed week OR before viewed week, BLOCK it
+              if (isInViewedWeek || isBeforeViewedWeek) {
+                console.error('🚨 BLOCKED: Attempted to move item from viewed/past week - DATA PRESERVATION VIOLATION:', {
+                  itemId: item.id,
+                  itemDate: format(itemDate, 'yyyy-MM-dd'),
+                  viewedWeekStart: format(viewedWeekStartDay, 'yyyy-MM-dd'),
+                  viewedWeekEnd: format(viewedWeekEndDay, 'yyyy-MM-dd'),
+                  nextWeekStart: format(nextWeekStartDay, 'yyyy-MM-dd'),
+                  type: item.type,
+                  isInViewedWeek,
+                  isBeforeViewedWeek,
+                  message: 'This item will NOT be moved - it remains in the database associated with the archived crew'
+                });
+                return false;
+              }
+              
+              if (!isOnOrAfterNextWeekStart) {
+                console.error('🚨 BLOCKED: Item is before nextWeekStart - DATA PRESERVATION VIOLATION:', {
+                  itemId: item.id,
+                  itemDate: format(itemDate, 'yyyy-MM-dd'),
+                  nextWeekStart: format(nextWeekStartDay, 'yyyy-MM-dd'),
+                  type: item.type
+                });
+                return false;
+              }
+              
+              // Only return true if item is strictly after viewedWeekEnd OR on nextWeekStart
+              return (isStrictlyAfterViewedWeek || isOnNextWeekStart) && isOnOrAfterNextWeekStart;
+            });
+            
+            // FINAL SAFETY CHECK: Verify no items from current/past weeks are being moved
+            // This is the LAST line of defense - even if validation passed, we double-check here
+            const itemsFromCurrentOrPastWeek = itemsToMove.filter(item => {
+              const itemDate = startOfDay(new Date(item.date));
+              
+              // Explicit check: Is item in the viewed week?
+              const isInViewedWeek = (isAfter(itemDate, viewedWeekStartDay) || isSameDay(itemDate, viewedWeekStartDay)) && 
+                                    (isBefore(itemDate, viewedWeekEndDay) || isSameDay(itemDate, viewedWeekEndDay));
+              
+              // Explicit check: Is item before viewed week?
+              const isBeforeViewedWeek = isBefore(itemDate, viewedWeekStartDay);
+              
+              // Explicit check: Is item on or before viewedWeekEnd?
+              const isOnOrBeforeViewedWeekEnd = isBefore(itemDate, viewedWeekEndDay) || isSameDay(itemDate, viewedWeekEndDay);
+              
+              // If ANY of these are true, the item should NOT be moved
+              return isInViewedWeek || isBeforeViewedWeek || isOnOrBeforeViewedWeekEnd;
+            });
+            
+            if (itemsFromCurrentOrPastWeek.length > 0) {
+              console.error('🚨 CRITICAL: Attempted to move items from current/past weeks - BLOCKING ALL:', {
+                items: itemsFromCurrentOrPastWeek.map(i => ({
+                  id: i.id,
+                  date: format(new Date(i.date), 'yyyy-MM-dd'),
+                  type: i.type
+                })),
+                viewedWeekStart: format(viewedWeekStartDay, 'yyyy-MM-dd'),
+                viewedWeekEnd: format(viewedWeekEndDay, 'yyyy-MM-dd'),
+                nextWeekStart: format(nextWeekStartDay, 'yyyy-MM-dd'),
+                message: 'These items will NOT be moved - they remain in the database associated with the archived crew'
+              });
+              
+              // DO NOT MOVE ANY ITEMS FROM CURRENT/PAST WEEKS
+              // Only move items that are TRULY in future weeks (strictly after viewedWeekEnd)
+              const safeItemsToMove = itemsToMove.filter(item => {
+                const itemDate = startOfDay(new Date(item.date));
+                
+                // Item must be strictly after viewedWeekEnd (not including viewedWeekEnd)
+                const isStrictlyAfterViewedWeekEnd = isAfter(itemDate, viewedWeekEndDay);
+                
+                // Item can be on nextWeekStart
+                const isOnNextWeekStart = isSameDay(itemDate, nextWeekStartDay);
+                
+                // Final check: item must be on or after nextWeekStart
+                const isOnOrAfterNextWeekStart = !isBefore(itemDate, nextWeekStartDay);
+                
+                return (isStrictlyAfterViewedWeekEnd || isOnNextWeekStart) && isOnOrAfterNextWeekStart;
+              });
+              
+              console.log('✅ Moving only safe items (future weeks only):', {
+                originalCount: itemsToMove.length,
+                safeCount: safeItemsToMove.length,
+                blockedCount: itemsFromCurrentOrPastWeek.length,
+                blockedItems: itemsFromCurrentOrPastWeek.map(i => format(new Date(i.date), 'yyyy-MM-dd')),
+                safeItems: safeItemsToMove.map(i => format(new Date(i.date), 'yyyy-MM-dd'))
+              });
+              
+              // Only move the safe items
+              safeItemsToMove.forEach(item => {
+                onItemUpdate({ ...item, crewId: previousCrew.id });
+              });
+            } else {
+              // Log what we're moving for debugging
+              console.log('✅ Moving items to previous crew (all items verified as future weeks):', {
+                totalFutureItems: futureItems.length,
+                itemsToMove: itemsToMove.length,
+                viewedWeekStart: format(viewedWeekStartDay, 'yyyy-MM-dd'),
+                viewedWeekEnd: format(viewedWeekEndDay, 'yyyy-MM-dd'),
+                nextWeekStart: format(nextWeekStartDay, 'yyyy-MM-dd'),
+                itemsBeingMoved: itemsToMove.map(i => ({
+                  id: i.id,
+                  date: format(new Date(i.date), 'yyyy-MM-dd'),
+                  type: i.type
+                }))
+              });
+              
+              itemsToMove.forEach(item => {
+                onItemUpdate({ ...item, crewId: previousCrew.id });
+              });
+            }
           }
-          // Delete the crew
+          // CRITICAL: Delete the crew (this only archives it - items remain in database)
+          // The backend archiveCrew function ONLY sets archivedAt - it does NOT delete any schedule items
+          // All items remain in the database:
+          // - Items from past weeks: Preserved in database, associated with archived crew
+          // - Items from current week: Preserved in database, associated with archived crew  
+          // - Items from future weeks: Moved to previous crew (if user confirmed) OR preserved with archived crew
+          // 
+          // The database schema has onDelete: "cascade", but since we archive (not delete) the crew,
+          // the cascade does NOT trigger. All historical and current data is preserved.
           onCrewDelete(crewId);
           setCrewDeleteDialog(null);
         }
@@ -501,7 +727,9 @@ export function CalendarGrid({
       return;
     }
     
-    // No items, safe to delete
+    // No future items, safe to delete (archive) the crew
+    // CRITICAL: This only archives the crew - all items remain in the database
+    // Items from current week and past weeks are preserved and associated with the archived crew
     onCrewDelete(crewId);
   };
 
@@ -909,14 +1137,24 @@ export function CalendarGrid({
     }
   };
 
-  const handleCrewSubmit = () => {
+  const handleCrewSubmit = async () => {
     if (crewModal.name.trim()) {
-        if (crewModal.mode === 'create') {
-            onCrewCreate(crewModal.name, crewModal.shift);
-        } else if (crewModal.mode === 'edit' && crewModal.id) {
-            onCrewUpdate(crewModal.id, crewModal.name, crewModal.shift);
+        try {
+            if (crewModal.mode === 'create') {
+                // onCrewCreate may be async, so we await it
+                await Promise.resolve(onCrewCreate(crewModal.name, crewModal.shift));
+                // Close modal after successful creation
+                setCrewModal({ isOpen: false, mode: 'create', name: "", shift: 'day' });
+            } else if (crewModal.mode === 'edit' && crewModal.id) {
+                // onCrewUpdate may be async, so we await it
+                await Promise.resolve(onCrewUpdate(crewModal.id, crewModal.name, crewModal.shift));
+                // Close modal after successful update
+                setCrewModal({ isOpen: false, mode: 'create', name: "", shift: 'day' });
+            }
+        } catch (error) {
+            // If there's an error, keep the modal open so user can retry
+            console.error('Error creating/updating crew:', error);
         }
-        setCrewModal({ isOpen: false, mode: 'create', name: "", shift: 'day' });
     }
   };
 
@@ -1073,17 +1311,7 @@ export function CalendarGrid({
                     <tr>
                         <th className="w-14 p-3 border-b border-r border-slate-200 bg-slate-50 text-center font-semibold text-slate-600 text-sm">
                             <div className="flex items-center justify-center">
-                                {!isReadOnly && (
-                                    <Button 
-                                        size="icon" 
-                                        variant="ghost" 
-                                        className="h-6 w-6 p-0 hover:bg-slate-100"
-                                        onClick={() => setCrewModal({ isOpen: true, mode: 'create', name: "", shift: 'day' })}
-                                        title="Add new crew"
-                                    >
-                                        <Plus className="w-4 h-4 text-slate-500" />
-                                    </Button>
-                                )}
+                                {/* Removed - users use the + button in crew rows now */}
                             </div>
                         </th>
                         {weekDays.map((day) => {
@@ -1203,10 +1431,19 @@ export function CalendarGrid({
                                             <Button
                                                 size="icon"
                                                 variant="ghost"
-                                                className="h-6 w-6 rounded-full hover:bg-indigo-100 hover:text-indigo-600 text-indigo-400"
+                                                className="h-6 w-6 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setCrewModal({ isOpen: true, mode: 'create', name: "", shift: 'night' });
+                                                    // Directly create crew without modal
+                                                    const prefix = "Night";
+                                                    const depotId = crew.depotId;
+                                                    const sameShiftCrews = crews.filter(c => 
+                                                        (c.shift === 'night' || c.name.toLowerCase().includes("night")) && 
+                                                        c.depotId === depotId
+                                                    );
+                                                    const count = sameShiftCrews.length;
+                                                    const generatedName = `${prefix} ${count + 1}`;
+                                                    onCrewCreate(generatedName, 'night');
                                                 }}
                                                 title="Add Night Crew"
                                             >
@@ -1422,10 +1659,19 @@ export function CalendarGrid({
                                             <Button
                                                 size="icon"
                                                 variant="ghost"
-                                                className="h-6 w-6 rounded-full hover:bg-amber-100 hover:text-amber-600 text-amber-400"
+                                                className="h-6 w-6 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100"
                                                 onClick={(e) => {
                                                     e.stopPropagation();
-                                                    setCrewModal({ isOpen: true, mode: 'create', name: "", shift: 'day' });
+                                                    // Directly create crew without modal
+                                                    const prefix = "Day";
+                                                    const depotId = crew.depotId;
+                                                    const sameShiftCrews = crews.filter(c => 
+                                                        (c.shift === 'day' || !c.name.toLowerCase().includes("night")) && 
+                                                        c.depotId === depotId
+                                                    );
+                                                    const count = sameShiftCrews.length;
+                                                    const generatedName = `${prefix} ${count + 1}`;
+                                                    onCrewCreate(generatedName, 'day');
                                                 }}
                                                 title="Add Day Crew"
                                             >
@@ -1778,77 +2024,44 @@ export function CalendarGrid({
       />
 
       {/* Crew Modal */}
-      <Dialog open={crewModal.isOpen} onOpenChange={(open) => setCrewModal(prev => ({ ...prev, isOpen: open }))}>
-        <DialogContent className="sm:max-w-[425px] bg-white text-slate-900">
-            <DialogHeader>
-                <DialogTitle>{crewModal.mode === 'create' ? 'Add New Crew' : 'Edit Crew'}</DialogTitle>
-            </DialogHeader>
-            
-            {crewModal.mode === 'create' ? (
-               <div className="py-4 flex gap-4">
-                  <Button 
-                    onClick={() => onCrewCreate(
-                       (() => {
-                           const prefix = "Day";
-                           const count = crews.filter(c => c.shift === 'day' || !c.name.toLowerCase().includes("night")).length;
-                           return `${prefix} ${count + 1}`;
-                       })(), 
-                       'day'
-                    )} 
-                    className="flex-1 h-24 flex flex-col gap-2 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200"
-                  >
-                    <Sun className="w-8 h-8" />
-                    <span className="font-semibold text-lg">Add Day Crew</span>
+      {/* Edit Crew Dialog - Create mode removed, users use the + button now */}
+      {crewModal.mode === 'edit' && (
+        <Dialog open={crewModal.isOpen} onOpenChange={(open) => setCrewModal(prev => ({ ...prev, isOpen: open }))}>
+          <DialogContent className="sm:max-w-[425px] bg-white text-slate-900">
+              <DialogHeader>
+                  <DialogTitle>Edit Crew</DialogTitle>
+              </DialogHeader>
+              
+              <div className="grid gap-4 py-4">
+                  <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="name" className="text-right">Name</Label>
+                      <Input id="name" value={crewModal.name} onChange={(e) => setCrewModal(prev => ({ ...prev, name: e.target.value }))} className="col-span-3" />
+                  </div>
+                  <div className="grid grid-cols-4 items-center gap-4">
+                      <Label htmlFor="shift" className="text-right">Shift</Label>
+                      <Select 
+                          value={crewModal.shift} 
+                          onValueChange={(val) => setCrewModal(prev => ({ ...prev, shift: val as 'day' | 'night' }))}
+                      >
+                          <SelectTrigger className="col-span-3">
+                              <SelectValue placeholder="Select shift type" />
+                          </SelectTrigger>
+                          <SelectContent className="bg-white">
+                              <SelectItem value="day">Day Shift</SelectItem>
+                              <SelectItem value="night">Night Shift</SelectItem>
+                          </SelectContent>
+                      </Select>
+                  </div>
+              </div>
+              <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setCrewModal(prev => ({ ...prev, isOpen: false }))}>Cancel</Button>
+                  <Button type="submit" onClick={handleCrewSubmit} className="bg-blue-600 text-white hover:bg-blue-700">
+                      Save Changes
                   </Button>
-                  
-                  <Button 
-                    onClick={() => onCrewCreate(
-                       (() => {
-                           const prefix = "Night";
-                           const count = crews.filter(c => c.shift === 'night' || c.name.toLowerCase().includes("night")).length;
-                           return `${prefix} ${count + 1}`;
-                       })(), 
-                       'night'
-                    )}
-                    className="flex-1 h-24 flex flex-col gap-2 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200"
-                  >
-                    <Moon className="w-8 h-8" />
-                    <span className="font-semibold text-lg">Add Night Crew</span>
-                  </Button>
-               </div>
-            ) : (
-                <>
-                    <div className="grid gap-4 py-4">
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="name" className="text-right">Name</Label>
-                            <Input id="name" value={crewModal.name} onChange={(e) => setCrewModal(prev => ({ ...prev, name: e.target.value }))} className="col-span-3" />
-                        </div>
-                        <div className="grid grid-cols-4 items-center gap-4">
-                            <Label htmlFor="shift" className="text-right">Shift</Label>
-                            <Select 
-                                value={crewModal.shift} 
-                                onValueChange={(val) => setCrewModal(prev => ({ ...prev, shift: val as 'day' | 'night' }))}
-                            >
-                                <SelectTrigger className="col-span-3">
-                                    <SelectValue placeholder="Select shift type" />
-                                </SelectTrigger>
-                                <SelectContent className="bg-white">
-                                    <SelectItem value="day">Day Shift</SelectItem>
-                                    <SelectItem value="night">Night Shift</SelectItem>
-                                </SelectContent>
-                            </Select>
-                        </div>
-                    </div>
-                    <DialogFooter>
-                        <Button type="button" variant="outline" onClick={() => setCrewModal(prev => ({ ...prev, isOpen: false }))}>Cancel</Button>
-                        <Button type="submit" onClick={handleCrewSubmit} className="bg-blue-600 text-white hover:bg-blue-700">
-                            Save Changes
-                        </Button>
-                    </DialogFooter>
-                </>
-            )}
-        </DialogContent>
-      </Dialog>
+              </DialogFooter>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Resources Manager Modal */}
       <ResourcesModal 

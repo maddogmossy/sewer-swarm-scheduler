@@ -451,8 +451,15 @@ import {
     }
   
     async archiveCrew(id: string): Promise<Crew | undefined> {
-      // Just archive the crew - item moving/deletion is handled in the frontend
-      // This preserves all items (current week, past weeks, and future weeks that weren't moved)
+      // CRITICAL: Only archive the crew - NEVER delete schedule items
+      // This preserves ALL items in the database:
+      // - Items from past weeks (historical data - MUST be preserved)
+      // - Items from current week (working data - MUST be preserved)
+      // - Items from future weeks (will be moved by frontend if user confirms)
+      // 
+      // The database schema has onDelete: "cascade" on crewId, but since we're only
+      // archiving (setting archivedAt) and NOT deleting the crew row, the cascade
+      // will NOT trigger. All schedule items remain in the database.
       const result = await getDb().update(crews).set({ archivedAt: new Date() }).where(eq(crews.id, id)).returning();
       return result[0];
     }

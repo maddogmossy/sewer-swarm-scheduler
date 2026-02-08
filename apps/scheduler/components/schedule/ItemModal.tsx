@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { useForm } from "react-hook-form";
+import { useForm, Controller } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
@@ -161,7 +161,8 @@ function NoteForm({ open, onOpenChange, onSubmit, initialData }: any) {
                 noteContent: initialData?.noteContent || "",
             });
         }
-    }, [initialData, open, form]);
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [initialData?.noteContent, open]);
 
     return (
         <Dialog open={open} onOpenChange={onOpenChange}>
@@ -296,7 +297,8 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
             color: initialData?.color || "blue",
         });
     }
-  }, [initialData, open, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData?.customer, initialData?.jobNumber, initialData?.address, initialData?.projectManager, initialData?.startTime, initialData?.onsiteTime, initialData?.duration, initialData?.color, initialData?.jobStatus, open]);
 
   const selectedColor = form.watch("color");
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
@@ -897,7 +899,8 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
             vehicleId: initialData?.vehicleId || "",
         });
     }
-  }, [initialData, open, form]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialData?.employeeId, initialData?.vehicleId, open]);
 
   // Check for conflicts
   const targetDate = initialData?.date ? new Date(initialData.date) : new Date();
@@ -959,54 +962,67 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
             <div className="space-y-4">
                 <div className="space-y-2">
                     <Label>Employee</Label>
-                    <Select 
-                        onValueChange={(val) => form.setValue("employeeId", val)} 
-                        defaultValue={form.getValues("employeeId") || initialData?.employeeId}
-                    >
-                        <SelectTrigger><SelectValue placeholder="Select Person" /></SelectTrigger>
-                        <SelectContent className="bg-white">
-                            {employees
-                                .filter((e: any) => {
-                                    // Strict role filtering
-                                    if (type === 'operative') return e.jobRole === 'operative';
-                                    if (type === 'assistant') return e.jobRole === 'assistant';
-                                    return true;
-                                })
-                                .sort((a: any, b: any) => a.name.localeCompare(b.name))
-                                .map((e: any) => {
-                                const isAssigned = assignedEmployeeIds.includes(e.id);
-                                const isUnavailable = e.status !== 'active';
-                                return (
-                                    <SelectItem 
-                                        key={e.id} 
-                                        value={e.id}
-                                        disabled={isAssigned || isUnavailable}
-                                        className={cn(
-                                            (isAssigned || isUnavailable) && "opacity-50 bg-slate-50 text-slate-400 cursor-not-allowed"
-                                        )}
-                                    >
-                                        <div className="flex items-center justify-between w-full gap-2 min-w-[200px]">
-                                            <span>{e.name}</span>
-                                            <div className="flex items-center gap-2">
-                                                {isUnavailable && <span className="text-xs text-red-500 font-medium">({e.status})</span>}
-                                                {isAssigned && <span className="text-xs text-slate-400 font-medium italic">(Already Scheduled)</span>}
-                                            </div>
-                                        </div>
-                                    </SelectItem>
-                                );
-                            })}
-                        </SelectContent>
-                    </Select>
+                    <Controller
+                        name="employeeId"
+                        control={form.control}
+                        render={({ field }) => (
+                            <Select 
+                                value={field.value || ""} 
+                                onValueChange={field.onChange}
+                            >
+                                <SelectTrigger><SelectValue placeholder="Select Person" /></SelectTrigger>
+                                <SelectContent className="bg-white">
+                                    {employees
+                                        .filter((e: any) => {
+                                            // Strict role filtering
+                                            if (type === 'operative') return e.jobRole === 'operative';
+                                            if (type === 'assistant') return e.jobRole === 'assistant';
+                                            return true;
+                                        })
+                                        .sort((a: any, b: any) => a.name.localeCompare(b.name))
+                                        .map((e: any) => {
+                                        const isAssigned = assignedEmployeeIds.includes(e.id);
+                                        const isUnavailable = e.status !== 'active';
+                                        return (
+                                            <SelectItem 
+                                                key={e.id} 
+                                                value={e.id}
+                                                disabled={isAssigned || isUnavailable}
+                                                className={cn(
+                                                    (isAssigned || isUnavailable) && "opacity-50 bg-slate-50 text-slate-400 cursor-not-allowed"
+                                                )}
+                                            >
+                                                <div className="flex items-center justify-between w-full gap-2 min-w-[200px]">
+                                                    <span>{e.name}</span>
+                                                    <div className="flex items-center gap-2">
+                                                        {isUnavailable && <span className="text-xs text-red-500 font-medium">({e.status})</span>}
+                                                        {isAssigned && <span className="text-xs text-slate-400 font-medium italic">(Already Scheduled)</span>}
+                                                    </div>
+                                                </div>
+                                            </SelectItem>
+                                        );
+                                    })}
+                                </SelectContent>
+                            </Select>
+                        )}
+                    />
+                    {form.formState.errors.employeeId && (
+                        <p className="text-sm text-red-500">{form.formState.errors.employeeId.message as string}</p>
+                    )}
                 </div>
 
                 {type === 'operative' && (
                     <div className="space-y-2">
                         <Label>Vehicle</Label>
-                        <Select 
-                            onValueChange={(val) => form.setValue("vehicleId", val)} 
-                            defaultValue={form.getValues("vehicleId") || initialData?.vehicleId}
-                        >
-                            <SelectTrigger><SelectValue placeholder="Select Vehicle" /></SelectTrigger>
+                        <Controller
+                            name="vehicleId"
+                            control={form.control}
+                            render={({ field }) => (
+                                <Select 
+                                    value={field.value || ""} 
+                                    onValueChange={field.onChange}
+                                >
+                                    <SelectTrigger><SelectValue placeholder="Select Vehicle" /></SelectTrigger>
                             <SelectContent className="bg-white">
                                 {Object.entries(groupedVehicles).sort(([typeA], [typeB]) => typeA.localeCompare(typeB)).map(([type, typeVehicles]) => (
                                     <div key={type}>
@@ -1043,7 +1059,9 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                                     </div>
                                 ))}
                             </SelectContent>
-                        </Select>
+                                </Select>
+                            )}
+                        />
                     </div>
                 )}
             </div>

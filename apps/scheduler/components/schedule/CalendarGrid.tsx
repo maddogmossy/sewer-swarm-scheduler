@@ -378,10 +378,21 @@ export function CalendarGrid({
   const handleSelection = (type: 'job' | 'operative' | 'assistant' | 'note') => {
     if (selectionMenu) {
         if (isBefore(startOfDay(selectionMenu.date), startOfDay(new Date()))) return;
+        
+        // For jobs, create a free/ghost job by default
+        const initialData = type === 'job' ? {
+            jobStatus: 'free',
+            customer: 'Free',
+            address: 'Free',
+            startTime: '08:00',
+            duration: 8,
+        } : undefined;
+        
         setModalState({ 
             isOpen: true, 
             type, 
-            target: { date: selectionMenu.date, crewId: selectionMenu.crewId } 
+            target: { date: selectionMenu.date, crewId: selectionMenu.crewId },
+            data: initialData
         });
         setSelectionMenu(null);
     }
@@ -872,6 +883,39 @@ export function CalendarGrid({
     );
   };
 
+  const handleMoveDate = (newDate: Date, moveGroup: boolean) => {
+    if (!modalState.data?.id) return;
+    
+    const itemToMove = items.find(i => i.id === modalState.data?.id);
+    if (!itemToMove) return;
+    
+    const newDateStart = startOfDay(newDate);
+    const oldDateStart = startOfDay(new Date(itemToMove.date));
+    const dateDiff = Math.round((newDateStart.getTime() - oldDateStart.getTime()) / (1000 * 60 * 60 * 24));
+    
+    if (moveGroup && itemToMove.type === 'job' && itemToMove.jobNumber) {
+      // Move all items with the same job number
+      const groupItems = findItemsWithSameJobNumber(itemToMove);
+      groupItems.forEach(groupItem => {
+        const groupItemDate = new Date(groupItem.date);
+        const newGroupDate = addDays(groupItemDate, dateDiff);
+        // Only move if the new date is not in the past
+        if (!isBefore(startOfDay(newGroupDate), startOfDay(new Date()))) {
+          onItemUpdate({ ...groupItem, date: newGroupDate });
+        }
+      });
+      // Also move the current item
+      if (!isBefore(startOfDay(newDate), startOfDay(new Date()))) {
+        onItemUpdate({ ...itemToMove, date: newDate });
+      }
+    } else {
+      // Move just this one item
+      if (!isBefore(startOfDay(newDate), startOfDay(new Date()))) {
+        onItemUpdate({ ...itemToMove, date: newDate });
+      }
+    }
+  };
+
   const handleDeleteItem = (id: string, mode: 'single' | 'week' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year' = 'single') => {
       if (isReadOnly) return;
       
@@ -1040,8 +1084,10 @@ export function CalendarGrid({
     setSelectedItemIds(new Set());
   };
 
-  const handleModalSubmit = (data: any, applyToWeek: boolean = false) => {
-    if (modalState.data) {
+  const handleModalSubmit = (data: any, applyPeriod: 'none' | 'week' | 'month' | '6months' | '12months' = 'none') => {
+    // Only treat as UPDATE if modalState.data has an id (existing item)
+    // If modalState.data exists but has no id, it's a CREATE with initial defaults
+    if (modalState.data && modalState.data.id) {
         // UPDATE
         const itemDate = startOfDay(new Date(modalState.data.date));
         const today = startOfDay(new Date());
@@ -1121,26 +1167,40 @@ export function CalendarGrid({
         
         onItemUpdate(updatedItem);
         
-        if (applyToWeek) {
-            // Apply changes to future occurrences in this week
+        if (applyPeriod !== 'none') {
+            // Calculate end date based on period
             const startDate = new Date(updatedItem.date);
-            const currentViewEnd = addDays(weekStart, viewDays - 1);
+            let endDate: Date;
+            
+            switch (applyPeriod) {
+                case 'week':
+                    endDate = addDays(weekStart, viewDays - 1);
+                    break;
+                case 'month':
+                    endDate = endOfMonth(startDate);
+                    break;
+                case '6months':
+                    endDate = addMonths(startDate, 6);
+                    break;
+                case '12months':
+                    endDate = addMonths(startDate, 12);
+                    break;
+                default:
+                    endDate = addDays(weekStart, viewDays - 1);
+            }
             
             items.forEach(i => {
                 if (i.id === updatedItem.id) return;
                 
                 const iDate = new Date(i.date);
-                const isFuture = isAfter(iDate, startDate) && (isBefore(iDate, currentViewEnd) || isSameDay(iDate, currentViewEnd));
+                const isFuture = isAfter(iDate, startDate) && (isBefore(iDate, endDate) || isSameDay(iDate, endDate));
                 
                 // Simplified logic: If it looks like part of the same "series" (Same Crew + Same Type), update it.
-                // This handles the "whole group" request by updating subsequent days.
                 if (isFuture && i.crewId === updatedItem.crewId && i.type === updatedItem.type) {
                     let isMatch = false;
                     
                     if (i.type === 'job') {
                          // Match if it shares the same Customer (before edit)
-                         // This assumes the user hasn't changed the customer yet, or we match loosely.
-                         // If "Apply to week" is checked, we assume the user wants to update the "slot" for this job.
                          if (i.customer === modalState.data?.customer) isMatch = true;
                     } else {
                         // For people, match the Employee ID
@@ -1154,26 +1214,39 @@ export function CalendarGrid({
             });
         }
         
-    } else if (modalState.target) {
-        // CREATE
-        // Ensure date is included - it's required
-        if (!modalState.target.date) {
-            console.error('[handleModalSubmit] Missing date in modalState.target:', modalState.target);
+    } else if (modalState.target || (modalState.data && !modalState.data.id)) {
+        // CREATE (either from target or from data without id)
+        // Get date and crewId from target or data
+        const createDate = modalState.target?.date || modalState.data?.date;
+        const createCrewId = modalState.target?.crewId || modalState.data?.crewId;
+        const createDepotId = modalState.target?.depotId || modalState.data?.depotId || "";
+        
+        if (!createDate) {
+            console.error('[handleModalSubmit] Missing date for create:', { target: modalState.target, data: modalState.data });
             return;
         }
+        
+        // Ensure jobStatus is set for jobs - if customer is 'Free' or empty, it's a free job
+        const isFreeJob = modalState.type === 'job' && (data.customer === 'Free' || !data.customer || data.customer.trim() === '');
         
         const baseItem = {
             id: Math.random().toString(36).substr(2, 9),
             type: modalState.type,
-            date: modalState.target.date,
-            crewId: modalState.target.crewId,
-            depotId: modalState.target.depotId || "",
-            ...data
+            date: createDate,
+            crewId: createCrewId,
+            depotId: createDepotId,
+            ...data,
+            // Override for free jobs to ensure they're marked correctly
+            ...(isFreeJob && modalState.type === 'job' ? {
+                jobStatus: 'free',
+                customer: 'Free',
+                address: 'Free'
+            } : {})
         };
         
         onItemCreate(baseItem);
         
-        // Auto-generate free jobs and add operative for remainder of week when operative + vehicle
+        // Auto-generate free jobs and add operative when operative + vehicle
         const isOperativeWithVehicle = 
             modalState.type === 'operative' && 
             data.employeeId && 
@@ -1184,16 +1257,36 @@ export function CalendarGrid({
             const vehicle = vehicles.find((v: any) => v.id === data.vehicleId);
             const vehicleColor = vehicle?.color || 'blue';
             
-            const startDate = new Date(modalState.target.date);
-            const currentViewEnd = addDays(weekStart, viewDays - 1);
+            const startDate = new Date(createDate);
+            
+            // Determine end date based on applyPeriod, default to week if not set
+            const periodToUse = applyPeriod !== 'none' ? applyPeriod : 'week';
+            let endDate: Date;
+            
+            switch (periodToUse) {
+                case 'week':
+                    endDate = addDays(weekStart, viewDays - 1);
+                    break;
+                case 'month':
+                    endDate = endOfMonth(startDate);
+                    break;
+                case '6months':
+                    endDate = addMonths(startDate, 6);
+                    break;
+                case '12months':
+                    endDate = addMonths(startDate, 12);
+                    break;
+                default:
+                    endDate = addDays(weekStart, viewDays - 1);
+            }
             
             // 1. Create free job on the same day (below the operative)
-            onItemCreate({
-                id: Math.random().toString(36).substr(2, 9),
-                type: 'job',
-                date: new Date(startDate),
-                crewId: modalState.target.crewId,
-                depotId: modalState.target.depotId || "",
+                onItemCreate({
+                    id: Math.random().toString(36).substr(2, 9),
+                    type: 'job',
+                    date: new Date(startDate),
+                    crewId: createCrewId,
+                    depotId: modalState.target?.depotId || modalState.data?.depotId || "",
                 jobStatus: 'free',
                 customer: 'Free',
                 address: 'Free',
@@ -1204,17 +1297,19 @@ export function CalendarGrid({
                 vehicleId: data.vehicleId,
             });
             
-            // 2. Add operative and free jobs for the remainder of the week
+            // 2. Add operative and free jobs for the selected period
             let nextDate = addDays(startDate, 1);
+            let safetyCounter = 0;
+            const MAX_ITEMS = 1000; // Safety limit
             
-            while (isSameDay(nextDate, currentViewEnd) || isBefore(nextDate, currentViewEnd)) {
+            while ((isSameDay(nextDate, endDate) || isBefore(nextDate, endDate)) && safetyCounter < MAX_ITEMS) {
                 // Create operative for this day
                 onItemCreate({
                     id: Math.random().toString(36).substr(2, 9),
                     type: modalState.type,
                     date: new Date(nextDate),
-                    crewId: modalState.target.crewId,
-                    depotId: modalState.target.depotId || "",
+                    crewId: createCrewId,
+                    depotId: modalState.target?.depotId || modalState.data?.depotId || "",
                     ...data
                 });
                 
@@ -1223,8 +1318,8 @@ export function CalendarGrid({
                     id: Math.random().toString(36).substr(2, 9),
                     type: 'job',
                     date: new Date(nextDate),
-                    crewId: modalState.target.crewId,
-                    depotId: modalState.target.depotId || "",
+                    crewId: createCrewId,
+                    depotId: createDepotId,
                     jobStatus: 'free',
                     customer: 'Free',
                     address: 'Free',
@@ -1236,23 +1331,45 @@ export function CalendarGrid({
                 });
                 
                 nextDate = addDays(nextDate, 1);
+                safetyCounter++;
             }
-        } else if (applyToWeek) {
-            // For non-operative items or operatives without vehicles, use the applyToWeek checkbox
-            const startDate = new Date(modalState.target.date);
-            const currentViewEnd = addDays(weekStart, viewDays - 1);
+        } else if (applyPeriod !== 'none') {
+            // For non-operative items or operatives without vehicles, use the applyPeriod checkbox
+            const startDate = new Date(createDate);
+            let endDate: Date;
+            
+            switch (applyPeriod) {
+                case 'week':
+                    endDate = addDays(weekStart, viewDays - 1);
+                    break;
+                case 'month':
+                    endDate = endOfMonth(startDate);
+                    break;
+                case '6months':
+                    endDate = addMonths(startDate, 6);
+                    break;
+                case '12months':
+                    endDate = addMonths(startDate, 12);
+                    break;
+                default:
+                    endDate = addDays(weekStart, viewDays - 1);
+            }
+            
             let nextDate = addDays(startDate, 1);
+            let safetyCounter = 0;
+            const MAX_ITEMS = 1000; // Safety limit
              
-            while (isSameDay(nextDate, currentViewEnd) || isBefore(nextDate, currentViewEnd)) {
+            while ((isSameDay(nextDate, endDate) || isBefore(nextDate, endDate)) && safetyCounter < MAX_ITEMS) {
                 onItemCreate({
                     id: Math.random().toString(36).substr(2, 9),
                     type: modalState.type,
                     date: new Date(nextDate),
-                    crewId: modalState.target.crewId,
-                    depotId: modalState.target.depotId || "",
+                    crewId: createCrewId,
+                    depotId: modalState.target?.depotId || modalState.data?.depotId || "",
                     ...data
                 });
                 nextDate = addDays(nextDate, 1);
+                safetyCounter++;
             }
         }
     }
@@ -2216,7 +2333,11 @@ export function CalendarGrid({
         onOpenChange={(isOpen) => setModalState(prev => ({ ...prev, isOpen }))}
         onSubmit={handleModalSubmit}
         type={modalState.type}
-        initialData={modalState.data || (modalState.target ? { date: modalState.target.date, crewId: modalState.target.crewId } : undefined)}
+        initialData={modalState.data || (modalState.target ? { 
+          date: modalState.target.date, 
+          crewId: modalState.target.crewId,
+          ...(modalState.type === 'job' && modalState.data ? modalState.data : {})
+        } : undefined)}
         employees={employees}
         vehicles={vehicles}
         items={items} // Pass items for conflict detection
@@ -2224,6 +2345,7 @@ export function CalendarGrid({
         colorLabels={colorLabels}
         isReadOnly={isReadOnly}
         onColorLabelUpdate={onColorLabelUpdate}
+        onMoveDate={handleMoveDate}
       />
 
       {/* Crew Modal */}

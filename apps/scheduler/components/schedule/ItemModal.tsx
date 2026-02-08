@@ -19,15 +19,39 @@ import { Checkbox } from "@/components/ui/checkbox";
 
 // ------------------- SCHEMAS -------------------
 
+// Base schema - all fields optional for free jobs, but if converting to booked job, customer and address are required
 const siteSchema = z.object({
-  customer: z.string().min(1, "Customer is required"),
+  customer: z.string().optional(),
   jobNumber: z.string().optional(),
-  address: z.string().min(1, "Address is required"),
+  address: z.string().optional(),
   projectManager: z.string().optional(),
   startTime: z.string().optional(), // Start time (e.g. 08:00)
   onsiteTime: z.string().optional(), // Onsite time (e.g. 09:00)
   duration: z.string().optional(), // Duration in hours (string input from form)
   color: z.string().default("blue"),
+}).superRefine((data, ctx) => {
+  // Only validate if user is trying to convert to a booked job (has customer or address)
+  const hasCustomer = data.customer && data.customer.trim() !== '' && data.customer !== 'Free';
+  const hasAddress = data.address && data.address.trim() !== '' && data.address !== 'Free';
+  
+  // If either customer or address is provided (and not 'Free'), both are required
+  if (hasCustomer || hasAddress) {
+    if (!hasCustomer) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Customer is required when converting to a booked job",
+        path: ["customer"],
+      });
+    }
+    if (!hasAddress) {
+      ctx.addIssue({
+        code: z.ZodIssueCode.custom,
+        message: "Address is required when converting to a booked job",
+        path: ["address"],
+      });
+    }
+  }
+  // If neither is provided, that's fine (free job - no validation needed)
 });
 
 const operativeSchema = z.object({
@@ -101,16 +125,17 @@ interface ItemModalProps {
   colorLabels?: Record<string, string>;
   onColorLabelUpdate?: (color: string, label: string) => void;
   isReadOnly?: boolean;
+  onMoveDate?: (newDate: Date, moveGroup: boolean) => void; // For moving jobs to a new date
 }
 
 const noteSchema = z.object({
   noteContent: z.string().min(1, "Note content is required"),
 });
 
-export function ItemModal({ open, onOpenChange, onSubmit, type, initialData, employees, vehicles, items, crews, colorLabels, onColorLabelUpdate, isReadOnly = false }: ItemModalProps) {
+export function ItemModal({ open, onOpenChange, onSubmit, type, initialData, employees, vehicles, items, crews, colorLabels, onColorLabelUpdate, isReadOnly = false, onMoveDate }: ItemModalProps) {
   // We conditionally render different forms based on type
   if (type === 'job') {
-    return <SiteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} colorLabels={colorLabels} onColorLabelUpdate={onColorLabelUpdate} isReadOnly={isReadOnly} />;
+    return <SiteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} colorLabels={colorLabels} onColorLabelUpdate={onColorLabelUpdate} isReadOnly={isReadOnly} onMoveDate={onMoveDate} items={items} />;
   }
   if (type === 'note') {
       return <NoteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} />;
@@ -121,7 +146,7 @@ export function ItemModal({ open, onOpenChange, onSubmit, type, initialData, emp
 // ------------------- NOTE FORM -------------------
 
 function NoteForm({ open, onOpenChange, onSubmit, initialData }: any) {
-    const [applyToWeek, setApplyToWeek] = useState(false);
+    const [applyPeriod, setApplyPeriod] = useState<'none' | 'week' | 'month' | '6months' | '12months'>('none');
     const form = useForm({
         resolver: zodResolver(noteSchema),
         defaultValues: {
@@ -131,7 +156,7 @@ function NoteForm({ open, onOpenChange, onSubmit, initialData }: any) {
 
     useEffect(() => {
         if (open) {
-            setApplyToWeek(false);
+            setApplyPeriod('none');
             form.reset({
                 noteContent: initialData?.noteContent || "",
             });
@@ -147,7 +172,7 @@ function NoteForm({ open, onOpenChange, onSubmit, initialData }: any) {
                         {initialData ? "Edit Note" : "Add Note"}
                     </DialogTitle>
                 </DialogHeader>
-                <form onSubmit={form.handleSubmit((data) => { onSubmit(data, applyToWeek); onOpenChange(false); form.reset(); })} className="space-y-4 mt-4">
+                <form onSubmit={form.handleSubmit((data) => { onSubmit(data, applyPeriod); onOpenChange(false); form.reset(); })} className="space-y-4 mt-4">
                     <div className="space-y-2">
                         <Label>Note Content</Label>
                         <Textarea 
@@ -158,14 +183,50 @@ function NoteForm({ open, onOpenChange, onSubmit, initialData }: any) {
                     </div>
 
                     <DialogFooter className="flex items-center justify-between sm:justify-between gap-4">
-                         <div className="flex items-center space-x-2">
-                            <Checkbox id="applyToWeek" checked={applyToWeek} onCheckedChange={(c) => setApplyToWeek(!!c)} />
-                            <label
-                                htmlFor="applyToWeek"
-                                className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                            >
-                                Apply to week?
-                            </label>
+                        <div className="flex flex-col gap-2">
+                            <div className="text-xs font-medium text-slate-600 mb-1">Apply to:</div>
+                            <div className="flex flex-wrap gap-3">
+                                <div className="flex items-center space-x-1.5">
+                                    <Checkbox 
+                                        id="applyWeekNote" 
+                                        checked={applyPeriod === 'week'} 
+                                        onCheckedChange={(c) => setApplyPeriod(c ? 'week' : 'none')} 
+                                    />
+                                    <label htmlFor="applyWeekNote" className="text-sm font-medium leading-none cursor-pointer">
+                                        Remainder of Week
+                                    </label>
+                                </div>
+                                <div className="flex items-center space-x-1.5">
+                                    <Checkbox 
+                                        id="applyMonthNote" 
+                                        checked={applyPeriod === 'month'} 
+                                        onCheckedChange={(c) => setApplyPeriod(c ? 'month' : 'none')} 
+                                    />
+                                    <label htmlFor="applyMonthNote" className="text-sm font-medium leading-none cursor-pointer">
+                                        Month
+                                    </label>
+                                </div>
+                                <div className="flex items-center space-x-1.5">
+                                    <Checkbox 
+                                        id="apply6MonthsNote" 
+                                        checked={applyPeriod === '6months'} 
+                                        onCheckedChange={(c) => setApplyPeriod(c ? '6months' : 'none')} 
+                                    />
+                                    <label htmlFor="apply6MonthsNote" className="text-sm font-medium leading-none cursor-pointer">
+                                        6 Months
+                                    </label>
+                                </div>
+                                <div className="flex items-center space-x-1.5">
+                                    <Checkbox 
+                                        id="apply12MonthsNote" 
+                                        checked={applyPeriod === '12months'} 
+                                        onCheckedChange={(c) => setApplyPeriod(c ? '12months' : 'none')} 
+                                    />
+                                    <label htmlFor="apply12MonthsNote" className="text-sm font-medium leading-none cursor-pointer">
+                                        12 Months
+                                    </label>
+                                </div>
+                            </div>
                         </div>
                         <div className="flex gap-2">
                             <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
@@ -180,8 +241,12 @@ function NoteForm({ open, onOpenChange, onSubmit, initialData }: any) {
 
 // ------------------- SITE FORM -------------------
 
-function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onColorLabelUpdate, isReadOnly = false }: any) {
-  const [applyToWeek, setApplyToWeek] = useState(false);
+function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onColorLabelUpdate, isReadOnly = false, onMoveDate, items = [] }: any) {
+  const [applyPeriod, setApplyPeriod] = useState<'none' | 'week' | 'month' | '6months' | '12months'>('none');
+  const [moveDateOpen, setMoveDateOpen] = useState(false);
+  const [newDate, setNewDate] = useState<Date | undefined>(undefined);
+  const [moveGroupDialogOpen, setMoveGroupDialogOpen] = useState(false);
+  const [pendingMoveDate, setPendingMoveDate] = useState<Date | null>(null);
   
   // Check if item is in the past (only allow color changes for past items)
   const isPastItem = initialData?.date ? isBefore(startOfDay(new Date(initialData.date)), startOfDay(new Date())) : false;
@@ -191,6 +256,15 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
   
   // In read-only mode, only allow editing job status for past jobs
   const isReadOnlyPastJob = isReadOnly && isPastItem && initialData?.id;
+  
+  // Check if this job is part of a group (same job number)
+  const groupItems = initialData?.id && initialData?.jobNumber ? items.filter((i: ScheduleItem) => 
+    i.type === 'job' && 
+    i.jobNumber === initialData.jobNumber && 
+    i.jobNumber !== undefined &&
+    i.id !== initialData.id
+  ) : [];
+  const isPartOfGroup = groupItems.length > 0;
   
   const form = useForm({
     resolver: zodResolver(siteSchema),
@@ -209,7 +283,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
   // Reset form when initialData changes or modal opens
   useEffect(() => {
     if (open) {
-        setApplyToWeek(false);
+        setApplyPeriod('none');
         const isFree = initialData?.jobStatus === 'free' || initialData?.customer === 'Free';
         form.reset({
             customer: isFree ? "" : (initialData?.customer || ""),
@@ -304,10 +378,24 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
             // If editing a free job, convert it to booked
             const isFree = initialData?.jobStatus === 'free' || initialData?.customer === 'Free';
             // In read-only mode for past jobs, only submit the color/jobStatus
-            const submitData = isReadOnlyPastJob 
-              ? { color: data.color, jobStatus: initialData?.jobStatus || 'booked' }
-              : (isFree ? { ...data, jobStatus: 'booked' } : data);
-            onSubmit(submitData, applyToWeek); 
+            let submitData: any;
+            if (isReadOnlyPastJob) {
+              submitData = { color: data.color, jobStatus: initialData?.jobStatus || 'booked' };
+            } else if (isFree) {
+              // Converting free job to booked
+              submitData = { ...data, jobStatus: 'booked' };
+            } else if (!initialData?.id && (!data.customer || data.customer.trim() === '' || !data.address || data.address.trim() === '')) {
+              // New job with empty customer/address = free job
+              submitData = { 
+                ...data, 
+                jobStatus: 'free',
+                customer: 'Free',
+                address: 'Free'
+              };
+            } else {
+              submitData = data;
+            }
+            onSubmit(submitData, applyPeriod); 
             onOpenChange(false); 
             form.reset(); 
         })} className="space-y-6 mt-4">
@@ -605,14 +693,54 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
 
             <DialogFooter className="flex items-center justify-between sm:justify-between gap-4">
                 {!isReadOnlyPastJob && (
-                    <div className="flex items-center space-x-2">
-                        <Checkbox id="applyToWeek" checked={applyToWeek} onCheckedChange={(c) => setApplyToWeek(!!c)} disabled={isPastItem} />
-                        <label
-                            htmlFor="applyToWeek"
-                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                        >
-                            Apply to remainder of week?
-                        </label>
+                    <div className="flex flex-col gap-2">
+                        <div className="text-xs font-medium text-slate-600 mb-1">Apply to:</div>
+                        <div className="flex flex-wrap gap-3">
+                            <div className="flex items-center space-x-1.5">
+                                <Checkbox 
+                                    id="applyWeek" 
+                                    checked={applyPeriod === 'week'} 
+                                    onCheckedChange={(c) => setApplyPeriod(c ? 'week' : 'none')} 
+                                    disabled={isPastItem} 
+                                />
+                                <label htmlFor="applyWeek" className="text-sm font-medium leading-none cursor-pointer">
+                                    Remainder of Week
+                                </label>
+                            </div>
+                            <div className="flex items-center space-x-1.5">
+                                <Checkbox 
+                                    id="applyMonth" 
+                                    checked={applyPeriod === 'month'} 
+                                    onCheckedChange={(c) => setApplyPeriod(c ? 'month' : 'none')} 
+                                    disabled={isPastItem} 
+                                />
+                                <label htmlFor="applyMonth" className="text-sm font-medium leading-none cursor-pointer">
+                                    Month
+                                </label>
+                            </div>
+                            <div className="flex items-center space-x-1.5">
+                                <Checkbox 
+                                    id="apply6Months" 
+                                    checked={applyPeriod === '6months'} 
+                                    onCheckedChange={(c) => setApplyPeriod(c ? '6months' : 'none')} 
+                                    disabled={isPastItem} 
+                                />
+                                <label htmlFor="apply6Months" className="text-sm font-medium leading-none cursor-pointer">
+                                    6 Months
+                                </label>
+                            </div>
+                            <div className="flex items-center space-x-1.5">
+                                <Checkbox 
+                                    id="apply12Months" 
+                                    checked={applyPeriod === '12months'} 
+                                    onCheckedChange={(c) => setApplyPeriod(c ? '12months' : 'none')} 
+                                    disabled={isPastItem} 
+                                />
+                                <label htmlFor="apply12Months" className="text-sm font-medium leading-none cursor-pointer">
+                                    12 Months
+                                </label>
+                            </div>
+                        </div>
                     </div>
                 )}
                 {isReadOnlyPastJob && (
@@ -621,6 +749,16 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                     </div>
                 )}
                 <div className="flex gap-2">
+                    {!isReadOnlyPastJob && initialData?.id && (
+                        <Button 
+                            type="button" 
+                            variant="outline" 
+                            onClick={() => setMoveDateOpen(true)}
+                            className="text-blue-600 border-blue-200 hover:bg-blue-50"
+                        >
+                            <CalendarIcon className="w-4 h-4 mr-2" /> Move Date
+                        </Button>
+                    )}
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
                     {!isReadOnlyPastJob && (
                         <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">
@@ -631,6 +769,109 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
             </DialogFooter>
         </form>
       </DialogContent>
+      
+      {/* Move Date Dialog */}
+      <Dialog open={moveDateOpen} onOpenChange={setMoveDateOpen}>
+        <DialogContent className="sm:max-w-[400px] bg-white">
+          <DialogHeader>
+            <DialogTitle>Move Job Date</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-4">
+            <div className="space-y-2">
+              <Label>Select New Date</Label>
+              <Popover>
+                <PopoverTrigger asChild>
+                  <Button
+                    variant="outline"
+                    className={cn(
+                      "w-full justify-start text-left font-normal",
+                      !newDate && "text-muted-foreground"
+                    )}
+                  >
+                    <CalendarIcon className="mr-2 h-4 w-4" />
+                    {newDate ? format(newDate, "PPP") : "Pick a date"}
+                  </Button>
+                </PopoverTrigger>
+                <PopoverContent className="w-auto p-0 bg-white" align="start">
+                  <Calendar
+                    mode="single"
+                    selected={newDate}
+                    onSelect={(date) => {
+                      setNewDate(date);
+                      if (date && isPartOfGroup) {
+                        setPendingMoveDate(date);
+                        setMoveDateOpen(false);
+                        setMoveGroupDialogOpen(true);
+                      } else if (date && onMoveDate) {
+                        onMoveDate(date, false);
+                        setMoveDateOpen(false);
+                        setNewDate(undefined);
+                      }
+                    }}
+                    disabled={(date) => isBefore(startOfDay(date), startOfDay(new Date()))}
+                    initialFocus
+                  />
+                </PopoverContent>
+              </Popover>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button type="button" variant="outline" onClick={() => {
+              setMoveDateOpen(false);
+              setNewDate(undefined);
+            }}>
+              Cancel
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+      
+      {/* Move Group Confirmation Dialog */}
+      <Dialog open={moveGroupDialogOpen} onOpenChange={setMoveGroupDialogOpen}>
+        <DialogContent className="sm:max-w-[400px] bg-white">
+          <DialogHeader>
+            <DialogTitle>Move Job Group</DialogTitle>
+          </DialogHeader>
+          <div className="py-4">
+            <p className="text-sm text-slate-600 mb-4">
+              This job is part of a group with {groupItems.length + 1} job(s) sharing the same job number ({initialData?.jobNumber}).
+            </p>
+            <p className="text-sm text-slate-600 mb-4">
+              Would you like to move just this one job, or the entire group to the new date?
+            </p>
+          </div>
+          <DialogFooter>
+            <Button 
+              type="button" 
+              variant="outline" 
+              onClick={() => {
+                if (pendingMoveDate && onMoveDate) {
+                  onMoveDate(pendingMoveDate, false);
+                }
+                setMoveGroupDialogOpen(false);
+                setPendingMoveDate(null);
+                setNewDate(undefined);
+              }}
+            >
+              Move This Job Only
+            </Button>
+            <Button 
+              type="button" 
+              className="bg-blue-600 hover:bg-blue-700 text-white"
+              onClick={() => {
+                if (pendingMoveDate && onMoveDate) {
+                  onMoveDate(pendingMoveDate, true);
+                }
+                setMoveGroupDialogOpen(false);
+                setPendingMoveDate(null);
+                setNewDate(undefined);
+              }}
+            >
+              Move Entire Group
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </Dialog>
   );
 }
@@ -638,7 +879,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
 // ------------------- OPERATIVE FORM -------------------
 
 function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employees, vehicles, items, crews }: any) {
-  const [applyToWeek, setApplyToWeek] = useState(false);
+  const [applyPeriod, setApplyPeriod] = useState<'none' | 'week' | 'month' | '6months' | '12months'>('none');
   const form = useForm({
     resolver: zodResolver(operativeSchema),
     defaultValues: {
@@ -650,7 +891,7 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
   // Reset form when initialData changes or modal opens
   useEffect(() => {
     if (open) {
-        setApplyToWeek(false);
+        setApplyPeriod('none');
         form.reset({
             employeeId: initialData?.employeeId || "",
             vehicleId: initialData?.vehicleId || "",
@@ -713,7 +954,7 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
             {type === 'operative' ? "Add Operative (Driver)" : "Add Assistant"}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit((data) => { onSubmit(data, applyToWeek); onOpenChange(false); form.reset(); })} className="space-y-6 mt-4">
+        <form onSubmit={form.handleSubmit((data) => { onSubmit(data, applyPeriod); onOpenChange(false); form.reset(); })} className="space-y-6 mt-4">
             
             <div className="space-y-4">
                 <div className="space-y-2">
@@ -808,14 +1049,50 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
             </div>
 
             <DialogFooter className="flex items-center justify-between sm:justify-between gap-4">
-                <div className="flex items-center space-x-2">
-                    <Checkbox id="applyToWeekOp" checked={applyToWeek} onCheckedChange={(c) => setApplyToWeek(!!c)} />
-                    <label
-                        htmlFor="applyToWeekOp"
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
-                        Apply to remainder of week?
-                    </label>
+                <div className="flex flex-col gap-2">
+                    <div className="text-xs font-medium text-slate-600 mb-1">Apply to:</div>
+                    <div className="flex flex-wrap gap-3">
+                        <div className="flex items-center space-x-1.5">
+                            <Checkbox 
+                                id="applyWeekOp" 
+                                checked={applyPeriod === 'week'} 
+                                onCheckedChange={(c) => setApplyPeriod(c ? 'week' : 'none')} 
+                            />
+                            <label htmlFor="applyWeekOp" className="text-sm font-medium leading-none cursor-pointer">
+                                Remainder of Week
+                            </label>
+                        </div>
+                        <div className="flex items-center space-x-1.5">
+                            <Checkbox 
+                                id="applyMonthOp" 
+                                checked={applyPeriod === 'month'} 
+                                onCheckedChange={(c) => setApplyPeriod(c ? 'month' : 'none')} 
+                            />
+                            <label htmlFor="applyMonthOp" className="text-sm font-medium leading-none cursor-pointer">
+                                Month
+                            </label>
+                        </div>
+                        <div className="flex items-center space-x-1.5">
+                            <Checkbox 
+                                id="apply6MonthsOp" 
+                                checked={applyPeriod === '6months'} 
+                                onCheckedChange={(c) => setApplyPeriod(c ? '6months' : 'none')} 
+                            />
+                            <label htmlFor="apply6MonthsOp" className="text-sm font-medium leading-none cursor-pointer">
+                                6 Months
+                            </label>
+                        </div>
+                        <div className="flex items-center space-x-1.5">
+                            <Checkbox 
+                                id="apply12MonthsOp" 
+                                checked={applyPeriod === '12months'} 
+                                onCheckedChange={(c) => setApplyPeriod(c ? '12months' : 'none')} 
+                            />
+                            <label htmlFor="apply12MonthsOp" className="text-sm font-medium leading-none cursor-pointer">
+                                12 Months
+                            </label>
+                        </div>
+                    </div>
                 </div>
                 <div className="flex gap-2">
                     <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>

@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { format, startOfWeek, addDays, isSameDay, endOfWeek, isAfter, isBefore, startOfDay, endOfMonth, addMonths, endOfYear } from "date-fns";
+import { format, startOfWeek, addDays, isSameDay, endOfWeek, isAfter, isBefore, startOfDay, endOfMonth, addMonths, endOfYear, getDay } from "date-fns";
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, DragStartEvent, DragEndEvent, useDroppable, Modifier } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
 import { SiteCard } from "./SiteCard";
@@ -1084,6 +1084,55 @@ export function CalendarGrid({
     setSelectedItemIds(new Set());
   };
 
+  // Helper function to check if a date is a weekday (Monday-Friday)
+  const isWeekday = (date: Date): boolean => {
+    const day = getDay(date);
+    return day >= 1 && day <= 5; // Monday = 1, Friday = 5
+  };
+
+  // Helper function to add weekdays only (skip weekends)
+  const addWeekdays = (date: Date, weekdays: number): Date => {
+    let result = new Date(date);
+    let added = 0;
+    while (added < weekdays) {
+      result = addDays(result, 1);
+      if (isWeekday(result)) {
+        added++;
+      }
+    }
+    return result;
+  };
+
+  // Helper function to calculate end date for month/6months/12months periods (weekdays only)
+  const calculateWeekdayEndDate = (startDate: Date, period: 'month' | '6months' | '12months'): Date => {
+    const monthEnd = endOfMonth(startDate);
+    let targetWeekdays: number;
+    
+    switch (period) {
+      case 'month':
+        // Count weekdays in the month from start date
+        targetWeekdays = 0;
+        let currentDate = new Date(startDate);
+        while (currentDate <= monthEnd) {
+          if (isWeekday(currentDate)) {
+            targetWeekdays++;
+          }
+          currentDate = addDays(currentDate, 1);
+        }
+        return addWeekdays(startDate, targetWeekdays - 1); // -1 because start date is included
+      case '6months':
+        // Approximately 130 weekdays in 6 months (6 * 22 weekdays per month average)
+        targetWeekdays = 130;
+        return addWeekdays(startDate, targetWeekdays - 1);
+      case '12months':
+        // Approximately 260 weekdays in 12 months (12 * 22 weekdays per month average)
+        targetWeekdays = 260;
+        return addWeekdays(startDate, targetWeekdays - 1);
+      default:
+        return startDate;
+    }
+  };
+
   const handleModalSubmit = (data: any, applyPeriod: 'none' | 'week' | 'month' | '6months' | '12months' = 'none') => {
     // Only treat as UPDATE if modalState.data has an id (existing item)
     // If modalState.data exists but has no id, it's a CREATE with initial defaults
@@ -1177,13 +1226,13 @@ export function CalendarGrid({
                     endDate = addDays(weekStart, viewDays - 1);
                     break;
                 case 'month':
-                    endDate = endOfMonth(startDate);
+                    endDate = calculateWeekdayEndDate(startDate, 'month');
                     break;
                 case '6months':
-                    endDate = addMonths(startDate, 6);
+                    endDate = calculateWeekdayEndDate(startDate, '6months');
                     break;
                 case '12months':
-                    endDate = addMonths(startDate, 12);
+                    endDate = calculateWeekdayEndDate(startDate, '12months');
                     break;
                 default:
                     endDate = addDays(weekStart, viewDays - 1);
@@ -1268,13 +1317,13 @@ export function CalendarGrid({
                     endDate = addDays(weekStart, viewDays - 1);
                     break;
                 case 'month':
-                    endDate = endOfMonth(startDate);
+                    endDate = calculateWeekdayEndDate(startDate, 'month');
                     break;
                 case '6months':
-                    endDate = addMonths(startDate, 6);
+                    endDate = calculateWeekdayEndDate(startDate, '6months');
                     break;
                 case '12months':
-                    endDate = addMonths(startDate, 12);
+                    endDate = calculateWeekdayEndDate(startDate, '12months');
                     break;
                 default:
                     endDate = addDays(weekStart, viewDays - 1);
@@ -1297,12 +1346,19 @@ export function CalendarGrid({
                 vehicleId: data.vehicleId,
             });
             
-            // 2. Add operative and free jobs for the selected period
+            // 2. Add operative and free jobs for the selected period (weekdays only for month/6months/12months)
             let nextDate = addDays(startDate, 1);
             let safetyCounter = 0;
             const MAX_ITEMS = 1000; // Safety limit
+            const skipWeekends = applyPeriod === 'month' || applyPeriod === '6months' || applyPeriod === '12months';
             
             while ((isSameDay(nextDate, endDate) || isBefore(nextDate, endDate)) && safetyCounter < MAX_ITEMS) {
+                // Skip weekends for month/6months/12months periods
+                if (skipWeekends && !isWeekday(nextDate)) {
+                    nextDate = addDays(nextDate, 1);
+                    continue;
+                }
+                
                 // Create operative for this day
                 onItemCreate({
                     id: Math.random().toString(36).substr(2, 9),
@@ -1343,13 +1399,13 @@ export function CalendarGrid({
                     endDate = addDays(weekStart, viewDays - 1);
                     break;
                 case 'month':
-                    endDate = endOfMonth(startDate);
+                    endDate = calculateWeekdayEndDate(startDate, 'month');
                     break;
                 case '6months':
-                    endDate = addMonths(startDate, 6);
+                    endDate = calculateWeekdayEndDate(startDate, '6months');
                     break;
                 case '12months':
-                    endDate = addMonths(startDate, 12);
+                    endDate = calculateWeekdayEndDate(startDate, '12months');
                     break;
                 default:
                     endDate = addDays(weekStart, viewDays - 1);
@@ -1358,8 +1414,15 @@ export function CalendarGrid({
             let nextDate = addDays(startDate, 1);
             let safetyCounter = 0;
             const MAX_ITEMS = 1000; // Safety limit
+            const skipWeekends = applyPeriod === 'month' || applyPeriod === '6months' || applyPeriod === '12months';
              
             while ((isSameDay(nextDate, endDate) || isBefore(nextDate, endDate)) && safetyCounter < MAX_ITEMS) {
+                // Skip weekends for month/6months/12months periods
+                if (skipWeekends && !isWeekday(nextDate)) {
+                    nextDate = addDays(nextDate, 1);
+                    continue;
+                }
+                
                 onItemCreate({
                     id: Math.random().toString(36).substr(2, 9),
                     type: modalState.type,

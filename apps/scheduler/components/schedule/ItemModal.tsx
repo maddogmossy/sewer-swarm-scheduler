@@ -100,16 +100,17 @@ interface ItemModalProps {
   crews?: { id: string }[]; // For validating assignments against active crews
   colorLabels?: Record<string, string>;
   onColorLabelUpdate?: (color: string, label: string) => void;
+  isReadOnly?: boolean;
 }
 
 const noteSchema = z.object({
   noteContent: z.string().min(1, "Note content is required"),
 });
 
-export function ItemModal({ open, onOpenChange, onSubmit, type, initialData, employees, vehicles, items, crews, colorLabels, onColorLabelUpdate }: ItemModalProps) {
+export function ItemModal({ open, onOpenChange, onSubmit, type, initialData, employees, vehicles, items, crews, colorLabels, onColorLabelUpdate, isReadOnly = false }: ItemModalProps) {
   // We conditionally render different forms based on type
   if (type === 'job') {
-    return <SiteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} colorLabels={colorLabels} onColorLabelUpdate={onColorLabelUpdate} />;
+    return <SiteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} colorLabels={colorLabels} onColorLabelUpdate={onColorLabelUpdate} isReadOnly={isReadOnly} />;
   }
   if (type === 'note') {
       return <NoteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} />;
@@ -179,18 +180,24 @@ function NoteForm({ open, onOpenChange, onSubmit, initialData }: any) {
 
 // ------------------- SITE FORM -------------------
 
-function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onColorLabelUpdate }: any) {
+function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onColorLabelUpdate, isReadOnly = false }: any) {
   const [applyToWeek, setApplyToWeek] = useState(false);
   
   // Check if item is in the past (only allow color changes for past items)
   const isPastItem = initialData?.date ? isBefore(startOfDay(new Date(initialData.date)), startOfDay(new Date())) : false;
   
+  // Check if this is a free job being edited
+  const isFreeJob = initialData?.jobStatus === 'free' || initialData?.customer === 'Free';
+  
+  // In read-only mode, only allow editing job status for past jobs
+  const isReadOnlyPastJob = isReadOnly && isPastItem && initialData?.id;
+  
   const form = useForm({
     resolver: zodResolver(siteSchema),
     defaultValues: {
-      customer: initialData?.customer || "",
+      customer: initialData?.customer === 'Free' ? "" : (initialData?.customer || ""),
       jobNumber: initialData?.jobNumber || "",
-      address: initialData?.address || "",
+      address: initialData?.address === 'Free' ? "" : (initialData?.address || ""),
       projectManager: initialData?.projectManager || "",
       startTime: initialData?.startTime || "08:00",
       onsiteTime: initialData?.onsiteTime || "09:00",
@@ -203,10 +210,11 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
   useEffect(() => {
     if (open) {
         setApplyToWeek(false);
+        const isFree = initialData?.jobStatus === 'free' || initialData?.customer === 'Free';
         form.reset({
-            customer: initialData?.customer || "",
+            customer: isFree ? "" : (initialData?.customer || ""),
             jobNumber: initialData?.jobNumber || "",
-            address: initialData?.address || "",
+            address: isFree ? "" : (initialData?.address || ""),
             projectManager: initialData?.projectManager || "",
             startTime: initialData?.startTime || "08:00",
             onsiteTime: initialData?.onsiteTime || "09:00",
@@ -219,10 +227,12 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
   const selectedColor = form.watch("color");
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [labelValue, setLabelValue] = useState("");
+  // Standard default colors matching the standard labels
+  const STANDARD_COLORS = ["sky", "pink", "gray", "orange", "teal", "stone"];
   const [activeColors, setActiveColors] = useState<string[]>(() => {
-      // Default visible colors are the ones that exist in colorLabels or defaults
-      if (colorLabels) return Object.keys(colorLabels);
-      return AVAILABLE_COLORS.slice(0, 9).map(c => c.value);
+      // Default visible colors are the ones that exist in colorLabels or standard defaults
+      if (colorLabels && Object.keys(colorLabels).length > 0) return Object.keys(colorLabels);
+      return STANDARD_COLORS;
   });
   const [isAddingColor, setIsAddingColor] = useState(false);
 
@@ -287,15 +297,25 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Briefcase className="w-5 h-5 text-blue-600" />
-            {initialData ? "Edit Site Details" : "Add New Site"}
+            {isReadOnlyPastJob ? "Update Job Status" : (isFreeJob ? "Convert Free Job to Booking" : (initialData ? "Edit Site Details" : "Add New Site"))}
           </DialogTitle>
         </DialogHeader>
-        <form onSubmit={form.handleSubmit((data) => { onSubmit(data, applyToWeek); onOpenChange(false); form.reset(); })} className="space-y-6 mt-4">
+        <form onSubmit={form.handleSubmit((data) => { 
+            // If editing a free job, convert it to booked
+            const isFree = initialData?.jobStatus === 'free' || initialData?.customer === 'Free';
+            // In read-only mode for past jobs, only submit the color/jobStatus
+            const submitData = isReadOnlyPastJob 
+              ? { color: data.color, jobStatus: initialData?.jobStatus || 'booked' }
+              : (isFree ? { ...data, jobStatus: 'booked' } : data);
+            onSubmit(submitData, applyToWeek); 
+            onOpenChange(false); 
+            form.reset(); 
+        })} className="space-y-6 mt-4">
             
             {/* Color Picker / Categories */}
             <div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-100">
                 <div className="flex items-center justify-between">
-                    <Label>Category & Color</Label>
+                    <Label>Job Status</Label>
                     <Popover open={isAddingColor} onOpenChange={setIsAddingColor}>
                         <PopoverTrigger asChild>
                             <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 p-0">
@@ -330,7 +350,17 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                         return (
                             <div key={c.value} className="flex items-center gap-2 p-1 rounded-md hover:bg-white hover:shadow-sm transition-all group/item relative pr-6">
                                 <div 
-                                    onClick={() => form.setValue("color", c.value)}
+                                    onClick={() => {
+                                        const newColor = c.value;
+                                        form.setValue("color", newColor);
+                                        // Auto-save for past jobs in read-only mode
+                                        if (isReadOnlyPastJob && newColor !== selectedColor) {
+                                            const submitData = { color: newColor, jobStatus: initialData?.jobStatus || 'booked' };
+                                            onSubmit(submitData, false);
+                                            // Update the selected color immediately for visual feedback
+                                            form.setValue("color", newColor, { shouldValidate: false });
+                                        }
+                                    }}
                                     className={cn(
                                         "w-8 h-8 rounded-md cursor-pointer transition-all flex items-center justify-center border-2 shrink-0",
                                         c.class,
@@ -378,7 +408,16 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                 </div>
             </div>
 
-            {isPastItem && (
+            {isReadOnlyPastJob && (
+                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
+                    <div className="flex items-center gap-2 text-blue-800 text-sm">
+                        <AlertCircle className="w-4 h-4" />
+                        <span>Read-only mode: You can only update the job status for this past job. All other fields are locked.</span>
+                    </div>
+                </div>
+            )}
+
+            {isPastItem && !isReadOnlyPastJob && (
                 <div className="bg-amber-50 border border-amber-200 rounded-lg p-3 mb-4">
                     <div className="flex items-center gap-2 text-amber-800 text-sm">
                         <AlertCircle className="w-4 h-4" />
@@ -387,6 +426,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                 </div>
             )}
 
+            {!isReadOnlyPastJob && (
             <div className="grid grid-cols-2 gap-4">
                 {/* Customer Autocomplete */}
                 <div className="space-y-2 col-span-2">
@@ -561,20 +601,32 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                     </div>
                 </div>
             </div>
+            )}
 
             <DialogFooter className="flex items-center justify-between sm:justify-between gap-4">
-                <div className="flex items-center space-x-2">
-                    <Checkbox id="applyToWeek" checked={applyToWeek} onCheckedChange={(c) => setApplyToWeek(!!c)} disabled={isPastItem} />
-                    <label
-                        htmlFor="applyToWeek"
-                        className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
-                    >
-                        Apply to remainder of week?
-                    </label>
-                </div>
+                {!isReadOnlyPastJob && (
+                    <div className="flex items-center space-x-2">
+                        <Checkbox id="applyToWeek" checked={applyToWeek} onCheckedChange={(c) => setApplyToWeek(!!c)} disabled={isPastItem} />
+                        <label
+                            htmlFor="applyToWeek"
+                            className="text-sm font-medium leading-none peer-disabled:cursor-not-allowed peer-disabled:opacity-70"
+                        >
+                            Apply to remainder of week?
+                        </label>
+                    </div>
+                )}
+                {isReadOnlyPastJob && (
+                    <div className="text-xs text-slate-500 italic">
+                        Changes are saved automatically when you select a status
+                    </div>
+                )}
                 <div className="flex gap-2">
-                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
-                    <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">Save Site</Button>
+                    <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+                    {!isReadOnlyPastJob && (
+                        <Button type="submit" className="bg-blue-600 hover:bg-blue-700 text-white">
+                            Save Site
+                        </Button>
+                    )}
                 </div>
             </DialogFooter>
         </form>

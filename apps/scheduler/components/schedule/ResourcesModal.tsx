@@ -12,31 +12,53 @@ interface ResourcesModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
     employees: { id: string; name: string; status: 'active' | 'holiday' | 'sick'; email?: string; jobRole?: 'operative' | 'assistant' }[];
-    vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance' }[];
+    vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; category?: string; color?: string; vehicleType?: string }[];
     onEmployeeCreate: (name: string) => void;
     onEmployeeUpdate: (id: string, name: string, status?: 'active' | 'holiday' | 'sick', jobRole?: 'operative' | 'assistant', email?: string) => void;
     onEmployeeDelete: (id: string) => void;
-    onVehicleCreate: (name: string) => void;
-    onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance') => void;
+    onVehicleCreate: (name: string, category?: string) => void;
+    onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance', category?: string, color?: string) => void;
     onVehicleDelete: (id: string) => void;
+    vehicleTypes?: string[];
 }
+
+// Common vehicle categories
+const VEHICLE_CATEGORIES = ["CCTV", "JETTING", "RECYCLER", "VAN", "OTHER"];
 
 export function ResourcesModal({ 
     open, onOpenChange, 
     employees, vehicles,
     onEmployeeCreate, onEmployeeUpdate, onEmployeeDelete,
-    onVehicleCreate, onVehicleUpdate, onVehicleDelete
+    onVehicleCreate, onVehicleUpdate, onVehicleDelete,
+    vehicleTypes = []
 }: ResourcesModalProps) {
     const [newItemName, setNewItemName] = useState("");
+    const [newVehicleCategory, setNewVehicleCategory] = useState<string>("VAN");
     const [editingEmployee, setEditingEmployee] = useState<{ id: string, name: string, status: 'active' | 'holiday' | 'sick', email?: string } | null>(null);
-    const [editingVehicle, setEditingVehicle] = useState<{ id: string, name: string, status: 'active' | 'off_road' | 'maintenance' } | null>(null);
+    const [editingVehicle, setEditingVehicle] = useState<{ id: string, name: string, status: 'active' | 'off_road' | 'maintenance', category?: string, color?: string } | null>(null);
 
     const handleAdd = (type: 'employee' | 'vehicle') => {
         if (!newItemName.trim()) return;
-        if (type === 'employee') onEmployeeCreate(newItemName);
-        else onVehicleCreate(newItemName);
-        setNewItemName("");
+        if (type === 'employee') {
+            onEmployeeCreate(newItemName);
+            setNewItemName("");
+        } else {
+            // For vehicles, create with the selected category
+            onVehicleCreate(newItemName, newVehicleCategory);
+            setNewItemName("");
+            setNewVehicleCategory("VAN");
+        }
     };
+
+    // Group vehicles by category
+    const vehiclesByCategory = vehicles.reduce((acc, veh) => {
+        const category = veh.category || "OTHER";
+        if (!acc[category]) {
+            acc[category] = [];
+        }
+        acc[category].push(veh);
+        return acc;
+    }, {} as Record<string, typeof vehicles>);
 
     const handleEmployeeSave = () => {
         if (!editingEmployee || !editingEmployee.name.trim()) return;
@@ -46,7 +68,7 @@ export function ResourcesModal({
 
     const handleVehicleSave = () => {
         if (!editingVehicle || !editingVehicle.name.trim()) return;
-        onVehicleUpdate(editingVehicle.id, editingVehicle.name, editingVehicle.status);
+        onVehicleUpdate(editingVehicle.id, editingVehicle.name, editingVehicle.status, editingVehicle.category, editingVehicle.color);
         setEditingVehicle(null);
     };
 
@@ -153,25 +175,43 @@ export function ResourcesModal({
                     </TabsContent>
 
                     <TabsContent value="vehicles" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4">
-                        <div className="flex gap-2">
+                        <div className="flex gap-2 items-center">
                             <Input 
-                                placeholder="Add new vehicle name..." 
+                                placeholder="Vehicle name" 
                                 value={newItemName}
                                 onChange={(e) => setNewItemName(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleAdd('vehicle')}
+                                className="flex-1"
                             />
+                            <Select value={newVehicleCategory} onValueChange={setNewVehicleCategory}>
+                                <SelectTrigger className="w-32">
+                                    <SelectValue />
+                                </SelectTrigger>
+                                <SelectContent className="bg-white">
+                                    {VEHICLE_CATEGORIES.map(cat => (
+                                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                    ))}
+                                </SelectContent>
+                            </Select>
                             <Button onClick={() => handleAdd('vehicle')}><Plus className="w-4 h-4 mr-2" /> Add</Button>
                         </div>
-                        <div className="flex-1 overflow-y-auto border rounded-md divide-y">
-                            {vehicles.map(veh => (
+                        <div className="flex-1 overflow-y-auto border rounded-md">
+                            {Object.entries(vehiclesByCategory).map(([category, categoryVehicles]) => (
+                                <div key={category} className="border-b last:border-b-0">
+                                    <div className="px-3 py-2 bg-slate-50 font-semibold text-sm text-slate-700 border-b">
+                                        {category}
+                                    </div>
+                                    <div className="divide-y">
+                                        {categoryVehicles.map(veh => (
                                 <div key={veh.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
                                     {editingVehicle?.id === veh.id ? (
-                                        <div className="flex items-center gap-2 flex-1 mr-4">
+                                        <div className="flex items-center gap-2 flex-1 mr-4 flex-wrap">
                                             <Input 
                                                 value={editingVehicle.name} 
                                                 onChange={(e) => setEditingVehicle({ ...editingVehicle, name: e.target.value })}
                                                 autoFocus
                                                 className="w-40"
+                                                placeholder="Vehicle name"
                                             />
                                             <Select 
                                                 value={editingVehicle.status} 
@@ -186,21 +226,60 @@ export function ResourcesModal({
                                                     <SelectItem value="maintenance">Maintenance</SelectItem>
                                                 </SelectContent>
                                             </Select>
+                                            <Select 
+                                                value={editingVehicle.category || "OTHER"} 
+                                                onValueChange={(val: string) => setEditingVehicle({ ...editingVehicle, category: val })}
+                                            >
+                                                <SelectTrigger className="w-32">
+                                                    <SelectValue placeholder="Category" />
+                                                </SelectTrigger>
+                                                <SelectContent className="bg-white">
+                                                    {VEHICLE_CATEGORIES.map(cat => (
+                                                        <SelectItem key={cat} value={cat}>{cat}</SelectItem>
+                                                    ))}
+                                                </SelectContent>
+                                            </Select>
+                                            <div className="flex items-center gap-2">
+                                                <Input 
+                                                    type="color"
+                                                    value={editingVehicle.color || "#3b82f6"} 
+                                                    onChange={(e) => setEditingVehicle({ ...editingVehicle, color: e.target.value })}
+                                                    className="w-16 h-9 p-1 cursor-pointer"
+                                                    title="Vehicle color"
+                                                />
+                                                <Input 
+                                                    value={editingVehicle.color || ""} 
+                                                    onChange={(e) => setEditingVehicle({ ...editingVehicle, color: e.target.value })}
+                                                    className="w-24"
+                                                    placeholder="#hex or name"
+                                                />
+                                            </div>
                                             <Button size="sm" onClick={handleVehicleSave}>Save</Button>
                                             <Button size="sm" variant="ghost" onClick={() => setEditingVehicle(null)}>Cancel</Button>
                                         </div>
                                     ) : (
                                         <div className="flex items-center gap-3 flex-1">
-                                            <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-600">
-                                                <Truck className="w-4 h-4" />
+                                            <div 
+                                                className="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 border-2"
+                                                style={{ 
+                                                    backgroundColor: veh.color ? `${veh.color}20` : '#f1f5f9',
+                                                    borderColor: veh.color || '#cbd5e1'
+                                                }}
+                                            >
+                                                <Truck className="w-4 h-4" style={{ color: veh.color || '#64748b' }} />
                                             </div>
                                             <div className="flex flex-col">
                                                 <span className="font-medium">{veh.name}</span>
-                                                {veh.status !== 'active' && (
-                                                    <span className="text-xs text-red-600 font-medium uppercase tracking-wider flex items-center gap-1">
-                                                        <AlertCircle className="w-3 h-3" /> {veh.status === 'off_road' ? 'VOR' : veh.status}
-                                                    </span>
-                                                )}
+                                                <div className="flex items-center gap-2">
+                                                    {veh.category && (
+                                                        <Badge variant="outline" className="text-xs">{veh.category}</Badge>
+                                                    )}
+                                                    {veh.status !== 'active' && (
+                                                        <span className="text-xs text-red-600 font-medium uppercase tracking-wider flex items-center gap-1">
+                                                            <AlertCircle className="w-3 h-3" /> {veh.status === 'off_road' ? 'VOR' : veh.status}
+                                                        </span>
+                                                    )}
+                                                </div>
                                             </div>
                                         </div>
                                     )}
@@ -215,6 +294,9 @@ export function ResourcesModal({
                                             </Button>
                                         </div>
                                     )}
+                                </div>
+                                        ))}
+                                    </div>
                                 </div>
                             ))}
                         </div>

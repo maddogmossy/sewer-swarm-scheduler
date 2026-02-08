@@ -4,9 +4,10 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trash2, Edit, Plus, Users, Truck, Mail, Sun, Moon, Settings, X } from "lucide-react";
+import { Trash2, Edit, Plus, Users, Truck, Mail, Sun, Moon, Settings, X, Check } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { cn } from "@/lib/utils";
 
 interface DepotCrewModalProps {
   open: boolean;
@@ -14,15 +15,15 @@ interface DepotCrewModalProps {
   depotName: string;
   crews: { id: string; name: string; shift?: 'day' | 'night' }[];
   employees: { id: string; name: string; status: 'active' | 'holiday' | 'sick'; jobRole: 'operative' | 'assistant'; email?: string }[];
-  vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; vehicleType: string }[];
+  vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; vehicleType: string; category?: string; color?: string }[];
   onCrewCreate: (name: string, shift: 'day' | 'night') => void;
   onCrewUpdate: (id: string, name: string, shift: 'day' | 'night') => void;
   onCrewDelete: (id: string) => void;
   onEmployeeCreate: (name: string, jobRole: 'operative' | 'assistant', email?: string) => void;
   onEmployeeUpdate: (id: string, name: string, status?: 'active' | 'holiday' | 'sick', jobRole?: 'operative' | 'assistant', email?: string) => void;
   onEmployeeDelete?: (id: string) => void;
-  onVehicleCreate: (name: string, vehicleType: string) => void;
-  onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance', vehicleType?: string) => void;
+  onVehicleCreate: (name: string, vehicleType: string, category?: string, color?: string) => void;
+  onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance', vehicleType?: string, category?: string, color?: string) => void;
   onVehicleDelete?: (id: string) => void;
   vehicleTypes?: string[];
   onVehicleTypeCreate?: (type: string) => void;
@@ -51,6 +52,22 @@ export function DepotCrewModal({
   onVehicleTypeDelete = () => {},
   isReadOnly = false,
 }: DepotCrewModalProps) {
+  // Available colors matching Job Status style
+  const AVAILABLE_COLORS = [
+    { value: "blue", class: "bg-[#BFDBFE] border-[#3B82F6]", hex: "#3B82F6" },
+    { value: "green", class: "bg-[#BBF7D0] border-[#22C55E]", hex: "#22C55E" },
+    { value: "yellow", class: "bg-[#FEF08A] border-[#EAB308]", hex: "#EAB308" },
+    { value: "orange", class: "bg-[#FED7AA] border-[#F97316]", hex: "#F97316" },
+    { value: "red", class: "bg-[#FECACA] border-[#EF4444]", hex: "#EF4444" },
+    { value: "purple", class: "bg-[#E9D5FF] border-[#A855F7]", hex: "#A855F7" },
+    { value: "pink", class: "bg-[#FBCFE8] border-[#EC4899]", hex: "#EC4899" },
+    { value: "teal", class: "bg-[#99F6E4] border-[#14B8A6]", hex: "#14B8A6" },
+    { value: "gray", class: "bg-[#E2E8F0] border-[#64748B]", hex: "#64748B" },
+    { value: "indigo", class: "bg-[#C7D2FE] border-[#6366F1]", hex: "#6366F1" },
+    { value: "cyan", class: "bg-[#A5F3FC] border-[#06B6D4]", hex: "#06B6D4" },
+    { value: "lime", class: "bg-[#D9F99D] border-[#84CC16]", hex: "#84CC16" },
+  ];
+
   const [newCrewName, setNewCrewName] = useState("");
   const [newCrewShift, setNewCrewShift] = useState<'day' | 'night'>("day");
   const [newEmployeeName, setNewEmployeeName] = useState("");
@@ -58,11 +75,14 @@ export function DepotCrewModal({
   const [newEmployeeEmail, setNewEmployeeEmail] = useState("");
   const [newVehicleName, setNewVehicleName] = useState("");
   const [newVehicleType, setNewVehicleType] = useState(vehicleTypes[0] || "Van");
+  const [newVehicleCategory, setNewVehicleCategory] = useState<string>("VAN");
+  const [newVehicleColor, setNewVehicleColor] = useState<string>("blue");
   const [editingCrew, setEditingCrew] = useState<{ id: string; name: string; shift?: 'day' | 'night' } | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<{ id: string; name: string; jobRole: 'operative' | 'assistant'; email?: string; status?: 'active' | 'holiday' | 'sick' } | null>(null);
-  const [editingVehicle, setEditingVehicle] = useState<{ id: string; name: string; vehicleType: string; status?: 'active' | 'off_road' | 'maintenance' } | null>(null);
+  const [editingVehicle, setEditingVehicle] = useState<{ id: string; name: string; vehicleType: string; status?: 'active' | 'off_road' | 'maintenance'; category?: string; color?: string } | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
   const [isManageTypesOpen, setIsManageTypesOpen] = useState(false);
+  const [isAddTypeOpen, setIsAddTypeOpen] = useState(false);
 
   // Refresh when modal opens or data changes
   useEffect(() => {
@@ -99,9 +119,11 @@ export function DepotCrewModal({
 
   const handleAddVehicle = () => {
     if (!newVehicleName.trim()) return;
-    onVehicleCreate(newVehicleName, newVehicleType);
+    const selectedColor = AVAILABLE_COLORS.find(c => c.value === newVehicleColor);
+    // Use the color's hex value, and derive category from color name or use default
+    onVehicleCreate(newVehicleName, newVehicleType, undefined, selectedColor?.hex);
     setNewVehicleName("");
-    // Don't reset type, keep last used
+    // Don't reset type/color, keep last used
     // Force scroll to see the new item
     setTimeout(() => {
       const vehiclesList = document.querySelector('[data-vehicles-list]');
@@ -109,6 +131,22 @@ export function DepotCrewModal({
         vehiclesList.scrollTop = 0;
       }
     }, 0);
+  };
+
+  // Helper to get color hex from color value
+  const getColorHex = (colorValue?: string): string => {
+    if (!colorValue) return "#3B82F6"; // Default blue
+    if (colorValue.startsWith('#')) return colorValue; // Already hex
+    const color = AVAILABLE_COLORS.find(c => c.value === colorValue);
+    return color?.hex || "#3B82F6";
+  };
+
+  // Helper to get color value from hex
+  const getColorValue = (hex?: string): string => {
+    if (!hex) return "blue";
+    if (!hex.startsWith('#')) return hex; // Already a color name
+    const color = AVAILABLE_COLORS.find(c => c.hex.toLowerCase() === hex.toLowerCase());
+    return color?.value || hex; // Return hex if not found in list
   };
 
   const handleAddVehicleType = () => {
@@ -143,7 +181,7 @@ export function DepotCrewModal({
 
   const handleSaveVehicle = () => {
     if (!editingVehicle || !editingVehicle.name.trim()) return;
-    onVehicleUpdate(editingVehicle.id, editingVehicle.name, editingVehicle.status, editingVehicle.vehicleType);
+    onVehicleUpdate(editingVehicle.id, editingVehicle.name, editingVehicle.status, editingVehicle.vehicleType, editingVehicle.category, editingVehicle.color);
     setEditingVehicle(null);
   };
 
@@ -441,7 +479,7 @@ export function DepotCrewModal({
                     </PopoverContent>
                 </Popover>
               </div>
-              <div className="flex gap-2">
+              <div className="flex gap-2 items-center">
                 <Input
                   placeholder="Vehicle name"
                   value={newVehicleName}
@@ -449,16 +487,111 @@ export function DepotCrewModal({
                   onKeyDown={(e) => e.key === "Enter" && handleAddVehicle()}
                   className="flex-1"
                 />
-                <Select value={newVehicleType} onValueChange={setNewVehicleType}>
-                  <SelectTrigger className="w-32">
-                    <SelectValue />
-                  </SelectTrigger>
-                  <SelectContent className="bg-white">
-                    {vehicleTypes.map(type => (
-                        <SelectItem key={type} value={type}>{type}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                <div className="flex gap-1">
+                  <Select value={newVehicleType} onValueChange={setNewVehicleType}>
+                    <SelectTrigger className="w-32">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent className="bg-white">
+                      {vehicleTypes.map(type => (
+                          <SelectItem key={type} value={type}>{type}</SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  <Popover open={isAddTypeOpen} onOpenChange={setIsAddTypeOpen}>
+                    <PopoverTrigger asChild>
+                      <Button
+                        type="button"
+                        variant="outline"
+                        size="icon"
+                        className="h-9 w-9"
+                        title="Add new vehicle type"
+                      >
+                        <Plus className="w-4 h-4" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-64 p-3 bg-white" align="start">
+                      <div className="space-y-3">
+                        <h4 className="font-medium text-sm">Add Vehicle Type</h4>
+                        <div className="flex gap-2">
+                          <Input 
+                            placeholder="New type name..." 
+                            className="h-8 text-sm flex-1"
+                            value={newTypeName}
+                            onChange={(e) => setNewTypeName(e.target.value)}
+                            onKeyDown={(e) => {
+                              if (e.key === 'Enter' && newTypeName.trim()) {
+                                e.preventDefault();
+                                handleAddVehicleType();
+                                setNewVehicleType(newTypeName.trim());
+                                setNewTypeName("");
+                                setIsAddTypeOpen(false);
+                              }
+                            }}
+                            autoFocus
+                          />
+                          <Button 
+                            size="sm" 
+                            className="h-8" 
+                            onClick={() => {
+                              if (newTypeName.trim()) {
+                                handleAddVehicleType();
+                                setNewVehicleType(newTypeName.trim());
+                                setNewTypeName("");
+                                setIsAddTypeOpen(false);
+                              }
+                            }}
+                          >
+                            <Plus className="w-4 h-4" />
+                          </Button>
+                        </div>
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <Popover>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      variant="outline"
+                      className="w-20 h-9 p-1 border-2"
+                      style={{
+                        backgroundColor: `${getColorHex(newVehicleColor)}20`,
+                        borderColor: getColorHex(newVehicleColor)
+                      }}
+                    >
+                      <div 
+                        className="w-full h-full rounded"
+                        style={{ backgroundColor: getColorHex(newVehicleColor) }}
+                      />
+                    </Button>
+                  </PopoverTrigger>
+                  <PopoverContent className="w-64 p-2 bg-white" align="start">
+                    <div className="text-xs font-semibold mb-2 text-slate-500 uppercase tracking-wider">Select Color</div>
+                    <div className="grid grid-cols-4 gap-2">
+                      {AVAILABLE_COLORS.map(c => {
+                        const isSelected = newVehicleColor === c.value;
+                        return (
+                          <button
+                            key={c.value}
+                            type="button"
+                            onClick={() => {
+                              setNewVehicleColor(c.value);
+                            }}
+                            className={cn(
+                              "w-8 h-8 rounded-md border-2 hover:scale-110 transition-transform relative",
+                              c.class,
+                              isSelected && "ring-2 ring-offset-2 ring-slate-400"
+                            )}
+                            title={c.value}
+                          >
+                            {isSelected && <Check className="w-4 h-4 text-slate-800 absolute inset-0 m-auto" />}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </PopoverContent>
+                </Popover>
                 <Button onClick={handleAddVehicle} className="gap-2">
                   <Plus className="w-4 h-4" /> Add
                 </Button>
@@ -472,13 +605,13 @@ export function DepotCrewModal({
                   <div className="p-4 text-center text-slate-500 text-sm">No vehicles</div>
                 ) : (
                   (() => {
-                    // Group vehicles by type
+                    // Group vehicles by category (preferred) or type (fallback)
                     const groupedVehicles = vehicles.reduce((acc, vehicle) => {
-                      const type = vehicle.vehicleType || 'Other';
-                      if (!acc[type]) {
-                        acc[type] = [];
+                      const groupKey = vehicle.category || vehicle.vehicleType || 'OTHER';
+                      if (!acc[groupKey]) {
+                        acc[groupKey] = [];
                       }
-                      acc[type].push(vehicle);
+                      acc[groupKey].push(vehicle);
                       return acc;
                     }, {} as Record<string, typeof vehicles>);
 
@@ -499,12 +632,13 @@ export function DepotCrewModal({
                           {groupedVehicles[type].map((veh) => (
                             <div key={veh.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
                               {editingVehicle?.id === veh.id ? (
-                                <div className="flex items-center gap-2 flex-1 mr-4">
+                                <div className="flex items-center gap-2 flex-1 mr-4 flex-wrap">
                                   <Input 
                                     value={editingVehicle.name} 
                                     onChange={(e) => setEditingVehicle({ ...editingVehicle, name: e.target.value })}
                                     autoFocus
                                     className="w-40"
+                                    placeholder="Vehicle name"
                                   />
                                   <Select 
                                     value={editingVehicle.vehicleType} 
@@ -532,28 +666,82 @@ export function DepotCrewModal({
                                       <SelectItem value="maintenance">Maintenance</SelectItem>
                                     </SelectContent>
                                   </Select>
+                                  <Popover>
+                                    <PopoverTrigger asChild>
+                                      <Button
+                                        type="button"
+                                        variant="outline"
+                                        className="w-20 h-9 p-1 border-2"
+                                        style={{
+                                          backgroundColor: `${getColorHex(editingVehicle?.color)}20`,
+                                          borderColor: getColorHex(editingVehicle?.color)
+                                        }}
+                                      >
+                                        <div 
+                                          className="w-full h-full rounded"
+                                          style={{ backgroundColor: getColorHex(editingVehicle?.color) }}
+                                        />
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent className="w-64 p-2 bg-white" align="start">
+                                      <div className="text-xs font-semibold mb-2 text-slate-500 uppercase tracking-wider">Select Color</div>
+                                      <div className="grid grid-cols-4 gap-2">
+                                        {AVAILABLE_COLORS.map(c => {
+                                          const isSelected = getColorValue(editingVehicle?.color) === c.value;
+                                          return (
+                                            <button
+                                              key={c.value}
+                                              type="button"
+                                              onClick={() => {
+                                                setEditingVehicle({ ...editingVehicle!, color: c.hex });
+                                              }}
+                                              className={cn(
+                                                "w-8 h-8 rounded-md border-2 hover:scale-110 transition-transform relative",
+                                                c.class,
+                                                isSelected && "ring-2 ring-offset-2 ring-slate-400"
+                                              )}
+                                              title={c.value}
+                                            >
+                                              {isSelected && <Check className="w-4 h-4 text-slate-800 absolute inset-0 m-auto" />}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
                                   <Button size="sm" onClick={handleSaveVehicle}>Save</Button>
                                   <Button size="sm" variant="ghost" onClick={() => setEditingVehicle(null)}>Cancel</Button>
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-3 flex-1">
-                                  <div className="w-8 h-8 bg-slate-100 rounded-full flex items-center justify-center text-slate-600 shrink-0">
-                                    <Truck className="w-4 h-4" />
+                                  <div 
+                                    className="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 border-2 shrink-0"
+                                    style={{ 
+                                      backgroundColor: veh.color ? `${getColorHex(veh.color)}20` : '#f1f5f9',
+                                      borderColor: getColorHex(veh.color)
+                                    }}
+                                  >
+                                    <Truck className="w-4 h-4" style={{ color: getColorHex(veh.color) }} />
                                   </div>
                                   <div className="flex flex-col">
                                     <span className="font-medium">{veh.name}</span>
-                                    {veh.status !== 'active' && (
-                                      <span className="text-xs text-red-600 font-medium uppercase tracking-wider flex items-center gap-1">
-                                        <Settings className="w-3 h-3" /> {veh.status === 'off_road' ? 'VOR' : veh.status}
-                                      </span>
-                                    )}
+                                    <div className="flex items-center gap-2">
+                                      {veh.category && (
+                                        <span className="text-xs text-slate-500 font-medium">{veh.category}</span>
+                                      )}
+                                      {veh.status !== 'active' && (
+                                        <span className="text-xs text-red-600 font-medium uppercase tracking-wider flex items-center gap-1">
+                                          <Settings className="w-3 h-3" /> {veh.status === 'off_road' ? 'VOR' : veh.status}
+                                        </span>
+                                      )}
+                                    </div>
                                   </div>
                                 </div>
                               )}
                               
                               {editingVehicle?.id !== veh.id && (
                                 <div className="flex gap-1">
-                                  <Button size="icon" variant="ghost" onClick={() => setEditingVehicle(veh)}>
+                                  <Button size="icon" variant="ghost" onClick={() => setEditingVehicle({ ...veh, category: veh.category, color: veh.color })}>
                                     <Edit className="w-4 h-4 text-slate-500" />
                                   </Button>
                                   <Button size="icon" variant="ghost" onClick={() => handleDeleteVehicle(veh.id)}>

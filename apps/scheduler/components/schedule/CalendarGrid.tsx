@@ -43,6 +43,9 @@ export interface ScheduleItem {
     crewId: string;
     depotId: string;
 
+    // Job Status (free/booked/cancelled) - separate from approval status
+    jobStatus?: 'free' | 'booked' | 'cancelled';
+
     // Job Specifics
     customer?: string;
     jobNumber?: string;
@@ -65,7 +68,7 @@ interface CalendarGridProps {
   items: ScheduleItem[];
   crews: Crew[];
   employees: { id: string; name: string; status: 'active' | 'holiday' | 'sick'; email?: string; jobRole?: 'operative' | 'assistant' }[];
-  vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; vehicleType: string }[];
+  vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; vehicleType: string; category?: string; color?: string }[];
   colorLabels: Record<string, string>;
   isReadOnly: boolean;
   depots: { id: string; name: string; address: string }[];
@@ -81,7 +84,7 @@ interface CalendarGridProps {
   onEmployeeUpdate: (id: string, name: string, status?: 'active' | 'holiday' | 'sick', jobRole?: 'operative' | 'assistant', email?: string) => void;
   onEmployeeDelete: (id: string) => void;
   onVehicleCreate: (name: string) => void;
-  onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance') => void;
+  onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance', category?: string, color?: string) => void;
   onVehicleDelete: (id: string) => void;
   onColorLabelUpdate: (color: string, label: string) => void;
   vehicleTypes?: string[];
@@ -173,6 +176,31 @@ export function CalendarGrid({
   const [resourcesModalOpen, setResourcesModalOpen] = useState(false);
   const [smartSearchOpen, setSmartSearchOpen] = useState(false);
   const [expandedShifts, setExpandedShifts] = useState<{ night: boolean, day: boolean }>({ night: true, day: true });
+  
+  // Ensure shifts are always expanded by default when crews exist
+  useEffect(() => {
+    const nightCrews = crews.filter(c => c.shift === 'night');
+    const dayCrews = crews.filter(c => c.shift !== 'night');
+    
+    // If there are crews but shifts are collapsed, expand them
+    setExpandedShifts(prev => {
+      const updates: Partial<{ night: boolean; day: boolean }> = {};
+      if (nightCrews.length > 0 && !prev.night) {
+        updates.night = true;
+      }
+      if (dayCrews.length > 0 && !prev.day) {
+        updates.day = true;
+      }
+      // Always ensure at least one row is visible - if no crews exist, still expand
+      if (nightCrews.length === 0 && !prev.night) {
+        updates.night = true;
+      }
+      if (dayCrews.length === 0 && !prev.day) {
+        updates.day = true;
+      }
+      return Object.keys(updates).length > 0 ? { ...prev, ...updates } : prev;
+    });
+  }, [crews]);
   
   // Grouping dialog state
   const [groupingDialog, setGroupingDialog] = useState<{
@@ -734,14 +762,21 @@ export function CalendarGrid({
   };
 
   const handleEditItem = (item: ScheduleItem) => {
-    if (isReadOnly) return;
     const itemDate = startOfDay(new Date(item.date));
     const today = startOfDay(new Date());
     const isPast = isBefore(itemDate, today);
     
-    // Allow editing past items only if it's a job (for color changes)
-    if (isPast && item.type !== 'job') {
-      return;
+    // In read-only mode, only allow editing past jobs (for job status updates)
+    if (isReadOnly) {
+      if (!isPast || item.type !== 'job') {
+        return; // Don't allow editing non-past items or non-jobs in read-only mode
+      }
+      // Allow editing past jobs in read-only mode (for job status only)
+    } else {
+      // In normal mode, allow editing past items only if it's a job (for color changes)
+      if (isPast && item.type !== 'job') {
+        return;
+      }
     }
     
     setModalState({ isOpen: true, type: item.type, data: item });
@@ -1012,8 +1047,28 @@ export function CalendarGrid({
         const today = startOfDay(new Date());
         const isPast = isBefore(itemDate, today);
         
-        // For past items, only allow color changes for jobs
-        if (isPast) {
+        // In read-only mode, only allow job status updates for past jobs
+        if (isReadOnly && isPast) {
+          if (modalState.data.type !== 'job') {
+            return; // Silently ignore - shouldn't happen as we prevent opening the modal
+          }
+          // Only allow color/jobStatus changes in read-only mode
+          // Filter data to only include allowed keys
+          const filteredData: any = {};
+          if (data.color !== undefined) filteredData.color = data.color;
+          if (data.jobStatus !== undefined) filteredData.jobStatus = data.jobStatus;
+          
+          // Only proceed if there are actual changes to allowed fields
+          if (Object.keys(filteredData).length === 0) {
+            return; // No changes to allowed fields
+          }
+          
+          // Update only the allowed fields
+          const updatedItem = { ...modalState.data, ...filteredData };
+          onItemUpdate(updatedItem);
+          return; // Exit early, don't show alerts or do other processing
+        } else if (isPast) {
+          // For past items in normal mode, only allow color changes for jobs
           if (modalState.data.type !== 'job') {
             alert("Cannot edit past items. Only category colors can be changed for past jobs.");
             return;
@@ -1107,32 +1162,98 @@ export function CalendarGrid({
             return;
         }
         
-        onItemCreate({
+        const baseItem = {
             id: Math.random().toString(36).substr(2, 9),
             type: modalState.type,
             date: modalState.target.date,
             crewId: modalState.target.crewId,
-            depotId: "",
+            depotId: modalState.target.depotId || "",
             ...data
-        });
-        // Apply to week for Create? Usually handled by Duplicate. 
-        // But if user checks it on create, we could loop create.
-        if (applyToWeek) {
-             const startDate = new Date(modalState.target.date);
-             const currentViewEnd = addDays(weekStart, viewDays - 1);
-             let nextDate = addDays(startDate, 1);
-             
-             while (isSameDay(nextDate, currentViewEnd) || isBefore(nextDate, currentViewEnd)) {
+        };
+        
+        onItemCreate(baseItem);
+        
+        // Auto-generate free jobs and add operative for remainder of week when operative + vehicle
+        const isOperativeWithVehicle = 
+            modalState.type === 'operative' && 
+            data.employeeId && 
+            data.vehicleId;
+        
+        if (isOperativeWithVehicle) {
+            // Find the vehicle to get its color
+            const vehicle = vehicles.find((v: any) => v.id === data.vehicleId);
+            const vehicleColor = vehicle?.color || 'blue';
+            
+            const startDate = new Date(modalState.target.date);
+            const currentViewEnd = addDays(weekStart, viewDays - 1);
+            
+            // 1. Create free job on the same day (below the operative)
+            onItemCreate({
+                id: Math.random().toString(36).substr(2, 9),
+                type: 'job',
+                date: new Date(startDate),
+                crewId: modalState.target.crewId,
+                depotId: modalState.target.depotId || "",
+                jobStatus: 'free',
+                customer: 'Free',
+                address: 'Free',
+                startTime: '08:00',
+                duration: 8,
+                color: vehicleColor,
+                employeeId: data.employeeId,
+                vehicleId: data.vehicleId,
+            });
+            
+            // 2. Add operative and free jobs for the remainder of the week
+            let nextDate = addDays(startDate, 1);
+            
+            while (isSameDay(nextDate, currentViewEnd) || isBefore(nextDate, currentViewEnd)) {
+                // Create operative for this day
                 onItemCreate({
                     id: Math.random().toString(36).substr(2, 9),
                     type: modalState.type,
                     date: new Date(nextDate),
                     crewId: modalState.target.crewId,
-                    depotId: "",
+                    depotId: modalState.target.depotId || "",
+                    ...data
+                });
+                
+                // Create free job for this day
+                onItemCreate({
+                    id: Math.random().toString(36).substr(2, 9),
+                    type: 'job',
+                    date: new Date(nextDate),
+                    crewId: modalState.target.crewId,
+                    depotId: modalState.target.depotId || "",
+                    jobStatus: 'free',
+                    customer: 'Free',
+                    address: 'Free',
+                    startTime: '08:00',
+                    duration: 8,
+                    color: vehicleColor,
+                    employeeId: data.employeeId,
+                    vehicleId: data.vehicleId,
+                });
+                
+                nextDate = addDays(nextDate, 1);
+            }
+        } else if (applyToWeek) {
+            // For non-operative items or operatives without vehicles, use the applyToWeek checkbox
+            const startDate = new Date(modalState.target.date);
+            const currentViewEnd = addDays(weekStart, viewDays - 1);
+            let nextDate = addDays(startDate, 1);
+             
+            while (isSameDay(nextDate, currentViewEnd) || isBefore(nextDate, currentViewEnd)) {
+                onItemCreate({
+                    id: Math.random().toString(36).substr(2, 9),
+                    type: modalState.type,
+                    date: new Date(nextDate),
+                    crewId: modalState.target.crewId,
+                    depotId: modalState.target.depotId || "",
                     ...data
                 });
                 nextDate = addDays(nextDate, 1);
-             }
+            }
         }
     }
   };
@@ -1375,15 +1496,54 @@ export function CalendarGrid({
                         </td>
                     </tr>
 
-                    {expandedShifts.night && [...crews]
-                        .filter(c => c.shift === 'night')
-                        .map((crew, index) => {
+                    {expandedShifts.night && (() => {
+                        const nightCrews = crews.filter(c => c.shift === 'night');
+                        // Always show at least one row, even if no crews exist
+                        if (nightCrews.length === 0) {
+                            // Show empty row with add button
+                            const firstDepotId = depots.length > 0 ? depots[0].id : undefined;
+                            return (
+                                <>
+                                <tr key="night-empty" className="group">
+                                    <td className="p-2 border-b border-r border-slate-200 bg-white font-medium text-slate-700 align-top sticky left-0 z-10 w-14">
+                                        <div className="flex flex-col items-center justify-center h-full group relative gap-1">
+                                            <div className="w-8 h-8 rounded-full bg-indigo-100 flex items-center justify-center shrink-0">
+                                                <Moon className="w-4 h-4 text-indigo-600" />
+                                            </div>
+                                            {!isReadOnly && (
+                                                <div className="flex flex-col items-center gap-0.5">
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-6 w-6 rounded-full bg-indigo-50 text-indigo-600 hover:bg-indigo-100"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onCrewCreate("Night Shift", 'night');
+                                                        }}
+                                                        title="Add Night Crew"
+                                                    >
+                                                        <Plus className="h-3 w-3" />
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
+                                    {weekDays.map((day) => (
+                                        <td key={day.toString()} className="border-b border-r border-slate-200 align-top p-1.5" style={{ minHeight: "120px" }}>
+                                            <div className="h-full min-h-[120px] w-full"></div>
+                                        </td>
+                                    ))}
+                                </tr>
+                                </>
+                            );
+                        }
+                        // Render existing crews
+                        return nightCrews.map((crew, index) => {
                             const isFirstRow = index === 0;
-                            const nightCrews = crews.filter(c => c.shift === 'night');
                             const isLastRow = index === nightCrews.length - 1;
                             
                             return (
-                        <tr key={crew.id} className="group">
+                                <tr key={crew.id} className="group">
                             <td className="p-2 border-b border-r border-slate-200 bg-white font-medium text-slate-700 align-top sticky left-0 z-10 w-14">
                                 <div className="flex flex-col items-center justify-center h-full group relative gap-1">
                                     <TooltipProvider>
@@ -1569,6 +1729,7 @@ export function CalendarGrid({
                                                     <SiteCard 
                                                         key={item.id} 
                                                         item={item} 
+                                                        vehicles={vehicles}
                                                         onEdit={handleEditItem} 
                                                         onDelete={(id, mode) => handleDeleteItem(id, mode)} 
                                                         onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
@@ -1585,9 +1746,10 @@ export function CalendarGrid({
                                     </DroppableCell>
                                 );
                             })}
-                        </tr>
+                                </tr>
                             );
-                        })}
+                        });
+                    })()}
 
                     {/* Day Shift Header */}
                     <tr 
@@ -1603,11 +1765,48 @@ export function CalendarGrid({
                         </td>
                     </tr>
 
-                    {expandedShifts.day && [...crews]
-                        .filter(c => c.shift !== 'night')
-                        .map((crew, index) => {
+                    {expandedShifts.day && (() => {
+                        const dayCrews = crews.filter(c => c.shift !== 'night');
+                        // Always show at least one row, even if no crews exist
+                        if (dayCrews.length === 0) {
+                            // Show empty row with add button
+                            const firstDepotId = depots.length > 0 ? depots[0].id : undefined;
+                            return (
+                                <tr key="day-empty" className="group">
+                                    <td className="p-2 border-b border-r border-slate-200 bg-white font-medium text-slate-700 align-top sticky left-0 z-10 w-14">
+                                        <div className="flex flex-col items-center justify-center h-full group relative gap-1">
+                                            <div className="w-8 h-8 rounded-full bg-amber-50 flex items-center justify-center shrink-0">
+                                                <Sun className="w-4 h-4 text-amber-500" />
+                                            </div>
+                                            {!isReadOnly && (
+                                                <div className="flex flex-col items-center gap-0.5">
+                                                    <Button
+                                                        size="icon"
+                                                        variant="ghost"
+                                                        className="h-6 w-6 rounded-full bg-amber-50 text-amber-600 hover:bg-amber-100"
+                                                        onClick={(e) => {
+                                                            e.stopPropagation();
+                                                            onCrewCreate("Day Shift", 'day');
+                                                        }}
+                                                        title="Add Day Crew"
+                                                    >
+                                                        <Plus className="h-3 w-3" />
+                                                    </Button>
+                                                </div>
+                                            )}
+                                        </div>
+                                    </td>
+                                    {weekDays.map((day) => (
+                                        <td key={day.toString()} className="border-b border-r border-slate-200 align-top p-1.5" style={{ minHeight: "120px" }}>
+                                            <div className="h-full min-h-[120px] w-full"></div>
+                                        </td>
+                                    ))}
+                                </tr>
+                            );
+                        }
+                        // Render existing crews
+                        return dayCrews.map((crew, index) => {
                             const isFirstRow = index === 0;
-                            const dayCrews = crews.filter(c => c.shift !== 'night');
                             const isLastRow = index === dayCrews.length - 1;
                             
                             return (
@@ -1797,6 +1996,7 @@ export function CalendarGrid({
                                                     <SiteCard 
                                                         key={item.id} 
                                                         item={item} 
+                                                        vehicles={vehicles}
                                                         onEdit={handleEditItem} 
                                                         onDelete={(id, mode) => handleDeleteItem(id, mode)} 
                                                         onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
@@ -1813,9 +2013,10 @@ export function CalendarGrid({
                                     </DroppableCell>
                                 );
                             })}
-                        </tr>
+                                </tr>
                             );
-                        })}
+                        });
+                    })()}
                 </tbody>
             </table>
         </div>
@@ -1826,6 +2027,7 @@ export function CalendarGrid({
                 <div className="w-[200px] opacity-90 rotate-2 cursor-grabbing shadow-xl">
                     <SiteCard 
                         item={activeItem} 
+                        vehicles={vehicles}
                         onEdit={() => {}} 
                         onDelete={() => {}} 
                         onDuplicate={() => {}} 
@@ -2020,6 +2222,7 @@ export function CalendarGrid({
         items={items} // Pass items for conflict detection
         crews={crews} // Pass crews for validating assignments
         colorLabels={colorLabels}
+        isReadOnly={isReadOnly}
         onColorLabelUpdate={onColorLabelUpdate}
       />
 

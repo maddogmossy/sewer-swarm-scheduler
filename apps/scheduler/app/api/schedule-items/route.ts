@@ -13,9 +13,19 @@ export async function GET() {
     const items = await storage.getScheduleItemsByOrg(ctx.organizationId);
     return NextResponse.json(items);
   } catch (err: any) {
+    console.error("[GET /api/schedule-items] Error:", {
+      message: err.message,
+      errorType: err.constructor?.name,
+      stack: err.stack?.substring(0, 500),
+    });
+    const isUnauthorized = err.message?.includes("Unauthorized");
+    const isDatabaseError = err.message?.includes("Database") || err.message?.includes("Failed query") || err.constructor?.name === "DrizzleQueryError";
+    
+    // Return 500 for database errors, 401 for auth errors, 403 for other errors
+    const status = isUnauthorized ? 401 : (isDatabaseError ? 500 : 403);
     return NextResponse.json(
-      { error: err.message ?? "Unauthorized" },
-      { status: err.message?.includes("Unauthorized") ? 401 : 403 }
+      { error: err.message ?? "Failed to fetch schedule items" },
+      { status }
     );
   }
 }
@@ -113,6 +123,7 @@ export async function POST(req: Request) {
       userId: ctx.userId,
       requestedBy: ctx.userId,
       status,
+      jobStatus: body.jobStatus || 'booked', // Default to 'booked' if not provided
     };
 
     // Add optional fields only if they exist

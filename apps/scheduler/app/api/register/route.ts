@@ -114,6 +114,22 @@ export async function POST(request: Request) {
       acceptedAt: new Date(),
     });
 
+    // Create a default depot with day and night crews for new users
+    try {
+      const defaultDepot = await storage.createDepot({
+        id: randomUUID(),
+        name: "Main Depot",
+        address: "Address to be updated",
+        userId: user.id,
+        organizationId: organization.id,
+      });
+      // Note: createDepot now automatically creates day and night crews
+      console.log("Default depot and crews created for new user:", defaultDepot.id);
+    } catch (depotError) {
+      // Log error but don't fail registration
+      console.error("Failed to create default depot for new user:", depotError);
+    }
+
     // Set cookie
     const cookieStore = await cookies();
     cookieStore.set("userId", user.id, {

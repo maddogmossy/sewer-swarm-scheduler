@@ -32,7 +32,13 @@ export default function SchedulePage() {
   const [isDepotCrewModalOpen, setIsDepotCrewModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("");
-  const [vehicleTypes] = useState<string[]>(INITIAL_VEHICLE_TYPES);
+  const [vehicleTypes, setVehicleTypes] = useState<string[]>(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("scheduler_vehicle_types");
+      return saved ? JSON.parse(saved) : INITIAL_VEHICLE_TYPES;
+    }
+    return INITIAL_VEHICLE_TYPES;
+  });
   const [colorLabels, setColorLabels] = useState<Record<string, string>>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("scheduler_color_labels");
@@ -144,6 +150,8 @@ export default function SchedulePage() {
     name: v.name,
     status: (v.status as "active" | "off_road" | "maintenance") || "active",
     vehicleType: v.vehicleType || "Van",
+    category: v.category,
+    color: v.color,
     depotId: v.depotId,
   }));
 
@@ -336,12 +344,14 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   }, [mutations]);
 
   const handleVehicleCreate = useCallback(
-    async (name: string, vehicleType: string = "Van") => {
+    async (name: string, vehicleType: string = "Van", category?: string, color?: string) => {
       if (!selectedDepotId) return;
       await mutations.createVehicle.mutateAsync({
         name,
         status: "active",
         vehicleType,
+        category: category,
+        color: color,
         depotId: selectedDepotId,
       });
     },
@@ -353,9 +363,11 @@ const transformedDepots: Depot[] = depots.map((d) => ({
       id: string,
       name: string,
       status?: "active" | "off_road" | "maintenance",
-      vehicleType?: string
+      vehicleType?: string,
+      category?: string,
+      color?: string
     ) => {
-      await mutations.updateVehicle.mutateAsync({ id, data: { name, status, vehicleType } });
+      await mutations.updateVehicle.mutateAsync({ id, data: { name, status, vehicleType, category, color } });
     },
     [mutations]
   );
@@ -363,6 +375,29 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   const handleVehicleDelete = useCallback(async (id: string) => {
     await mutations.deleteVehicle.mutateAsync(id);
   }, [mutations]);
+
+  const handleVehicleTypeCreate = useCallback(
+    (type: string) => {
+      if (!type.trim() || vehicleTypes.includes(type.trim())) return;
+      const newTypes = [...vehicleTypes, type.trim()];
+      setVehicleTypes(newTypes);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("scheduler_vehicle_types", JSON.stringify(newTypes));
+      }
+    },
+    [vehicleTypes]
+  );
+
+  const handleVehicleTypeDelete = useCallback(
+    (type: string) => {
+      const newTypes = vehicleTypes.filter(t => t !== type);
+      setVehicleTypes(newTypes);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("scheduler_vehicle_types", JSON.stringify(newTypes));
+      }
+    },
+    [vehicleTypes]
+  );
 
   const handleColorLabelUpdate = useCallback(
     async (color: string, label: string) => {
@@ -530,6 +565,8 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           onVehicleUpdate={handleVehicleUpdate}
           onVehicleDelete={handleVehicleDelete}
           vehicleTypes={vehicleTypes}
+          onVehicleTypeCreate={handleVehicleTypeCreate}
+          onVehicleTypeDelete={handleVehicleTypeDelete}
           isReadOnly={isReadOnly}
         />
       )}

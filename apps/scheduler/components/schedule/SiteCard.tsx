@@ -1,4 +1,4 @@
-import { format } from "date-fns";
+import { format, isBefore, startOfDay } from "date-fns";
 import { MapPin, Clock, MoreHorizontal, Copy, Trash2, Edit, CalendarDays, CalendarRange } from "lucide-react";
 import { useSortable } from "@dnd-kit/sortable";
 import { CSS } from "@dnd-kit/utilities";
@@ -37,9 +37,10 @@ interface SiteCardProps {
   selectedItemIds?: Set<string>;
   onDuplicateSelected?: (mode: 'single' | 'week' | 'following_week' | 'custom' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year', days?: number) => void;
   onDeleteSelected?: (mode: 'single' | 'week' | 'remainder_month' | 'remainder_year' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months') => void;
+  vehicles?: { id: string; name: string; category?: string; color?: string }[];
 }
 
-export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected }: SiteCardProps) {
+export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [] }: SiteCardProps) {
   const hasMultipleSelected = selectedItemIds && selectedItemIds.size > 1 && selectedItemIds.has(item.id);
   const {
     attributes,
@@ -55,6 +56,10 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
     transition,
     opacity: isDragging ? 0.5 : 1,
   };
+
+  // Get vehicle color if vehicle is assigned - this is the base color for the job
+  const vehicle = item.vehicleId ? vehicles.find(v => v.id === item.vehicleId) : null;
+  const vehicleColor = vehicle?.color;
 
   // Pastel Colors
   const colorClasses: Record<string, string> = {
@@ -86,7 +91,16 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
     free: "bg-white border-dashed border-slate-300 text-slate-400", 
   };
 
-  const baseColor = colorClasses[item.color || 'blue'] || colorClasses.blue;
+  // Use vehicle color as base color if available, otherwise use item color, otherwise default to blue
+  const baseColorKey = vehicleColor || item.color || 'blue';
+  const baseColor = colorClasses[baseColorKey] || colorClasses.blue;
+  
+  // Check if this is a free/ghost job
+  const isFreeJob = item.jobStatus === 'free' || item.customer === 'Free';
+  
+  // Check if this is a past job (allow editing job status even in read-only mode)
+  const isPastJob = item.date ? isBefore(startOfDay(new Date(item.date)), startOfDay(new Date())) : false;
+  const canEditPastJobStatus = isReadOnly && isPastJob && item.type === 'job';
 
   if (item.customer === "FREE_SLOT") {
       return (
@@ -107,7 +121,10 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
             {...listeners}
             onDoubleClick={(e) => {
                 e.stopPropagation();
-                onEdit(item);
+                // Allow editing past jobs even in read-only mode (for job status updates)
+                if (!isReadOnly || canEditPastJobStatus) {
+                    onEdit(item);
+                }
             }}
             onClick={(e) => {
                 if (e.shiftKey && onToggleSelection) {
@@ -122,12 +139,37 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                 isSelected ? "ring-2 ring-black ring-inset z-20 border-transparent" : "",
                 "w-full mb-1", // Jobs always take full width (100%)
                 "bg-white border-l-4",
-                // Map color classes dynamically or fallback to a default border
-                item.color && colorClasses[item.color] ? colorClasses[item.color].replace('bg-', 'border-l-').split(' ')[1] : 'border-l-blue-500'
+                // Ghost styling for free jobs
+                isFreeJob && "opacity-60 border-dashed",
+                // Use named color classes if not hex
+                !vehicleColor?.startsWith('#') && !item.color?.startsWith('#') && 
+                (vehicleColor || item.color || 'blue') && colorClasses[vehicleColor || item.color || 'blue'] 
+                  ? colorClasses[vehicleColor || item.color || 'blue'].replace('bg-', 'border-l-').split(' ')[1] 
+                  : 'border-l-blue-500'
             )}
+            style={{
+                // Use hex color directly for border if available
+                ...(vehicleColor?.startsWith('#') ? { borderLeftColor: vehicleColor } :
+                    item.color?.startsWith('#') ? { borderLeftColor: item.color } : {})
+            }}
             >
             {/* Top Row: Customer | Site | Onsite Time */}
-            <div className={cn("px-1.5 py-1 text-[10px] font-bold flex justify-between items-center bg-opacity-30", baseColor.split(' ')[0])}>
+            <div 
+                className={cn("px-1.5 py-1 text-[10px] font-bold flex justify-between items-center bg-opacity-30", 
+                    // Only use colorClasses if it's a named color, not hex
+                    vehicleColor && !vehicleColor.startsWith('#') ? baseColor.split(' ')[0] :
+                    item.color && !item.color.startsWith('#') ? baseColor.split(' ')[0] :
+                    "bg-blue-100"
+                )}
+                style={{
+                    // Use hex color directly if available
+                    backgroundColor: vehicleColor && vehicleColor.startsWith('#') 
+                        ? `${vehicleColor}30` 
+                        : item.color && item.color.startsWith('#')
+                        ? `${item.color}30`
+                        : undefined
+                }}
+            >
                 <div className="flex items-center gap-1 truncate max-w-[90%] min-w-0">
                     <span className="truncate shrink-1">{item.customer}</span>
                     <span className="opacity-50">|</span>
@@ -147,14 +189,14 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                     </Button>
                     </DropdownMenuTrigger>
                     <DropdownMenuContent align="end" className="w-48 bg-white">
-                    {!isReadOnly && (
+                    {(!isReadOnly || canEditPastJobStatus) && (
                         <>
                         <DropdownMenuItem
                             onClick={() => onEdit(item)}
                             disabled={hasMultipleSelected}
                             className={hasMultipleSelected ? "opacity-50 cursor-not-allowed" : "text-black"}
                         >
-                            <Edit className="w-3 h-3 mr-2" /> Edit
+                            <Edit className="w-3 h-3 mr-2" /> {canEditPastJobStatus ? "Update Job Status" : "Edit"}
                         </DropdownMenuItem>
                         
                         {hasMultipleSelected && onDuplicateSelected ? (
@@ -218,83 +260,87 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                             </>
                         ) : (
                             <>
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger className="text-black">
-                                        <Copy className="w-3 h-3 mr-2" /> Duplicate
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuSubContent className="w-48 bg-white">
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'single')} className="text-black">
-                                            Duplicate Single
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'custom', 5)} className="text-black">
-                                            <CalendarDays className="w-3 h-3 mr-2" /> Next 5 Days
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'week')} className="text-black">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'following_week')} className="text-black">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Following Week
-                                        </DropdownMenuItem>
+                                {!canEditPastJobStatus && (
+                                    <>
+                                        <DropdownMenuSub>
+                                            <DropdownMenuSubTrigger className="text-black">
+                                                <Copy className="w-3 h-3 mr-2" /> Duplicate
+                                            </DropdownMenuSubTrigger>
+                                            <DropdownMenuSubContent className="w-48 bg-white">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'single')} className="text-black">
+                                                    Duplicate Single
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'custom', 5)} className="text-black">
+                                                    <CalendarDays className="w-3 h-3 mr-2" /> Next 5 Days
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'week')} className="text-black">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'following_week')} className="text-black">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Following Week
+                                                </DropdownMenuItem>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'remainder_month')} className="text-black">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'remainder_year')} className="text-black">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_2_months')} className="text-black">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_3_months')} className="text-black">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_4_months')} className="text-black">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_5_months')} className="text-black">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_6_months')} className="text-black">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
+                                                </DropdownMenuItem>
+                                            </DropdownMenuSubContent>
+                                        </DropdownMenuSub>
                                         <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'remainder_month')} className="text-black">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'remainder_year')} className="text-black">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'next_2_months')} className="text-black">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'next_3_months')} className="text-black">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'next_4_months')} className="text-black">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'next_5_months')} className="text-black">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicate(item, 'next_6_months')} className="text-black">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
-                                        </DropdownMenuItem>
-                                    </DropdownMenuSubContent>
-                                </DropdownMenuSub>
-                                <DropdownMenuSeparator />
-                                <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger className="text-red-600">
-                                        <Trash2 className="w-3 h-3 mr-2" /> Delete
-                                    </DropdownMenuSubTrigger>
-                                    <DropdownMenuSubContent className="w-48">
-                                        <DropdownMenuItem onClick={() => onDelete(item.id, 'single')} className="text-red-600">
-                                            Delete Single
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDelete(item.id, 'week')} className="text-red-600">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
-                                        </DropdownMenuItem>
-                                        <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={() => onDelete(item.id, 'remainder_month')} className="text-red-600">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDelete(item.id, 'remainder_year')} className="text-red-600">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDelete(item.id, 'next_2_months')} className="text-red-600">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDelete(item.id, 'next_3_months')} className="text-red-600">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDelete(item.id, 'next_4_months')} className="text-red-600">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDelete(item.id, 'next_5_months')} className="text-red-600">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
-                                        </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDelete(item.id, 'next_6_months')} className="text-red-600">
-                                            <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
-                                        </DropdownMenuItem>
-                                    </DropdownMenuSubContent>
-                                </DropdownMenuSub>
+                                        <DropdownMenuSub>
+                                            <DropdownMenuSubTrigger className="text-red-600">
+                                                <Trash2 className="w-3 h-3 mr-2" /> Delete
+                                            </DropdownMenuSubTrigger>
+                                            <DropdownMenuSubContent className="w-48">
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'single')} className="text-red-600">
+                                                    Delete Single
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'week')} className="text-red-600">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
+                                                </DropdownMenuItem>
+                                                <DropdownMenuSeparator />
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'remainder_month')} className="text-red-600">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'remainder_year')} className="text-red-600">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_2_months')} className="text-red-600">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_3_months')} className="text-red-600">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_4_months')} className="text-red-600">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_5_months')} className="text-red-600">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
+                                                </DropdownMenuItem>
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_6_months')} className="text-red-600">
+                                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
+                                                </DropdownMenuItem>
+                                            </DropdownMenuSubContent>
+                                        </DropdownMenuSub>
+                                    </>
+                                )}
                             </>
                         )}
                         </>
@@ -330,91 +376,95 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
             </div>
         </ContextMenuTrigger>
         <ContextMenuContent className="w-48 bg-white">
-            {!isReadOnly && (
+            {(!isReadOnly || canEditPastJobStatus) && (
                 <>
                 <ContextMenuItem onClick={() => onEdit(item)}>
-                    <Edit className="w-3 h-3 mr-2" /> Edit
+                    <Edit className="w-3 h-3 mr-2" /> {canEditPastJobStatus ? "Update Job Status" : "Edit"}
                 </ContextMenuItem>
                 
-                <ContextMenuSub>
-                    <ContextMenuSubTrigger className="text-black">
-                        <Copy className="w-3 h-3 mr-2" /> Duplicate
-                    </ContextMenuSubTrigger>
-                    <ContextMenuSubContent className="w-48 bg-white">
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'single')} className="text-black">
-                            Duplicate Single
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'custom', 5)} className="text-black">
-                            <CalendarDays className="w-3 h-3 mr-2" /> Next 5 Days
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'week')} className="text-black">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'following_week')} className="text-black">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Following Week
-                        </ContextMenuItem>
-                        <ContextMenuSeparator />
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'remainder_month')} className="text-black">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'remainder_year')} className="text-black">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_2_months')} className="text-black">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_3_months')} className="text-black">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_4_months')} className="text-black">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_5_months')} className="text-black">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_6_months')} className="text-black">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
-                        </ContextMenuItem>
-                    </ContextMenuSubContent>
-                </ContextMenuSub>
+                {!canEditPastJobStatus && (
+                    <>
+                        <ContextMenuSub>
+                            <ContextMenuSubTrigger className="text-black">
+                                <Copy className="w-3 h-3 mr-2" /> Duplicate
+                            </ContextMenuSubTrigger>
+                            <ContextMenuSubContent className="w-48 bg-white">
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'single')} className="text-black">
+                                    Duplicate Single
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'custom', 5)} className="text-black">
+                                    <CalendarDays className="w-3 h-3 mr-2" /> Next 5 Days
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'week')} className="text-black">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'following_week')} className="text-black">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Following Week
+                                </ContextMenuItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'remainder_month')} className="text-black">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'remainder_year')} className="text-black">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'next_2_months')} className="text-black">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'next_3_months')} className="text-black">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'next_4_months')} className="text-black">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'next_5_months')} className="text-black">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDuplicate(item, 'next_6_months')} className="text-black">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
+                                </ContextMenuItem>
+                            </ContextMenuSubContent>
+                        </ContextMenuSub>
 
-                <ContextMenuSeparator />
-
-                <ContextMenuSub>
-                    <ContextMenuSubTrigger className="text-red-600">
-                        <Trash2 className="w-3 h-3 mr-2" /> Delete
-                    </ContextMenuSubTrigger>
-                    <ContextMenuSubContent className="w-48">
-                        <ContextMenuItem onClick={() => onDelete(item.id, 'single')} className="text-red-600">
-                            Delete Single
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDelete(item.id, 'week')} className="text-red-600">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
-                        </ContextMenuItem>
                         <ContextMenuSeparator />
-                        <ContextMenuItem onClick={() => onDelete(item.id, 'remainder_month')} className="text-red-600">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDelete(item.id, 'remainder_year')} className="text-red-600">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDelete(item.id, 'next_2_months')} className="text-red-600">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDelete(item.id, 'next_3_months')} className="text-red-600">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDelete(item.id, 'next_4_months')} className="text-red-600">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDelete(item.id, 'next_5_months')} className="text-red-600">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
-                        </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDelete(item.id, 'next_6_months')} className="text-red-600">
-                            <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
-                        </ContextMenuItem>
-                    </ContextMenuSubContent>
-                </ContextMenuSub>
+
+                        <ContextMenuSub>
+                            <ContextMenuSubTrigger className="text-red-600">
+                                <Trash2 className="w-3 h-3 mr-2" /> Delete
+                            </ContextMenuSubTrigger>
+                            <ContextMenuSubContent className="w-48">
+                                <ContextMenuItem onClick={() => onDelete(item.id, 'single')} className="text-red-600">
+                                    Delete Single
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDelete(item.id, 'week')} className="text-red-600">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
+                                </ContextMenuItem>
+                                <ContextMenuSeparator />
+                                <ContextMenuItem onClick={() => onDelete(item.id, 'remainder_month')} className="text-red-600">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDelete(item.id, 'remainder_year')} className="text-red-600">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDelete(item.id, 'next_2_months')} className="text-red-600">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDelete(item.id, 'next_3_months')} className="text-red-600">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDelete(item.id, 'next_4_months')} className="text-red-600">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDelete(item.id, 'next_5_months')} className="text-red-600">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
+                                </ContextMenuItem>
+                                <ContextMenuItem onClick={() => onDelete(item.id, 'next_6_months')} className="text-red-600">
+                                    <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
+                                </ContextMenuItem>
+                            </ContextMenuSubContent>
+                        </ContextMenuSub>
+                    </>
+                )}
                 </>
             )}
             {isReadOnly && (

@@ -150,6 +150,8 @@ export const vehicles = pgTable("vehicles", {
   name: text("name").notNull(),
   status: text("status").notNull().default("active"),
   vehicleType: text("vehicle_type").notNull(),
+  category: text("category"),
+  color: text("color"),
   depotId: varchar("depot_id").notNull().references(() => depots.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   organizationId: varchar("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
@@ -180,6 +182,9 @@ export const scheduleItems = pgTable("schedule_items", {
   approvedBy: varchar("approved_by").references(() => users.id),
   approvedAt: timestamp("approved_at"),
   rejectionReason: text("rejection_reason"),
+  
+  // Job status (free/booked/cancelled) - separate from approval status
+  jobStatus: text("job_status").notNull().default("booked"),
   
   // Job fields
   customer: text("customer"),

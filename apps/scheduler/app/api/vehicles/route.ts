@@ -13,9 +13,19 @@ export async function GET() {
     const vehicles = await storage.getVehiclesByOrg(ctx.organizationId);
     return NextResponse.json(vehicles);
   } catch (err: any) {
+    console.error("[GET /api/vehicles] Error:", {
+      message: err.message,
+      errorType: err.constructor?.name,
+      stack: err.stack?.substring(0, 500),
+    });
+    const isUnauthorized = err.message?.includes("Unauthorized");
+    const isDatabaseError = err.message?.includes("Database") || err.message?.includes("Failed query") || err.constructor?.name === "DrizzleQueryError";
+    
+    // Return 500 for database errors, 401 for auth errors, 403 for other errors
+    const status = isUnauthorized ? 401 : (isDatabaseError ? 500 : 403);
     return NextResponse.json(
-      { error: err.message ?? "Unauthorized" },
-      { status: 403 }
+      { error: err.message ?? "Failed to fetch vehicles" },
+      { status }
     );
   }
 }

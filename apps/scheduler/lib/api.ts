@@ -38,6 +38,8 @@ export interface Vehicle {
   name: string;
   status: string;
   vehicleType: string;
+  category?: string;
+  color?: string;
   depotId: string;
   userId: string;
 }
@@ -49,6 +51,7 @@ export interface ScheduleItem {
   crewId: string;
   depotId: string;
   userId: string;
+  jobStatus?: 'free' | 'booked' | 'cancelled';
   customer?: string;
   jobNumber?: string;
   address?: string;

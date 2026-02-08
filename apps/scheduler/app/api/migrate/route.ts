@@ -151,6 +151,8 @@ async function runMigration() {
           "name" text NOT NULL,
           "status" text DEFAULT 'active' NOT NULL,
           "vehicle_type" text NOT NULL,
+          "category" text,
+          "color" text,
           "depot_id" varchar NOT NULL,
           "user_id" varchar NOT NULL,
           "organization_id" varchar,
@@ -158,6 +160,19 @@ async function runMigration() {
           FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE,
           FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE
         );
+      `);
+
+      // Add category and color columns to vehicles if they don't exist
+      await client.query(`
+        DO $$ 
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vehicles' AND column_name = 'category') THEN
+            ALTER TABLE "vehicles" ADD COLUMN "category" text;
+          END IF;
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vehicles' AND column_name = 'color') THEN
+            ALTER TABLE "vehicles" ADD COLUMN "color" text;
+          END IF;
+        END $$;
       `);
 
       // Create schedule_items table
@@ -175,6 +190,7 @@ async function runMigration() {
           "approved_by" varchar,
           "approved_at" timestamp,
           "rejection_reason" text,
+          "job_status" text NOT NULL DEFAULT 'booked',
           "customer" text,
           "job_number" text,
           "address" text,
@@ -193,6 +209,16 @@ async function runMigration() {
           FOREIGN KEY ("employee_id") REFERENCES "employees"("id") ON DELETE CASCADE,
           FOREIGN KEY ("vehicle_id") REFERENCES "vehicles"("id") ON DELETE CASCADE
         );
+      `);
+
+      // Add job_status column to schedule_items if it doesn't exist
+      await client.query(`
+        DO $$ 
+        BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'schedule_items' AND column_name = 'job_status') THEN
+            ALTER TABLE "schedule_items" ADD COLUMN "job_status" text NOT NULL DEFAULT 'booked';
+          END IF;
+        END $$;
       `);
 
       // Create color_labels table

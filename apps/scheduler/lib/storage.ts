@@ -91,10 +91,21 @@ import {
       // Re-throw with context for other errors, but don't expose SQL query details
       const errorMessage = error?.message || error?.cause?.message || 'Unknown database error';
       
+      // Check for column-related errors (missing columns)
+      if (errorMessage.includes("column") && (errorMessage.includes("does not exist") || errorMessage.includes("not found"))) {
+        console.error(`[handleDbError] Missing column detected. This usually means the database needs to be migrated.`);
+        throw new Error(`Database schema is out of date. Please run the migration endpoint (/api/run-migrations) to update the database schema.`);
+      }
+      
       // Don't expose SQL query details to users, but log them server-side
       if (errorMessage.includes("Failed query:") || errorMessage.includes("params:")) {
         // Log the actual SQL error for debugging (server-side only)
-        console.error(`[handleDbError] SQL error details (hidden from client):`, errorMessage.substring(0, 500));
+        console.error(`[handleDbError] SQL error details (hidden from client):`, errorMessage.substring(0, 1000));
+        // Check if it's a column error in the detailed message
+        const fullError = JSON.stringify(error, Object.getOwnPropertyNames(error));
+        if (fullError.includes("column") && (fullError.includes("does not exist") || fullError.includes("not found"))) {
+          throw new Error(`Database schema is out of date. Please run the migration endpoint (/api/run-migrations) to update the database schema.`);
+        }
         // Return a generic error message instead
         throw new Error(`Database operation failed. Please try again or contact support if the problem persists.`);
       }
@@ -406,7 +417,32 @@ import {
   
     async createDepot(depot: InsertDepot): Promise<Depot> {
       const result = await getDb().insert(depots).values(depot).returning();
-      return result[0];
+      const createdDepot = result[0];
+      
+      // Automatically create day and night crews for the new depot
+      try {
+        await getDb().insert(crews).values([
+          {
+            name: "Day Shift",
+            depotId: createdDepot.id,
+            shift: "day",
+            userId: depot.userId,
+            organizationId: depot.organizationId,
+          },
+          {
+            name: "Night Shift",
+            depotId: createdDepot.id,
+            shift: "night",
+            userId: depot.userId,
+            organizationId: depot.organizationId,
+          },
+        ]);
+      } catch (crewError) {
+        // Log error but don't fail depot creation
+        console.error("Failed to create default crews for depot:", crewError);
+      }
+      
+      return createdDepot;
     }
   
     async updateDepot(id: string, depot: Partial<InsertDepot>): Promise<Depot | undefined> {
@@ -499,7 +535,12 @@ import {
   
     // ============= VEHICLES =============
     async getVehiclesByOrg(organizationId: string): Promise<Vehicle[]> {
-      return await getDb().select().from(vehicles).where(eq(vehicles.organizationId, organizationId));
+      return await handleDbError(
+        async () => {
+          return await getDb().select().from(vehicles).where(eq(vehicles.organizationId, organizationId));
+        },
+        'getVehiclesByOrg'
+      );
     }
   
     async getVehicles(userId: string): Promise<Vehicle[]> {
@@ -527,7 +568,12 @@ import {
   
     // ============= SCHEDULE ITEMS =============
     async getScheduleItemsByOrg(organizationId: string, startDate?: Date, endDate?: Date): Promise<ScheduleItem[]> {
-      return await getDb().select().from(scheduleItems).where(eq(scheduleItems.organizationId, organizationId));
+      return await handleDbError(
+        async () => {
+          return await getDb().select().from(scheduleItems).where(eq(scheduleItems.organizationId, organizationId));
+        },
+        'getScheduleItemsByOrg'
+      );
     }
   
     async getPendingScheduleItems(organizationId: string): Promise<ScheduleItem[]> {
@@ -604,10 +650,18 @@ import {
   
     async upsertColorLabel(userId: string, color: string, label: string, organizationId?: string): Promise<ColorLabel> {
       const database = getDb();
-      // Check if exists
-      const existing = await database.select().from(colorLabels).where(
-        and(eq(colorLabels.userId, userId), eq(colorLabels.color, color))
-      );
+      // Check if exists - for organization-level labels, check by organizationId and color
+      // For user-level labels, check by userId and color
+      let existing;
+      if (organizationId) {
+        existing = await database.select().from(colorLabels).where(
+          and(eq(colorLabels.organizationId, organizationId), eq(colorLabels.color, color))
+        );
+      } else {
+        existing = await database.select().from(colorLabels).where(
+          and(eq(colorLabels.userId, userId), eq(colorLabels.color, color), isNull(colorLabels.organizationId))
+        );
+      }
       
       if (existing.length > 0) {
         const result = await database.update(colorLabels)

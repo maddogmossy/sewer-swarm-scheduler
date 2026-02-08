@@ -58,6 +58,15 @@ export default function SchedulePage() {
     return INITIAL_COLOR_LABELS;
   });
 
+  // Undo/Redo state - track operations instead of full state
+  type Operation = 
+    | { type: 'create'; item: ScheduleItem }
+    | { type: 'update'; item: ScheduleItem; previousItem: ScheduleItem }
+    | { type: 'delete'; item: ScheduleItem };
+  
+  const [history, setHistory] = useState<Operation[]>([]);
+  const [future, setFuture] = useState<Operation[]>([]);
+
   const {
     depots,
     crews,
@@ -193,9 +202,21 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   vehicles: vehicles.filter(v => v.depotId === d.id).length,
 }));
 
+  // Helper to save operation to history
+  const saveOperationToHistory = useCallback((operation: Operation) => {
+    setHistory((h) => [...h, operation]);
+    setFuture([]); // Clear future when new action is made
+  }, []);
+
   // Handlers
   const handleItemUpdate = useCallback(
     async (item: ScheduleItem) => {
+      // Find previous state for undo
+      const previousItem = transformedItems.find(i => i.id === item.id);
+      if (previousItem) {
+        saveOperationToHistory({ type: 'update', item, previousItem });
+      }
+      
       // Match Replit's approach: send the item data directly, let the server handle date conversion
       const { id, ...itemData } = item;
       
@@ -204,11 +225,90 @@ const transformedDepots: Depot[] = depots.map((d) => ({
         data: itemData,
       });
     },
-    [mutations]
+    [mutations, transformedItems, saveOperationToHistory]
   );
+
+  const handleUndo = useCallback(async () => {
+    if (history.length === 0) return;
+    const operation = history[history.length - 1];
+    const newHistory = history.slice(0, history.length - 1);
+    
+    try {
+      // Reverse the operation
+      if (operation.type === 'create') {
+        // Undo create = delete
+        await mutations.deleteScheduleItem.mutateAsync(operation.item.id);
+        setFuture((f) => [{ type: 'create', item: operation.item }, ...f]);
+      } else if (operation.type === 'update') {
+        // Undo update = restore previous state
+        const { id, ...itemData } = operation.previousItem;
+        await mutations.updateScheduleItem.mutateAsync({
+          id: operation.previousItem.id,
+          data: itemData,
+        });
+        setFuture((f) => [{ type: 'update', item: operation.item, previousItem: operation.previousItem }, ...f]);
+      } else if (operation.type === 'delete') {
+        // Undo delete = recreate
+        const { id, date, duration, ...itemData } = operation.item;
+        const dateValue = date instanceof Date ? date.toISOString() : (typeof date === 'string' ? new Date(date).toISOString() : new Date().toISOString());
+        const durationValue = operation.item.type === 'job' && duration ? Number(duration) : undefined;
+        await mutations.createScheduleItem.mutateAsync({
+          ...itemData,
+          date: dateValue,
+          duration: durationValue,
+        } as any);
+        setFuture((f) => [{ type: 'delete', item: operation.item }, ...f]);
+      }
+      setHistory(newHistory);
+    } catch (error) {
+      console.error('Failed to undo operation:', error);
+    }
+  }, [history, mutations]);
+
+  const handleRedo = useCallback(async () => {
+    if (future.length === 0) return;
+    const operation = future[0];
+    const newFuture = future.slice(1);
+    
+    try {
+      // Re-apply the operation
+      if (operation.type === 'create') {
+        // Redo create = create again
+        const { id, date, duration, ...itemData } = operation.item;
+        const dateValue = date instanceof Date ? date.toISOString() : (typeof date === 'string' ? new Date(date).toISOString() : new Date().toISOString());
+        const durationValue = operation.item.type === 'job' && duration ? Number(duration) : undefined;
+        await mutations.createScheduleItem.mutateAsync({
+          ...itemData,
+          date: dateValue,
+          duration: durationValue,
+        } as any);
+        setHistory((h) => [...h, { type: 'delete', item: operation.item }]);
+      } else if (operation.type === 'update') {
+        // Redo update = apply update again
+        const { id, ...itemData } = operation.item;
+        await mutations.updateScheduleItem.mutateAsync({
+          id: operation.item.id,
+          data: itemData,
+        });
+        setHistory((h) => [...h, { type: 'update', item: operation.previousItem, previousItem: operation.item }]);
+      } else if (operation.type === 'delete') {
+        // Redo delete = delete again
+        await mutations.deleteScheduleItem.mutateAsync(operation.item.id);
+        setHistory((h) => [...h, { type: 'create', item: operation.item }]);
+      }
+      setFuture(newFuture);
+    } catch (error) {
+      console.error('Failed to redo operation:', error);
+    }
+  }, [future, mutations]);
+
+  const canUndo = history.length > 0;
+  const canRedo = future.length > 0;
 
   const handleItemCreate = useCallback(
     async (item: ScheduleItem) => {
+      // Save operation to history before create
+      saveOperationToHistory({ type: 'create', item });
       // Remove id and ensure date is properly formatted
       const { id, date, duration, ...itemData } = item;
       
@@ -279,9 +379,15 @@ const transformedDepots: Depot[] = depots.map((d) => ({
 
   const handleItemDelete = useCallback(
     async (id: string) => {
+      // Find item to save for undo
+      const item = transformedItems.find(i => i.id === id);
+      if (item) {
+        saveOperationToHistory({ type: 'delete', item });
+      }
+      
       await mutations.deleteScheduleItem.mutateAsync(id);
     },
-    [mutations]
+    [mutations, transformedItems, saveOperationToHistory]
   );
 
   const handleItemReorder = useCallback(
@@ -584,6 +690,10 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           vehicleTypes={vehicleTypes}
           allCrews={transformedCrews}
           onLogout={handleLogout}
+          onUndo={handleUndo}
+          onRedo={handleRedo}
+          canUndo={canUndo}
+          canRedo={canRedo}
         />
       </div>
       {selectedDepotId && (

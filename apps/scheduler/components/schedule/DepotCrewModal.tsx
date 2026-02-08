@@ -25,8 +25,9 @@ interface DepotCrewModalProps {
   onVehicleCreate: (name: string, vehicleType: string, category?: string, color?: string) => void;
   onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance', vehicleType?: string, category?: string, color?: string) => void;
   onVehicleDelete?: (id: string) => void;
-  vehicleTypes?: string[];
-  onVehicleTypeCreate?: (type: string) => void;
+  vehicleTypes?: string[] | Array<{ type: string; defaultColor?: string }>;
+  onVehicleTypeCreate?: (type: string, defaultColor?: string) => void;
+  onVehicleTypeUpdate?: (oldType: string, newType: string) => void;
   onVehicleTypeDelete?: (type: string) => void;
   isReadOnly?: boolean;
 }
@@ -49,6 +50,7 @@ export function DepotCrewModal({
   onVehicleDelete = () => {},
   vehicleTypes = ['Van', 'CCTV', 'Jetting', 'Recycler', 'Other'],
   onVehicleTypeCreate = () => {},
+  onVehicleTypeUpdate = () => {},
   onVehicleTypeDelete = () => {},
   isReadOnly = false,
 }: DepotCrewModalProps) {
@@ -74,13 +76,30 @@ export function DepotCrewModal({
   const [newEmployeeRole, setNewEmployeeRole] = useState<'operative' | 'assistant'>('operative');
   const [newEmployeeEmail, setNewEmployeeEmail] = useState("");
   const [newVehicleName, setNewVehicleName] = useState("");
-  const [newVehicleType, setNewVehicleType] = useState(vehicleTypes[0] || "Van");
+  // Helper to get vehicle type names (handles both string[] and object[] formats)
+  const getVehicleTypeNames = () => {
+    if (!vehicleTypes || vehicleTypes.length === 0) return ['Van'];
+    return vehicleTypes.map(t => typeof t === 'string' ? t : t.type);
+  };
+
+  // Helper to get default color for a vehicle type
+  const getDefaultColorForType = (type: string): string => {
+    if (!vehicleTypes || vehicleTypes.length === 0) return 'blue';
+    const typeObj = vehicleTypes.find(t => (typeof t === 'string' ? t : t.type) === type);
+    return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : 'blue';
+  };
+
+  const typeNames = getVehicleTypeNames();
+  const [newVehicleType, setNewVehicleType] = useState(typeNames[0] || "Van");
   const [newVehicleCategory, setNewVehicleCategory] = useState<string>("VAN");
-  const [newVehicleColor, setNewVehicleColor] = useState<string>("blue");
+  const [newVehicleColor, setNewVehicleColor] = useState<string>(() => getDefaultColorForType(typeNames[0] || "Van"));
   const [editingCrew, setEditingCrew] = useState<{ id: string; name: string; shift?: 'day' | 'night' } | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<{ id: string; name: string; jobRole: 'operative' | 'assistant'; email?: string; status?: 'active' | 'holiday' | 'sick' } | null>(null);
   const [editingVehicle, setEditingVehicle] = useState<{ id: string; name: string; vehicleType: string; status?: 'active' | 'off_road' | 'maintenance'; category?: string; color?: string } | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
+  const [newTypeColor, setNewTypeColor] = useState<string>("blue");
+  const [editingTypeName, setEditingTypeName] = useState<string | null>(null);
+  const [editingTypeValue, setEditingTypeValue] = useState<string>("");
   const [isManageTypesOpen, setIsManageTypesOpen] = useState(false);
   const [isAddTypeOpen, setIsAddTypeOpen] = useState(false);
 
@@ -90,9 +109,16 @@ export function DepotCrewModal({
       setEditingCrew(null);
       setEditingEmployee(null);
       setEditingVehicle(null);
-      setNewVehicleType(vehicleTypes[0] || "Van");
+      const firstType = typeNames[0] || "Van";
+      setNewVehicleType(firstType);
+      setNewVehicleColor(getDefaultColorForType(firstType));
     }
   }, [open, crews, employees, vehicles, vehicleTypes]);
+
+  // Update color when vehicle type changes
+  useEffect(() => {
+    setNewVehicleColor(getDefaultColorForType(newVehicleType));
+  }, [newVehicleType]);
 
   const handleAddCrew = (shift: 'day' | 'night') => {
     const prefix = shift === 'night' ? "Night" : "Day";
@@ -151,8 +177,9 @@ export function DepotCrewModal({
 
   const handleAddVehicleType = () => {
     if (!newTypeName.trim()) return;
-    onVehicleTypeCreate(newTypeName);
+    onVehicleTypeCreate(newTypeName.trim(), newTypeColor);
     setNewTypeName("");
+    setNewTypeColor("blue"); // Reset to default
   };
 
   const handleSaveCrew = () => {
@@ -461,17 +488,78 @@ export function DepotCrewModal({
                                 </Button>
                             </div>
                             <div className="max-h-40 overflow-y-auto space-y-1">
-                                {vehicleTypes.map(type => (
+                                {typeNames.map(type => (
                                     <div key={type} className="flex items-center justify-between text-sm group p-1 rounded hover:bg-slate-50">
-                                        <span>{type}</span>
-                                        <Button 
-                                            variant="ghost" 
-                                            size="sm" 
-                                            className="h-6 w-6 p-0 opacity-0 group-hover:opacity-100 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                            onClick={() => onVehicleTypeDelete(type)}
-                                        >
-                                            <X className="w-3 h-3" />
-                                        </Button>
+                                        {editingTypeName === type ? (
+                                            <div className="flex items-center gap-1 flex-1">
+                                                <Input
+                                                    value={editingTypeValue}
+                                                    onChange={(e) => setEditingTypeValue(e.target.value)}
+                                                    onKeyDown={(e) => {
+                                                        if (e.key === 'Enter' && editingTypeValue.trim() && editingTypeValue.trim() !== type) {
+                                                            onVehicleTypeUpdate(type, editingTypeValue.trim());
+                                                            setEditingTypeName(null);
+                                                            setEditingTypeValue("");
+                                                        } else if (e.key === 'Escape') {
+                                                            setEditingTypeName(null);
+                                                            setEditingTypeValue("");
+                                                        }
+                                                    }}
+                                                    autoFocus
+                                                    className="h-6 text-xs py-0 flex-1"
+                                                />
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
+                                                    onClick={() => {
+                                                        if (editingTypeValue.trim() && editingTypeValue.trim() !== type) {
+                                                            onVehicleTypeUpdate(type, editingTypeValue.trim());
+                                                        }
+                                                        setEditingTypeName(null);
+                                                        setEditingTypeValue("");
+                                                    }}
+                                                >
+                                                    <Check className="w-3 h-3" />
+                                                </Button>
+                                                <Button
+                                                    variant="ghost"
+                                                    size="sm"
+                                                    className="h-6 w-6 p-0 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
+                                                    onClick={() => {
+                                                        setEditingTypeName(null);
+                                                        setEditingTypeValue("");
+                                                    }}
+                                                >
+                                                    <X className="w-3 h-3" />
+                                                </Button>
+                                            </div>
+                                        ) : (
+                                            <>
+                                                <span className="flex-1">{type}</span>
+                                                <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="sm" 
+                                                        className="h-6 w-6 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                                                        onClick={() => {
+                                                            setEditingTypeName(type);
+                                                            setEditingTypeValue(type);
+                                                        }}
+                                                    >
+                                                        <Edit className="w-3 h-3" />
+                                                    </Button>
+                                                    <Button 
+                                                        variant="ghost" 
+                                                        size="sm" 
+                                                        className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                        onClick={() => onVehicleTypeDelete(type)}
+                                                    >
+                                                        <X className="w-3 h-3" />
+                                                    </Button>
+                                                </div>
+                                            </>
+                                        )}
                                     </div>
                                 ))}
                             </div>
@@ -488,12 +576,18 @@ export function DepotCrewModal({
                   className="flex-1"
                 />
                 <div className="flex gap-1">
-                  <Select value={newVehicleType} onValueChange={setNewVehicleType}>
+                  <Select 
+                    value={newVehicleType} 
+                    onValueChange={(val) => {
+                      setNewVehicleType(val);
+                      setNewVehicleColor(getDefaultColorForType(val));
+                    }}
+                  >
                     <SelectTrigger className="w-32">
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent className="bg-white">
-                      {vehicleTypes.map(type => (
+                      {typeNames.map(type => (
                           <SelectItem key={type} value={type}>{type}</SelectItem>
                       ))}
                     </SelectContent>
@@ -510,13 +604,13 @@ export function DepotCrewModal({
                         <Plus className="w-4 h-4" />
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-64 p-3 bg-white" align="start">
+                    <PopoverContent className="w-80 p-3 bg-white" align="start">
                       <div className="space-y-3">
                         <h4 className="font-medium text-sm">Add Vehicle Type</h4>
-                        <div className="flex gap-2">
+                        <div className="space-y-2">
                           <Input 
                             placeholder="New type name..." 
-                            className="h-8 text-sm flex-1"
+                            className="h-8 text-sm"
                             value={newTypeName}
                             onChange={(e) => setNewTypeName(e.target.value)}
                             onKeyDown={(e) => {
@@ -524,25 +618,43 @@ export function DepotCrewModal({
                                 e.preventDefault();
                                 handleAddVehicleType();
                                 setNewVehicleType(newTypeName.trim());
-                                setNewTypeName("");
                                 setIsAddTypeOpen(false);
                               }
                             }}
                             autoFocus
                           />
+                          <div className="space-y-1">
+                            <Label className="text-xs text-slate-600">Default Color</Label>
+                            <div className="grid grid-cols-6 gap-1.5">
+                              {AVAILABLE_COLORS.map((c) => (
+                                <button
+                                  key={c.value}
+                                  type="button"
+                                  onClick={() => setNewTypeColor(c.value)}
+                                  className={cn(
+                                    "w-8 h-8 rounded-md border-2 transition-all flex items-center justify-center",
+                                    c.class,
+                                    newTypeColor === c.value ? "scale-110 shadow-md ring-2 ring-offset-1 ring-slate-400" : "opacity-70 hover:opacity-100"
+                                  )}
+                                  title={c.value}
+                                >
+                                  {newTypeColor === c.value && <Check className="w-3 h-3 text-slate-800" />}
+                                </button>
+                              ))}
+                            </div>
+                          </div>
                           <Button 
                             size="sm" 
-                            className="h-8" 
+                            className="w-full h-8" 
                             onClick={() => {
                               if (newTypeName.trim()) {
                                 handleAddVehicleType();
                                 setNewVehicleType(newTypeName.trim());
-                                setNewTypeName("");
                                 setIsAddTypeOpen(false);
                               }
                             }}
                           >
-                            <Plus className="w-4 h-4" />
+                            <Plus className="w-4 h-4 mr-2" /> Add Type
                           </Button>
                         </div>
                       </div>
@@ -648,7 +760,7 @@ export function DepotCrewModal({
                                       <SelectValue />
                                     </SelectTrigger>
                                     <SelectContent className="bg-white">
-                                      {vehicleTypes.map(type => (
+                                      {typeNames.map(type => (
                                           <SelectItem key={type} value={type}>{type}</SelectItem>
                                       ))}
                                     </SelectContent>

@@ -32,12 +32,23 @@ export default function SchedulePage() {
   const [isDepotCrewModalOpen, setIsDepotCrewModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("");
-  const [vehicleTypes, setVehicleTypes] = useState<string[]>(() => {
+  // Vehicle types can be stored as string[] (legacy) or Array<{type: string, defaultColor?: string}>
+  const [vehicleTypes, setVehicleTypes] = useState<string[] | Array<{type: string; defaultColor?: string}>>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("scheduler_vehicle_types");
-      return saved ? JSON.parse(saved) : INITIAL_VEHICLE_TYPES;
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        // Check if it's the new format (array of objects) or legacy (array of strings)
+        if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object') {
+          return parsed;
+        }
+        // Legacy format - convert to new format
+        return parsed.map((t: string) => ({ type: t, defaultColor: 'blue' }));
+      }
+      // Default types with default colors
+      return INITIAL_VEHICLE_TYPES.map(t => ({ type: t, defaultColor: 'blue' }));
     }
-    return INITIAL_VEHICLE_TYPES;
+    return INITIAL_VEHICLE_TYPES.map(t => ({ type: t, defaultColor: 'blue' }));
   });
   const [colorLabels, setColorLabels] = useState<Record<string, string>>(() => {
     if (typeof window !== "undefined") {
@@ -377,9 +388,34 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   }, [mutations]);
 
   const handleVehicleTypeCreate = useCallback(
-    (type: string) => {
-      if (!type.trim() || vehicleTypes.includes(type.trim())) return;
-      const newTypes = [...vehicleTypes, type.trim()];
+    (type: string, defaultColor?: string) => {
+      if (!type.trim()) return;
+      const typeNames = vehicleTypes.map(t => typeof t === 'string' ? t : t.type);
+      if (typeNames.includes(type.trim())) return;
+      
+      const newType = { type: type.trim(), defaultColor: defaultColor || 'blue' };
+      const newTypes = [...vehicleTypes, newType];
+      setVehicleTypes(newTypes);
+      if (typeof window !== "undefined") {
+        localStorage.setItem("scheduler_vehicle_types", JSON.stringify(newTypes));
+      }
+    },
+    [vehicleTypes]
+  );
+
+  const handleVehicleTypeUpdate = useCallback(
+    (oldType: string, newType: string) => {
+      if (!newType.trim() || oldType === newType.trim()) return;
+      const typeNames = vehicleTypes.map(t => typeof t === 'string' ? t : t.type);
+      if (typeNames.includes(newType.trim()) && newType.trim() !== oldType) return; // Don't allow duplicates
+      
+      const newTypes = vehicleTypes.map(t => {
+        const typeName = typeof t === 'string' ? t : t.type;
+        if (typeName === oldType) {
+          return typeof t === 'string' ? newType.trim() : { ...t, type: newType.trim() };
+        }
+        return t;
+      });
       setVehicleTypes(newTypes);
       if (typeof window !== "undefined") {
         localStorage.setItem("scheduler_vehicle_types", JSON.stringify(newTypes));
@@ -390,7 +426,10 @@ const transformedDepots: Depot[] = depots.map((d) => ({
 
   const handleVehicleTypeDelete = useCallback(
     (type: string) => {
-      const newTypes = vehicleTypes.filter(t => t !== type);
+      const newTypes = vehicleTypes.filter(t => {
+        const typeName = typeof t === 'string' ? t : t.type;
+        return typeName !== type;
+      });
       setVehicleTypes(newTypes);
       if (typeof window !== "undefined") {
         localStorage.setItem("scheduler_vehicle_types", JSON.stringify(newTypes));
@@ -566,6 +605,7 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           onVehicleDelete={handleVehicleDelete}
           vehicleTypes={vehicleTypes}
           onVehicleTypeCreate={handleVehicleTypeCreate}
+          onVehicleTypeUpdate={handleVehicleTypeUpdate}
           onVehicleTypeDelete={handleVehicleTypeDelete}
           isReadOnly={isReadOnly}
         />

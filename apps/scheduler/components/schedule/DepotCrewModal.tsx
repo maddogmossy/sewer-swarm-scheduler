@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trash2, Edit, Plus, Users, Truck, Mail, Sun, Moon, Settings, X, Check } from "lucide-react";
+import { Trash2, Edit, Plus, Users, Truck, Mail, Settings, X, Check, Calendar as CalendarIcon, ArrowRightLeft } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
@@ -13,6 +13,8 @@ interface DepotCrewModalProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   depotName: string;
+  currentDepotId: string;
+  depots: { id: string; name: string }[];
   crews: { id: string; name: string; shift?: 'day' | 'night' }[];
   employees: { id: string; name: string; status: 'active' | 'holiday' | 'sick'; jobRole: 'operative' | 'assistant'; email?: string }[];
   vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; vehicleType: string; category?: string; color?: string }[];
@@ -22,12 +24,14 @@ interface DepotCrewModalProps {
   onEmployeeCreate: (name: string, jobRole: 'operative' | 'assistant', email?: string) => void;
   onEmployeeUpdate: (id: string, name: string, status?: 'active' | 'holiday' | 'sick', jobRole?: 'operative' | 'assistant', email?: string) => void;
   onEmployeeDelete?: (id: string) => void;
+  onEmployeeMoveDepot: (id: string, depotId: string) => void;
   onVehicleCreate: (name: string, vehicleType: string, category?: string, color?: string) => void;
   onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance', vehicleType?: string, category?: string, color?: string) => void;
   onVehicleDelete?: (id: string) => void;
+  onVehicleMoveDepot: (id: string, depotId: string) => void;
   vehicleTypes?: string[] | Array<{ type: string; defaultColor?: string }>;
   onVehicleTypeCreate?: (type: string, defaultColor?: string) => void;
-  onVehicleTypeUpdate?: (oldType: string, newType: string) => void;
+  onVehicleTypeUpdate?: (oldType: string, newType: string, defaultColor?: string) => void;
   onVehicleTypeDelete?: (type: string) => void;
   isReadOnly?: boolean;
 }
@@ -36,6 +40,8 @@ export function DepotCrewModal({
   open,
   onOpenChange,
   depotName,
+  currentDepotId,
+  depots,
   crews = [],
   employees = [],
   vehicles = [],
@@ -48,6 +54,8 @@ export function DepotCrewModal({
   onVehicleCreate,
   onVehicleUpdate,
   onVehicleDelete = () => {},
+  onEmployeeMoveDepot,
+  onVehicleMoveDepot,
   vehicleTypes = ['Van', 'CCTV', 'Jetting', 'Recycler', 'Other'],
   onVehicleTypeCreate = () => {},
   onVehicleTypeUpdate = () => {},
@@ -70,8 +78,6 @@ export function DepotCrewModal({
     { value: "lime", class: "bg-[#D9F99D] border-[#84CC16]", hex: "#84CC16" },
   ];
 
-  const [newCrewName, setNewCrewName] = useState("");
-  const [newCrewShift, setNewCrewShift] = useState<'day' | 'night'>("day");
   const [newEmployeeName, setNewEmployeeName] = useState("");
   const [newEmployeeRole, setNewEmployeeRole] = useState<'operative' | 'assistant'>('operative');
   const [newEmployeeEmail, setNewEmployeeEmail] = useState("");
@@ -93,11 +99,22 @@ export function DepotCrewModal({
   const [newVehicleType, setNewVehicleType] = useState(typeNames[0] || "Van");
   const [newVehicleCategory, setNewVehicleCategory] = useState<string>("VAN");
   const [newVehicleColor, setNewVehicleColor] = useState<string>(() => getDefaultColorForType(typeNames[0] || "Van"));
-  const [editingCrew, setEditingCrew] = useState<{ id: string; name: string; shift?: 'day' | 'night' } | null>(null);
   const [editingEmployee, setEditingEmployee] = useState<{ id: string; name: string; jobRole: 'operative' | 'assistant'; email?: string; status?: 'active' | 'holiday' | 'sick' } | null>(null);
   const [editingVehicle, setEditingVehicle] = useState<{ id: string; name: string; vehicleType: string; status?: 'active' | 'off_road' | 'maintenance'; category?: string; color?: string } | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeColor, setNewTypeColor] = useState<string>("blue");
+  const [employeeTimeOffModal, setEmployeeTimeOffModal] = useState<{
+    open: boolean;
+    employeeId: string | null;
+    employeeName: string;
+  }>({ open: false, employeeId: null, employeeName: "" });
+
+  const [vehicleOffModal, setVehicleOffModal] = useState<{
+    open: boolean;
+    vehicleId: string | null;
+    vehicleName: string;
+  }>({ open: false, vehicleId: null, vehicleName: "" });
+
   const [editingTypeName, setEditingTypeName] = useState<string | null>(null);
   const [editingTypeValue, setEditingTypeValue] = useState<string>("");
   const [isManageTypesOpen, setIsManageTypesOpen] = useState(false);
@@ -106,7 +123,6 @@ export function DepotCrewModal({
   // Refresh when modal opens or data changes
   useEffect(() => {
     if (open) {
-      setEditingCrew(null);
       setEditingEmployee(null);
       setEditingVehicle(null);
       const firstType = typeNames[0] || "Van";
@@ -119,14 +135,6 @@ export function DepotCrewModal({
   useEffect(() => {
     setNewVehicleColor(getDefaultColorForType(newVehicleType));
   }, [newVehicleType]);
-
-  const handleAddCrew = (shift: 'day' | 'night') => {
-    const prefix = shift === 'night' ? "Night" : "Day";
-    const count = crews.filter(c => c.shift === shift || (shift === 'night' ? c.name.toLowerCase().includes("night") : !c.name.toLowerCase().includes("night"))).length;
-    
-    const generatedName = `${prefix} ${count + 1}`;
-    onCrewCreate(generatedName, shift);
-  };
 
   const handleAddEmployee = () => {
     if (!newEmployeeName.trim()) return;
@@ -182,16 +190,6 @@ export function DepotCrewModal({
     setNewTypeColor("blue"); // Reset to default
   };
 
-  const handleSaveCrew = () => {
-    if (!editingCrew || !editingCrew.name.trim()) return;
-    onCrewUpdate(editingCrew.id, editingCrew.name, editingCrew.shift || 'day');
-    setEditingCrew(null);
-  };
-
-  const handleDeleteCrew = (crewId: string) => {
-    onCrewDelete(crewId);
-  };
-
   const handleDeleteEmployee = (empId: string) => {
     onEmployeeDelete(empId);
   };
@@ -220,130 +218,21 @@ export function DepotCrewModal({
         </DialogHeader>
 
         {/* Style 2 (Replit-style) segmented tabs */}
-        <Tabs defaultValue="crews" className="flex-1 flex flex-col min-h-0">
-          <TabsList className="grid w-full grid-cols-3 bg-slate-100 rounded-lg p-1">
-            <TabsTrigger
-              value="crews"
-              className="text-xs font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
-            >
-              Crews
-            </TabsTrigger>
+        <Tabs defaultValue="employees" className="flex-1 flex flex-col min-h-0">
+          <TabsList className="grid w-full grid-cols-2 bg-slate-100 rounded-lg p-1 mb-4">
             <TabsTrigger
               value="employees"
-              className="text-xs font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
+              className="text-sm font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
             >
               Employees
             </TabsTrigger>
             <TabsTrigger
               value="vehicles"
-              className="text-xs font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
+              className="text-sm font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
             >
               Vehicles
             </TabsTrigger>
           </TabsList>
-
-          {/* CREWS TAB - STYLE 2 */}
-          <TabsContent value="crews" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4 overflow-hidden bg-white">
-            <div className="space-y-2">
-              <Label className="text-sm font-semibold">Add New Crew</Label>
-              <div className="flex gap-2">
-                <Button onClick={() => handleAddCrew('day')} className="flex-1 bg-amber-50 text-amber-700 hover:bg-amber-100 border border-amber-200" disabled={isReadOnly}>
-                  <Sun className="w-4 h-4 mr-2" /> Add Day Crew
-                </Button>
-                <Button onClick={() => handleAddCrew('night')} className="flex-1 bg-indigo-50 text-indigo-700 hover:bg-indigo-100 border border-indigo-200" disabled={isReadOnly}>
-                  <Moon className="w-4 h-4 mr-2" /> Add Night Crew
-                </Button>
-              </div>
-            </div>
-
-            <div className="space-y-2 flex-1 flex flex-col min-h-0">
-              <Label className="text-sm font-semibold">Current Crews</Label>
-              <div className="border rounded-md divide-y flex-1 overflow-y-auto">
-                {crews.length === 0 ? (
-                  <div className="p-4 text-center text-slate-500 text-sm">No crews yet</div>
-                ) : (
-                  [...crews].sort((a, b) => {
-                      // Sort by shift (night first), then by name
-                      if (a.shift === 'night' && b.shift !== 'night') return -1;
-                      if (a.shift !== 'night' && b.shift === 'night') return 1;
-                      return a.name.localeCompare(b.name);
-                  }).map((crew) => (
-                    <div key={crew.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
-                      {editingCrew?.id === crew.id ? (
-                        <div className="flex items-center gap-2 flex-1">
-                          <Input
-                            value={editingCrew.name}
-                            onChange={(e) => setEditingCrew({ ...editingCrew, name: e.target.value })}
-                            autoFocus
-                            className="flex-1"
-                          />
-                          <Select 
-                            value={editingCrew.shift || 'day'} 
-                            onValueChange={(v) => setEditingCrew({ ...editingCrew, shift: v as 'day'|'night' })}
-                          >
-                            <SelectTrigger className="w-32">
-                                <SelectValue />
-                            </SelectTrigger>
-                            <SelectContent className="bg-white">
-                                <SelectItem value="day">Day</SelectItem>
-                                <SelectItem value="night">Night</SelectItem>
-                            </SelectContent>
-                          </Select>
-                          <Button size="sm" onClick={handleSaveCrew}>
-                            Save
-                          </Button>
-                          <Button size="sm" variant="ghost" onClick={() => setEditingCrew(null)}>
-                            Cancel
-                          </Button>
-                        </div>
-                      ) : (
-                        <>
-                          <div className="flex items-center gap-3">
-                             {crew.shift === 'night' ? (
-                                <div className="w-8 h-8 rounded bg-indigo-100 flex items-center justify-center text-indigo-600" title="Night Shift">
-                                    <Moon className="w-4 h-4" />
-                                </div>
-                             ) : (
-                                <div className="w-8 h-8 rounded bg-amber-50 flex items-center justify-center text-amber-500" title="Day Shift">
-                                    <Sun className="w-4 h-4" />
-                                </div>
-                             )}
-                             <div>
-                                <div className="font-medium text-slate-700">{crew.name}</div>
-                                <div className="text-xs text-slate-500 capitalize">{crew.shift || 'day'} Shift</div>
-                             </div>
-                          </div>
-                          <div className="flex gap-1">
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={() => setEditingCrew(crew)}
-                              className="h-8 w-8"
-                              disabled={isReadOnly}
-                            >
-                              <Edit className="w-4 h-4 text-slate-500" />
-                            </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleDeleteCrew(crew.id);
-                              }}
-                              className="h-8 w-8"
-                              disabled={isReadOnly}
-                            >
-                              <Trash2 className="w-4 h-4 text-red-500" />
-                            </Button>
-                          </div>
-                        </>
-                      )}
-                    </div>
-                  ))
-                )}
-              </div>
-            </div>
-          </TabsContent>
 
           {/* EMPLOYEES TAB */}
           <TabsContent value="employees" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4 overflow-hidden bg-white">
@@ -377,8 +266,11 @@ export function DepotCrewModal({
                         className="flex-1 text-sm"
                         type="email"
                     />
-                    <Button onClick={handleAddEmployee} className="gap-2 w-32">
-                    <Plus className="w-4 h-4" /> Add
+                    <Button
+                      onClick={handleAddEmployee}
+                      className="gap-2 w-32 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                    >
+                      <Plus className="w-4 h-4" /> Add
                     </Button>
                 </div>
               </div>
@@ -386,12 +278,15 @@ export function DepotCrewModal({
 
             <div className="space-y-2 flex-1 flex flex-col min-h-0">
               <Label className="text-sm font-semibold">Employees at {depotName}</Label>
-              <div className="border rounded-md divide-y flex-1 overflow-y-auto" data-employees-list>
+              <div className="border border-slate-200 rounded-md flex-1 overflow-y-auto bg-slate-50 divide-y divide-slate-100" data-employees-list>
                 {employees.length === 0 ? (
                   <div className="p-4 text-center text-slate-500 text-sm">No employees</div>
                 ) : (
-                  employees.map((emp) => (
-                    <div key={emp.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
+                  employees
+                    .slice()
+                    .sort((a, b) => a.name.localeCompare(b.name))
+                    .map((emp) => (
+                    <div key={emp.id} className="p-3 flex items-center justify-between hover:bg-slate-50 bg-white">
                       {editingEmployee?.id === emp.id ? (
                         <div className="flex flex-col gap-2 flex-1">
                             <div className="flex items-center gap-2 flex-1">
@@ -449,10 +344,80 @@ export function DepotCrewModal({
                             </div>
                           </div>
                           <div className="flex gap-1 shrink-0">
+                            {/* Time off calendar (same as Manage Resources) */}
                             <Button
                               size="icon"
                               variant="ghost"
-                              onClick={() => setEditingEmployee({ id: emp.id, name: emp.name, jobRole: emp.jobRole, email: emp.email, status: emp.status })}
+                              className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                              title="Book time off / sickness"
+                              onClick={() =>
+                                setEmployeeTimeOffModal({
+                                  open: true,
+                                  employeeId: emp.id,
+                                  employeeName: emp.name,
+                                })
+                              }
+                            >
+                              <CalendarIcon className="w-4 h-4" />
+                            </Button>
+                            {/* Move to another depot (permanent) */}
+                            {depots.length > 1 && (
+                              <Popover>
+                                <PopoverTrigger asChild>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                    title="Move to another depot"
+                                  >
+                                    <ArrowRightLeft className="w-4 h-4" />
+                                  </Button>
+                                </PopoverTrigger>
+                                <PopoverContent className="w-56 p-3 bg-white" align="end">
+                                  <div className="space-y-2">
+                                    <Label className="text-xs font-semibold text-slate-700">
+                                      Move employee to depot
+                                    </Label>
+                                    <Select
+                                      onValueChange={(depotId) => {
+                                        if (depotId && depotId !== currentDepotId) {
+                                          onEmployeeMoveDepot(emp.id, depotId);
+                                        }
+                                      }}
+                                    >
+                                      <SelectTrigger className="h-8 text-xs bg-white border-slate-300">
+                                        <SelectValue placeholder="Select depot" />
+                                      </SelectTrigger>
+                                      <SelectContent className="bg-white">
+                                        {depots
+                                          .filter((d) => d.id !== currentDepotId)
+                                          .map((d) => (
+                                            <SelectItem key={d.id} value={d.id}>
+                                              {d.name}
+                                            </SelectItem>
+                                          ))}
+                                      </SelectContent>
+                                    </Select>
+                                    <p className="text-[10px] text-slate-500">
+                                      This is a <span className="font-semibold">permanent</span> move. For
+                                      temporary moves we’ll use scheduling rules.
+                                    </p>
+                                  </div>
+                                </PopoverContent>
+                              </Popover>
+                            )}
+                            <Button
+                              size="icon"
+                              variant="ghost"
+                              onClick={() =>
+                                setEditingEmployee({
+                                  id: emp.id,
+                                  name: emp.name,
+                                  jobRole: emp.jobRole,
+                                  email: emp.email,
+                                  status: emp.status,
+                                })
+                              }
                               className="h-8 w-8"
                             >
                               <Edit className="w-4 h-4 text-slate-500" />
@@ -491,94 +456,121 @@ export function DepotCrewModal({
                     </PopoverTrigger>
                     <PopoverContent className="w-64 p-3 bg-white" align="end">
                         <div className="space-y-3">
-                            <h4 className="font-medium text-sm">Manage Vehicle Types</h4>
+                            <h4 className="font-semibold text-sm text-slate-900">Manage Vehicle Types</h4>
                             <div className="flex gap-2">
                                 <Input 
                                     placeholder="New Type..." 
-                                    className="h-8 text-sm"
+                                    className="h-8 text-sm text-slate-900 placeholder:text-slate-400"
                                     value={newTypeName}
                                     onChange={(e) => setNewTypeName(e.target.value)}
                                     onKeyDown={(e) => e.key === 'Enter' && handleAddVehicleType()}
                                 />
-                                <Button size="sm" className="h-8 w-8 p-0" onClick={handleAddVehicleType}>
+                                <Button size="sm" className="h-8 w-8 p-0 bg-blue-600 hover:bg-blue-700 text-white" onClick={handleAddVehicleType}>
                                     <Plus className="w-4 h-4" />
                                 </Button>
                             </div>
                             <div className="max-h-40 overflow-y-auto space-y-1">
-                                {typeNames.map(type => (
-                                    <div key={type} className="flex items-center justify-between text-sm group p-1 rounded hover:bg-slate-50">
+                                {typeNames.map(type => {
+                                    const currentColorValue = getColorValue(getDefaultColorForType(type));
+                                    const currentHex = getColorHex(currentColorValue);
+
+                                    return (
+                                      <div key={type} className="flex items-center justify-between text-sm group p-1 rounded hover:bg-slate-50">
                                         {editingTypeName === type ? (
-                                            <div className="flex items-center gap-1 flex-1">
-                                                <Input
-                                                    value={editingTypeValue}
-                                                    onChange={(e) => setEditingTypeValue(e.target.value)}
-                                                    onKeyDown={(e) => {
-                                                        if (e.key === 'Enter' && editingTypeValue.trim() && editingTypeValue.trim() !== type) {
-                                                            onVehicleTypeUpdate(type, editingTypeValue.trim());
-                                                            setEditingTypeName(null);
-                                                            setEditingTypeValue("");
-                                                        } else if (e.key === 'Escape') {
-                                                            setEditingTypeName(null);
-                                                            setEditingTypeValue("");
-                                                        }
-                                                    }}
-                                                    autoFocus
-                                                    className="h-6 text-xs py-0 flex-1"
-                                                />
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 w-6 p-0 text-green-600 hover:text-green-700 hover:bg-green-50"
-                                                    onClick={() => {
-                                                        if (editingTypeValue.trim() && editingTypeValue.trim() !== type) {
-                                                            onVehicleTypeUpdate(type, editingTypeValue.trim());
-                                                        }
-                                                        setEditingTypeName(null);
-                                                        setEditingTypeValue("");
-                                                    }}
-                                                >
-                                                    <Check className="w-3 h-3" />
-                                                </Button>
-                                                <Button
-                                                    variant="ghost"
-                                                    size="sm"
-                                                    className="h-6 w-6 p-0 text-slate-500 hover:text-slate-700 hover:bg-slate-50"
-                                                    onClick={() => {
-                                                        setEditingTypeName(null);
-                                                        setEditingTypeValue("");
-                                                    }}
-                                                >
-                                                    <X className="w-3 h-3" />
-                                                </Button>
-                                            </div>
+                                          <div className="flex items-center gap-1 flex-1">
+                                              <Input
+                                                  value={editingTypeValue}
+                                                  onChange={(e) => setEditingTypeValue(e.target.value)}
+                                                  onKeyDown={(e) => {
+                                                      if (e.key === 'Enter' && editingTypeValue.trim()) {
+                                                          onVehicleTypeUpdate(type, editingTypeValue.trim());
+                                                          setEditingTypeName(null);
+                                                          setEditingTypeValue("");
+                                                      } else if (e.key === 'Escape') {
+                                                          setEditingTypeName(null);
+                                                          setEditingTypeValue("");
+                                                      }
+                                                  }}
+                                                  autoFocus
+                                                  className="h-6 text-xs py-0 flex-1 text-slate-900"
+                                              />
+                                          </div>
                                         ) : (
-                                            <>
-                                                <span className="flex-1">{type}</span>
-                                                <div className="flex gap-1 opacity-0 group-hover:opacity-100">
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm" 
-                                                        className="h-6 w-6 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
-                                                        onClick={() => {
-                                                            setEditingTypeName(type);
-                                                            setEditingTypeValue(type);
-                                                        }}
-                                                    >
-                                                        <Edit className="w-3 h-3" />
-                                                    </Button>
-                                                    <Button 
-                                                        variant="ghost" 
-                                                        size="sm" 
-                                                        className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
-                                                        onClick={() => onVehicleTypeDelete(type)}
-                                                    >
-                                                        <X className="w-3 h-3" />
-                                                    </Button>
-                                                </div>
-                                            </>
+                                          <>
+                                            <span className="flex-1 text-slate-900 font-medium">{type}</span>
+                                            <div className="flex items-center gap-2">
+                                              {/* Default color picker for this type */}
+                                              <Popover>
+                                                <PopoverTrigger asChild>
+                                                  <button
+                                                    type="button"
+                                                    className="w-7 h-7 rounded-md border-2 flex items-center justify-center"
+                                                    style={{
+                                                      backgroundColor: `${currentHex}20`,
+                                                      borderColor: currentHex,
+                                                    }}
+                                                    title="Set default color"
+                                                  >
+                                                    <div
+                                                      className="w-4 h-4 rounded"
+                                                      style={{ backgroundColor: currentHex }}
+                                                    />
+                                                  </button>
+                                                </PopoverTrigger>
+                                                <PopoverContent className="w-56 p-2 bg-white" align="end">
+                                                  <div className="text-xs font-semibold text-slate-900 mb-2">
+                                                    Default color for "{type}"
+                                                  </div>
+                                                  <div className="grid grid-cols-6 gap-1.5">
+                                                    {AVAILABLE_COLORS.map(c => {
+                                                      const isSelected = currentColorValue === c.value || currentHex === c.hex;
+                                                      return (
+                                                        <button
+                                                          key={c.value}
+                                                          type="button"
+                                                          onClick={() => onVehicleTypeUpdate(type, type, c.value)}
+                                                          className={cn(
+                                                            "w-7 h-7 rounded-md border-2 flex items-center justify-center",
+                                                            c.class,
+                                                            isSelected && "scale-110 shadow-md ring-2 ring-offset-1 ring-slate-400"
+                                                          )}
+                                                          title={c.value}
+                                                        >
+                                                          {isSelected && <Check className="w-3 h-3 text-slate-800" />}
+                                                        </button>
+                                                      );
+                                                    })}
+                                                  </div>
+                                                </PopoverContent>
+                                              </Popover>
+
+                                              <div className="flex gap-1 opacity-0 group-hover:opacity-100">
+                                                  <Button 
+                                                      variant="ghost" 
+                                                      size="sm" 
+                                                      className="h-6 w-6 p-0 text-blue-500 hover:text-blue-700 hover:bg-blue-50"
+                                                      onClick={() => {
+                                                          setEditingTypeName(type);
+                                                          setEditingTypeValue(type);
+                                                      }}
+                                                  >
+                                                      <Edit className="w-3 h-3" />
+                                                  </Button>
+                                                  <Button 
+                                                      variant="ghost" 
+                                                      size="sm" 
+                                                      className="h-6 w-6 p-0 text-red-500 hover:text-red-700 hover:bg-red-50"
+                                                      onClick={() => onVehicleTypeDelete(type)}
+                                                  >
+                                                      <X className="w-3 h-3" />
+                                                  </Button>
+                                              </div>
+                                            </div>
+                                          </>
                                         )}
-                                    </div>
-                                ))}
+                                      </div>
+                                    );
+                                })}
                             </div>
                         </div>
                     </PopoverContent>
@@ -610,24 +602,23 @@ export function DepotCrewModal({
                     </SelectContent>
                   </Select>
                   <Popover open={isAddTypeOpen} onOpenChange={setIsAddTypeOpen}>
-                    <PopoverTrigger asChild>
-                      <Button
-                        type="button"
-                        variant="outline"
-                        size="icon"
-                        className="h-9 w-9"
-                        title="Add new vehicle type"
-                      >
-                        <Plus className="w-4 h-4" />
-                      </Button>
-                    </PopoverTrigger>
+                  <PopoverTrigger asChild>
+                    <Button
+                      type="button"
+                      size="icon"
+                      className="h-9 w-9 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                      title="Add new vehicle type"
+                    >
+                      <Plus className="w-4 h-4" />
+                    </Button>
+                  </PopoverTrigger>
                     <PopoverContent className="w-80 p-3 bg-white" align="start">
                       <div className="space-y-3">
-                        <h4 className="font-medium text-sm">Add Vehicle Type</h4>
+                        <h4 className="font-semibold text-sm text-slate-900">Add Vehicle Type</h4>
                         <div className="space-y-2">
                           <Input 
                             placeholder="New type name..." 
-                            className="h-8 text-sm"
+                            className="h-8 text-sm text-slate-900 placeholder:text-slate-400"
                             value={newTypeName}
                             onChange={(e) => setNewTypeName(e.target.value)}
                             onKeyDown={(e) => {
@@ -641,7 +632,7 @@ export function DepotCrewModal({
                             autoFocus
                           />
                           <div className="space-y-1">
-                            <Label className="text-xs text-slate-600">Default Color</Label>
+                            <Label className="text-xs font-medium text-slate-700">Default Color</Label>
                             <div className="grid grid-cols-6 gap-1.5">
                               {AVAILABLE_COLORS.map((c) => (
                                 <button
@@ -662,7 +653,7 @@ export function DepotCrewModal({
                           </div>
                           <Button 
                             size="sm" 
-                            className="w-full h-8" 
+                            className="w-full h-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm" 
                             onClick={() => {
                               if (newTypeName.trim()) {
                                 handleAddVehicleType();
@@ -678,50 +669,10 @@ export function DepotCrewModal({
                     </PopoverContent>
                   </Popover>
                 </div>
-                <Popover>
-                  <PopoverTrigger asChild>
-                    <Button
-                      type="button"
-                      variant="outline"
-                      className="w-20 h-9 p-1 border-2"
-                      style={{
-                        backgroundColor: `${getColorHex(newVehicleColor)}20`,
-                        borderColor: getColorHex(newVehicleColor)
-                      }}
-                    >
-                      <div 
-                        className="w-full h-full rounded"
-                        style={{ backgroundColor: getColorHex(newVehicleColor) }}
-                      />
-                    </Button>
-                  </PopoverTrigger>
-                  <PopoverContent className="w-64 p-2 bg-white" align="start">
-                    <div className="text-xs font-semibold mb-2 text-slate-500 uppercase tracking-wider">Select Color</div>
-                    <div className="grid grid-cols-4 gap-2">
-                      {AVAILABLE_COLORS.map(c => {
-                        const isSelected = newVehicleColor === c.value;
-                        return (
-                          <button
-                            key={c.value}
-                            type="button"
-                            onClick={() => {
-                              setNewVehicleColor(c.value);
-                            }}
-                            className={cn(
-                              "w-8 h-8 rounded-md border-2 hover:scale-110 transition-transform relative",
-                              c.class,
-                              isSelected && "ring-2 ring-offset-2 ring-slate-400"
-                            )}
-                            title={c.value}
-                          >
-                            {isSelected && <Check className="w-4 h-4 text-slate-800 absolute inset-0 m-auto" />}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  </PopoverContent>
-                </Popover>
-                <Button onClick={handleAddVehicle} className="gap-2">
+                <Button
+                  onClick={handleAddVehicle}
+                  className="gap-2 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                >
                   <Plus className="w-4 h-4" /> Add
                 </Button>
               </div>
@@ -729,7 +680,7 @@ export function DepotCrewModal({
 
             <div className="space-y-2 flex-1 flex flex-col min-h-0">
               <Label className="text-sm font-semibold">Vehicles at {depotName}</Label>
-              <div className="border rounded-md flex-1 overflow-y-auto" data-vehicles-list>
+              <div className="border border-slate-200 rounded-md flex-1 overflow-y-auto bg-slate-50" data-vehicles-list>
                 {vehicles.length === 0 ? (
                   <div className="p-4 text-center text-slate-500 text-sm">No vehicles</div>
                 ) : (
@@ -754,10 +705,10 @@ export function DepotCrewModal({
 
                     return sortedTypes.map(type => (
                       <div key={type}>
-                        <div className="bg-slate-100 px-3 py-1.5 text-xs font-bold text-slate-500 uppercase tracking-wider sticky top-0 z-10 border-b border-slate-200 shadow-sm">
+                        <div className="bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 uppercase tracking-wider sticky top-0 z-10 border-y border-slate-100">
                           {type}
                         </div>
-                        <div className="divide-y border-b last:border-b-0">
+                        <div className="divide-y divide-slate-100 border-b border-slate-100 last:border-b-0 bg-white">
                           {groupedVehicles[type].map((veh) => (
                             <div key={veh.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
                               {editingVehicle?.id === veh.id ? (
@@ -870,7 +821,73 @@ export function DepotCrewModal({
                               
                               {editingVehicle?.id !== veh.id && (
                                 <div className="flex gap-1">
-                                  <Button size="icon" variant="ghost" onClick={() => setEditingVehicle({ ...veh, category: veh.category, color: veh.color })}>
+                                  {/* Vehicle off-road / maintenance calendar */}
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-8 w-8 text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                    title="Book vehicle off road / maintenance"
+                                    onClick={() =>
+                                      setVehicleOffModal({
+                                        open: true,
+                                        vehicleId: veh.id,
+                                        vehicleName: veh.name,
+                                      })
+                                    }
+                                  >
+                                    <CalendarIcon className="w-4 h-4" />
+                                  </Button>
+                                  {/* Move vehicle permanently to another depot */}
+                                  {depots.length > 1 && (
+                                    <Popover>
+                                      <PopoverTrigger asChild>
+                                        <Button
+                                          size="icon"
+                                          variant="ghost"
+                                          className="h-8 w-8 text-blue-600 hover:text-blue-700 hover:bg-blue-50"
+                                          title="Move vehicle to another depot"
+                                        >
+                                          <ArrowRightLeft className="w-4 h-4" />
+                                        </Button>
+                                      </PopoverTrigger>
+                                      <PopoverContent className="w-56 p-3 bg-white" align="end">
+                                        <div className="space-y-2">
+                                          <Label className="text-xs font-semibold text-slate-700">
+                                            Move vehicle to depot
+                                          </Label>
+                                          <Select
+                                            onValueChange={(depotId) => {
+                                              if (depotId && depotId !== currentDepotId) {
+                                                onVehicleMoveDepot(veh.id, depotId);
+                                              }
+                                            }}
+                                          >
+                                            <SelectTrigger className="h-8 text-xs bg-white border-slate-300">
+                                              <SelectValue placeholder="Select depot" />
+                                            </SelectTrigger>
+                                            <SelectContent className="bg-white">
+                                              {depots
+                                                .filter((d) => d.id !== currentDepotId)
+                                                .map((d) => (
+                                                  <SelectItem key={d.id} value={d.id}>
+                                                    {d.name}
+                                                  </SelectItem>
+                                                ))}
+                                            </SelectContent>
+                                          </Select>
+                                          <p className="text-[10px] text-slate-500">
+                                            This is a <span className="font-semibold">permanent</span> move. For
+                                            temporary moves we’ll use scheduling rules.
+                                          </p>
+                                        </div>
+                                      </PopoverContent>
+                                    </Popover>
+                                  )}
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => setEditingVehicle({ ...veh, category: veh.category, color: veh.color })}
+                                  >
                                     <Edit className="w-4 h-4 text-slate-500" />
                                   </Button>
                                   <Button size="icon" variant="ghost" onClick={() => handleDeleteVehicle(veh.id)}>
@@ -892,6 +909,337 @@ export function DepotCrewModal({
 
         <DialogFooter>
           <Button onClick={() => onOpenChange(false)}>Done</Button>
+        </DialogFooter>
+      </DialogContent>
+      {/* Inline modals so they share the same Dialog root */}
+      <EmployeeTimeOffModal
+        open={employeeTimeOffModal.open}
+        onOpenChange={(open) =>
+          setEmployeeTimeOffModal((prev) => ({ ...prev, open }))
+        }
+        employeeName={employeeTimeOffModal.employeeName}
+      />
+      <VehicleOffRoadModal
+        open={vehicleOffModal.open}
+        onOpenChange={(open) =>
+          setVehicleOffModal((prev) => ({ ...prev, open }))
+        }
+        vehicleName={vehicleOffModal.vehicleName}
+      />
+    </Dialog>
+  );
+}
+
+// ---- Employee Time Off Modal (UI only / Style 2) ----
+
+interface TimeOffModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  employeeName: string;
+}
+
+function EmployeeTimeOffModal({ open, onOpenChange, employeeName }: TimeOffModalProps) {
+  const [absenceType, setAbsenceType] = useState<"holiday" | "sick" | "other">("holiday");
+  const [mode, setMode] = useState<"single" | "range">("single");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [recurrence, setRecurrence] = useState<"none" | "weekly" | "biweekly">("none");
+
+  const handleSave = () => {
+    console.log("[TimeOff] Requested (Depot):", {
+      employeeName,
+      absenceType,
+      mode,
+      startDate,
+      endDate: mode === "single" ? startDate : endDate,
+      recurrence,
+    });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[420px] bg-white text-slate-900">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CalendarIcon className="w-5 h-5 text-blue-600" />
+            Book Time Off – {employeeName}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-2">
+          <div className="space-y-1">
+            <Label className="text-sm font-semibold">Reason</Label>
+            <Select value={absenceType} onValueChange={(v: any) => setAbsenceType(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                <SelectItem value="holiday">Holiday</SelectItem>
+                <SelectItem value="sick">Sickness</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Dates</Label>
+            <div className="flex gap-3 items-center">
+              <div className="flex items-center gap-1">
+                <input
+                  id="depot-timeoff-single"
+                  type="radio"
+                  checked={mode === "single"}
+                  onChange={() => setMode("single")}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="depot-timeoff-single" className="text-sm">
+                  Single day
+                </Label>
+              </div>
+              <div className="flex items-center gap-1">
+                <input
+                  id="depot-timeoff-range"
+                  type="radio"
+                  checked={mode === "range"}
+                  onChange={() => setMode("range")}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="depot-timeoff-range" className="text-sm">
+                  Date range
+                </Label>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                className="text-sm"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+              {mode === "range" && (
+                <Input
+                  type="date"
+                  className="text-sm"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Recurrence</Label>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "none"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("none")}
+              >
+                None
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "weekly"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("weekly")}
+              >
+                Weekly
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "biweekly"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("biweekly")}
+              >
+                Every other week
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="mt-4">
+          <Button
+            variant="outline"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            onClick={handleSave}
+          >
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Vehicle Off Road / Maintenance Modal (UI only / Style 2) ----
+
+interface VehicleOffModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  vehicleName: string;
+}
+
+function VehicleOffRoadModal({ open, onOpenChange, vehicleName }: VehicleOffModalProps) {
+  const [reason, setReason] = useState<"off_road" | "maintenance" | "other">("off_road");
+  const [mode, setMode] = useState<"single" | "range">("single");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [recurrence, setRecurrence] = useState<"none" | "weekly" | "biweekly">("none");
+
+  const handleSave = () => {
+    console.log("[VehicleOff] Requested (Depot):", {
+      vehicleName,
+      reason,
+      mode,
+      startDate,
+      endDate: mode === "single" ? startDate : endDate,
+      recurrence,
+    });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[420px] bg-white text-slate-900">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CalendarIcon className="w-5 h-5 text-blue-600" />
+            Book Vehicle Off Road – {vehicleName}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-2">
+          <div className="space-y-1">
+            <Label className="text-sm font-semibold">Reason</Label>
+            <Select value={reason} onValueChange={(v: any) => setReason(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                <SelectItem value="off_road">VOR / Off Road</SelectItem>
+                <SelectItem value="maintenance">Maintenance</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Dates</Label>
+            <div className="flex gap-3 items-center">
+              <div className="flex items-center gap-1">
+                <input
+                  id="depot-vehicle-single"
+                  type="radio"
+                  checked={mode === "single"}
+                  onChange={() => setMode("single")}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="depot-vehicle-single" className="text-sm">
+                  Single day
+                </Label>
+              </div>
+              <div className="flex items-center gap-1">
+                <input
+                  id="depot-vehicle-range"
+                  type="radio"
+                  checked={mode === "range"}
+                  onChange={() => setMode("range")}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="depot-vehicle-range" className="text-sm">
+                  Date range
+                </Label>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                className="text-sm"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+              {mode === "range" && (
+                <Input
+                  type="date"
+                  className="text-sm"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Recurrence</Label>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "none"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("none")}
+              >
+                None
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "weekly"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("weekly")}
+              >
+                Weekly
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "biweekly"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("biweekly")}
+              >
+                Every other week
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="mt-4">
+          <Button
+            variant="outline"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            onClick={handleSave}
+          >
+            Save
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>

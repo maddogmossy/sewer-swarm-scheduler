@@ -26,6 +26,22 @@ const INITIAL_COLOR_LABELS: Record<string, string> = {
 
 const INITIAL_VEHICLE_TYPES = ["Van", "CCTV", "Jetting", "Recycler", "Other"];
 
+// Available colors matching vehicle type colors
+const AVAILABLE_COLORS = [
+  { value: "blue", hex: "#3B82F6" },
+  { value: "green", hex: "#22C55E" },
+  { value: "yellow", hex: "#EAB308" },
+  { value: "orange", hex: "#F97316" },
+  { value: "red", hex: "#EF4444" },
+  { value: "purple", hex: "#A855F7" },
+  { value: "pink", hex: "#EC4899" },
+  { value: "teal", hex: "#14B8A6" },
+  { value: "gray", hex: "#64748B" },
+  { value: "indigo", hex: "#6366F1" },
+  { value: "cyan", hex: "#06B6D4" },
+  { value: "lime", hex: "#84CC16" },
+];
+
 export default function SchedulePage() {
   const router = useRouter();
   const [selectedDepotId, setSelectedDepotId] = useState<string>("");
@@ -456,6 +472,14 @@ const transformedDepots: Depot[] = depots.map((d) => ({
     [mutations]
   );
 
+  // Move an employee permanently to another depot
+  const handleEmployeeMoveDepot = useCallback(
+    async (id: string, depotId: string) => {
+      await mutations.updateEmployee.mutateAsync({ id, data: { depotId } });
+    },
+    [mutations]
+  );
+
   const handleEmployeeDelete = useCallback(async (id: string) => {
     await mutations.deleteEmployee.mutateAsync(id);
   }, [mutations]);
@@ -489,6 +513,14 @@ const transformedDepots: Depot[] = depots.map((d) => ({
     [mutations]
   );
 
+  // Move a vehicle permanently to another depot
+  const handleVehicleMoveDepot = useCallback(
+    async (id: string, depotId: string) => {
+      await mutations.updateVehicle.mutateAsync({ id, data: { depotId } });
+    },
+    [mutations]
+  );
+
   const handleVehicleDelete = useCallback(async (id: string) => {
     await mutations.deleteVehicle.mutateAsync(id);
   }, [mutations]);
@@ -510,24 +542,88 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   );
 
   const handleVehicleTypeUpdate = useCallback(
-    (oldType: string, newType: string) => {
-      if (!newType.trim() || oldType === newType.trim()) return;
-      const typeNames = vehicleTypes.map(t => typeof t === 'string' ? t : t.type);
-      if (typeNames.includes(newType.trim()) && newType.trim() !== oldType) return; // Don't allow duplicates
-      
-      const newTypes = vehicleTypes.map(t => {
-        const typeName = typeof t === 'string' ? t : t.type;
-        if (typeName === oldType) {
-          return typeof t === 'string' ? newType.trim() : { ...t, type: newType.trim() };
-        }
-        return t;
+    async (oldType: string, newType: string, defaultColor?: string) => {
+      // Allow updating default color even if the name does not change.
+      let trimmedName = newType.trim();
+      if (!trimmedName) {
+        trimmedName = oldType;
+      }
+
+      const typeNames = vehicleTypes.map(t => typeof t === "string" ? t : t.type);
+      const isNameChanged = trimmedName !== oldType;
+
+      // If we're renaming, prevent duplicates; if only color changes, allow same name.
+      if (isNameChanged && typeNames.includes(trimmedName)) return;
+
+      // Get the old default color before updating
+      const oldTypeObj = vehicleTypes.find(t => {
+        const typeName = typeof t === "string" ? t : t.type;
+        return typeName === oldType;
       });
+      const oldDefaultColor = typeof oldTypeObj === "object" && oldTypeObj?.defaultColor 
+        ? oldTypeObj.defaultColor 
+        : "blue";
+
+      const newTypes = vehicleTypes.map(t => {
+        const typeName = typeof t === "string" ? t : t.type;
+        if (typeName !== oldType) return t;
+
+        if (typeof t === "string") {
+          // Upgrade to object form when tracking a default color.
+          if (defaultColor) {
+            return { type: trimmedName, defaultColor };
+          }
+          return trimmedName;
+        }
+
+        return {
+          ...t,
+          type: trimmedName,
+          ...(defaultColor !== undefined ? { defaultColor } : {}),
+        };
+      });
+
       setVehicleTypes(newTypes);
       if (typeof window !== "undefined") {
         localStorage.setItem("scheduler_vehicle_types", JSON.stringify(newTypes));
       }
+
+      // If default color changed, update all vehicles of this type that use the default color
+      if (defaultColor && defaultColor !== oldDefaultColor) {
+        const vehiclesToUpdate = vehicles.filter(v => {
+          // Match vehicles by type (handling both old and new type name during rename)
+          const matchesType = v.vehicleType === oldType || v.vehicleType === trimmedName;
+          if (!matchesType) return false;
+          
+          // Update vehicles that either:
+          // 1. Don't have a color set, OR
+          // 2. Have a color matching the old default color
+          const hasNoColor = !v.color;
+          const hasOldDefaultColor = v.color === oldDefaultColor || 
+            (oldDefaultColor === "blue" && (!v.color || v.color === "#3B82F6"));
+          
+          return hasNoColor || hasOldDefaultColor;
+        });
+
+        // Update each vehicle with the new default color
+        for (const vehicle of vehiclesToUpdate) {
+          // Convert color name to hex if needed
+          const colorHex = defaultColor.startsWith('#') 
+            ? defaultColor 
+            : AVAILABLE_COLORS.find(c => c.value === defaultColor)?.hex || "#3B82F6";
+          
+          await handleVehicleUpdate(
+            vehicle.id,
+            vehicle.name,
+            vehicle.status as "active" | "off_road" | "maintenance",
+            trimmedName, // Use new type name if renamed
+            vehicle.category,
+            colorHex
+          );
+        }
+      }
     },
-    [vehicleTypes]
+    [vehicleTypes, vehicles, handleVehicleUpdate]
   );
 
   const handleVehicleTypeDelete = useCallback(
@@ -701,6 +797,8 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           open={isDepotCrewModalOpen}
           onOpenChange={setIsDepotCrewModalOpen}
           depotName={transformedDepots.find(d => d.id === selectedDepotId)?.name || "Depot"}
+          currentDepotId={selectedDepotId}
+          depots={transformedDepots}
           crews={transformedCrews}
           employees={transformedEmployees}
           vehicles={transformedVehicles}
@@ -710,9 +808,11 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           onEmployeeCreate={handleEmployeeCreate}
           onEmployeeUpdate={handleEmployeeUpdate}
           onEmployeeDelete={handleEmployeeDelete}
+          onEmployeeMoveDepot={handleEmployeeMoveDepot}
           onVehicleCreate={handleVehicleCreate}
           onVehicleUpdate={handleVehicleUpdate}
           onVehicleDelete={handleVehicleDelete}
+          onVehicleMoveDepot={handleVehicleMoveDepot}
           vehicleTypes={vehicleTypes}
           onVehicleTypeCreate={handleVehicleTypeCreate}
           onVehicleTypeUpdate={handleVehicleTypeUpdate}

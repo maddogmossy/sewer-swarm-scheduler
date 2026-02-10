@@ -146,6 +146,8 @@ export function CalendarGrid({
     setCurrentDate(currentWeekStart);
   }, []); // Empty deps - only run on mount
   const [activeId, setActiveId] = useState<string | null>(null);
+  // Per-cell manual ordering for items (so users can shuffle people left/right without backend support)
+  const [cellItemOrder, setCellItemOrder] = useState<Record<string, string[]>>({});
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
@@ -309,8 +311,28 @@ export function CalendarGrid({
              const isSameCell = activeItem.crewId === targetCrewId && isSameDay(activeItem.date, newDate);
              
              if (isSameCell && isDroppingOnItem && active.id !== over.id) {
-                 // Reorder within same cell
-                 onItemReorder(active.id as string, over.id as string);
+                 // Reorder within same cell – store order locally per cell
+                 const cellKey = `${targetCrewId}|${targetDateStr}`;
+                 setCellItemOrder((prev) => {
+                   const cellItems = items.filter(
+                     (i) =>
+                       i.crewId === targetCrewId &&
+                       isSameDay(new Date(i.date), newDate)
+                   );
+                   const baseOrder =
+                     prev[cellKey] && prev[cellKey].length
+                       ? prev[cellKey]
+                       : cellItems.map((i) => i.id);
+                   const fromId = active.id as string;
+                   const toId = over.id as string;
+                   const fromIndex = baseOrder.indexOf(fromId);
+                   const toIndex = baseOrder.indexOf(toId);
+                   if (fromIndex === -1 || toIndex === -1) return prev;
+                   const nextOrder = [...baseOrder];
+                   nextOrder.splice(fromIndex, 1);
+                   nextOrder.splice(toIndex, 0, fromId);
+                   return { ...prev, [cellKey]: nextOrder };
+                 });
              } else if (!isSameCell) {
                  // Move to new cell
                  onItemUpdate({ ...activeItem, crewId: targetCrewId, date: newDate });
@@ -1838,17 +1860,46 @@ export function CalendarGrid({
                                     i.crewId === crew.id
                                 );
                                 
-                                // Sort displayItems to match the visual rendering order (Notes first, then People, then Jobs)
-                                const displayItems = [...cellItems].sort((a, b) => {
-                                    // Define priority: note = 0, operative/assistant = 1, job = 2
-                                    const getPriority = (type: string) => {
-                                        if (type === 'note') return 0;
-                                        if (type === 'operative' || type === 'assistant') return 1;
-                                        if (type === 'job') return 2;
-                                        return 3;
-                                    };
-                                    return getPriority(a.type) - getPriority(b.type);
-                                });
+                                // Base sort: Notes first, then People, then Jobs
+                                const getPriority = (type: string) => {
+                                  if (type === 'note') return 0;
+                                  if (type === 'operative' || type === 'assistant') return 1;
+                                  if (type === 'job') return 2;
+                                  return 3;
+                                };
+
+                                let displayItems = [...cellItems].sort(
+                                  (a, b) => getPriority(a.type) - getPriority(b.type)
+                                );
+
+                                // Default within-people order: Operatives on the left, Assistants on the right
+                                const cellKey = cellId;
+                                const manualOrder = cellItemOrder[cellKey];
+
+                                if (manualOrder && manualOrder.length) {
+                                  // Apply user-defined order for this cell (drag & drop)
+                                  displayItems = [...displayItems].sort((a, b) => {
+                                    const ia = manualOrder.indexOf(a.id);
+                                    const ib = manualOrder.indexOf(b.id);
+                                    if (ia === -1 && ib === -1) return 0;
+                                    if (ia === -1) return 1;
+                                    if (ib === -1) return -1;
+                                    return ia - ib;
+                                  });
+                                } else {
+                                  // No manual order: keep priority, but ensure operative appears before assistant
+                                  displayItems = [...displayItems].sort((a, b) => {
+                                    const pa = getPriority(a.type);
+                                    const pb = getPriority(b.type);
+                                    if (pa !== pb) return pa - pb;
+                                    const aIsPerson = a.type === 'operative' || a.type === 'assistant';
+                                    const bIsPerson = b.type === 'operative' || b.type === 'assistant';
+                                    if (aIsPerson && bIsPerson && a.type !== b.type) {
+                                      return a.type === 'operative' ? -1 : 1;
+                                    }
+                                    return 0;
+                                  });
+                                }
                                 
                                 const peopleItems = displayItems.filter(i => i.type !== 'job' && i.type !== 'note');
                                 const noteItems = displayItems.filter(i => i.type === 'note');

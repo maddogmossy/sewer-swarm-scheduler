@@ -4,7 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { Trash2, Edit, Plus, User, Truck, AlertCircle, Mail } from "lucide-react";
+import { Trash2, Edit, Plus, User, Truck, AlertCircle, Mail, Calendar as CalendarIcon } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Badge } from "@/components/ui/badge";
 
@@ -36,6 +36,16 @@ export function ResourcesModal({
     const [newVehicleCategory, setNewVehicleCategory] = useState<string>("VAN");
     const [editingEmployee, setEditingEmployee] = useState<{ id: string, name: string, status: 'active' | 'holiday' | 'sick', email?: string } | null>(null);
     const [editingVehicle, setEditingVehicle] = useState<{ id: string, name: string, status: 'active' | 'off_road' | 'maintenance', category?: string, color?: string } | null>(null);
+    const [timeOffModal, setTimeOffModal] = useState<{
+        open: boolean;
+        employeeId: string | null;
+        employeeName: string;
+    }>({ open: false, employeeId: null, employeeName: "" });
+    const [vehicleOffModal, setVehicleOffModal] = useState<{
+        open: boolean;
+        vehicleId: string | null;
+        vehicleName: string;
+    }>({ open: false, vehicleId: null, vehicleName: "" });
 
     const handleAdd = (type: 'employee' | 'vehicle') => {
         if (!newItemName.trim()) return;
@@ -50,15 +60,23 @@ export function ResourcesModal({
         }
     };
 
-    // Group vehicles by category
+    // Group vehicles by category (preferred) or type (fallback) - matching DepotCrewModal
     const vehiclesByCategory = vehicles.reduce((acc, veh) => {
-        const category = veh.category || "OTHER";
-        if (!acc[category]) {
-            acc[category] = [];
+        const groupKey = veh.category || veh.vehicleType || "OTHER";
+        if (!acc[groupKey]) {
+            acc[groupKey] = [];
         }
-        acc[category].push(veh);
+        acc[groupKey].push(veh);
         return acc;
     }, {} as Record<string, typeof vehicles>);
+    
+    // Sort categories alphabetically
+    const sortedCategories = Object.keys(vehiclesByCategory).sort();
+    
+    // Sort vehicles within each category alphabetically
+    sortedCategories.forEach(cat => {
+        vehiclesByCategory[cat].sort((a, b) => a.name.localeCompare(b.name));
+    });
 
     const handleEmployeeSave = () => {
         if (!editingEmployee || !editingEmployee.name.trim()) return;
@@ -79,13 +97,24 @@ export function ResourcesModal({
                     <DialogTitle>Manage Resources</DialogTitle>
                 </DialogHeader>
                 
+                {/* Style 2 segmented tabs */}
                 <Tabs defaultValue="employees" className="flex-1 flex flex-col min-h-0">
-                    <TabsList className="grid w-full grid-cols-2">
-                        <TabsTrigger value="employees">Employees</TabsTrigger>
-                        <TabsTrigger value="vehicles">Vehicles</TabsTrigger>
+                    <TabsList className="grid w-full grid-cols-2 bg-slate-100 rounded-lg p-1 mb-4">
+                        <TabsTrigger
+                            value="employees"
+                            className="text-sm font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
+                        >
+                            Employees
+                        </TabsTrigger>
+                        <TabsTrigger
+                            value="vehicles"
+                            className="text-sm font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
+                        >
+                            Vehicles
+                        </TabsTrigger>
                     </TabsList>
                     
-                    <TabsContent value="employees" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4">
+                    <TabsContent value="employees" className="flex-1 flex flex-col min-h-0 space-y-4">
                         <div className="flex gap-2">
                             <Input 
                                 placeholder="Add new employee name..." 
@@ -93,11 +122,19 @@ export function ResourcesModal({
                                 onChange={(e) => setNewItemName(e.target.value)}
                                 onKeyDown={(e) => e.key === 'Enter' && handleAdd('employee')}
                             />
-                            <Button onClick={() => handleAdd('employee')}><Plus className="w-4 h-4 mr-2" /> Add</Button>
+                            <Button
+                                onClick={() => handleAdd('employee')}
+                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                            >
+                                <Plus className="w-4 h-4 mr-2" /> Add
+                            </Button>
                         </div>
-                        <div className="flex-1 overflow-y-auto border rounded-md divide-y">
-                            {employees.map(emp => (
-                                <div key={emp.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
+                        <div className="flex-1 overflow-y-auto border border-slate-200 rounded-md bg-slate-50 divide-y divide-slate-100">
+                            {employees
+                              .slice()
+                              .sort((a, b) => a.name.localeCompare(b.name))
+                              .map(emp => (
+                                <div key={emp.id} className="p-3 flex items-center justify-between hover:bg-slate-50 bg-white">
                                     {editingEmployee?.id === emp.id ? (
                                         <div className="flex items-center gap-2 flex-1 mr-4">
                                             <div className="flex flex-col gap-1 flex-1">
@@ -116,19 +153,6 @@ export function ResourcesModal({
                                                     type="email"
                                                 />
                                             </div>
-                                            <Select 
-                                                value={editingEmployee.status} 
-                                                onValueChange={(val: any) => setEditingEmployee({ ...editingEmployee, status: val })}
-                                            >
-                                                <SelectTrigger className="w-32">
-                                                    <SelectValue />
-                                                </SelectTrigger>
-                                                <SelectContent className="bg-white">
-                                                    <SelectItem value="active">Active</SelectItem>
-                                                    <SelectItem value="holiday">Holiday</SelectItem>
-                                                    <SelectItem value="sick">Sick</SelectItem>
-                                                </SelectContent>
-                                            </Select>
                                             <Button size="sm" onClick={handleEmployeeSave}>Save</Button>
                                             <Button size="sm" variant="ghost" onClick={() => setEditingEmployee(null)}>Cancel</Button>
                                         </div>
@@ -161,6 +185,22 @@ export function ResourcesModal({
                                     
                                     {editingEmployee?.id !== emp.id && (
                                         <div className="flex gap-1">
+                                            {/* Book time off / status button */}
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                                title="Book time off / sickness"
+                                                onClick={() =>
+                                                    setTimeOffModal({
+                                                        open: true,
+                                                        employeeId: emp.id,
+                                                        employeeName: emp.name,
+                                                    })
+                                                }
+                                            >
+                                                <CalendarIcon className="w-4 h-4" />
+                                            </Button>
                                             <Button size="icon" variant="ghost" onClick={() => setEditingEmployee(emp)}>
                                                 <Edit className="w-4 h-4 text-slate-500" />
                                             </Button>
@@ -174,7 +214,7 @@ export function ResourcesModal({
                         </div>
                     </TabsContent>
 
-                    <TabsContent value="vehicles" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4">
+                    <TabsContent value="vehicles" className="flex-1 flex flex-col min-h-0 space-y-4">
                         <div className="flex gap-2 items-center">
                             <Input 
                                 placeholder="Vehicle name" 
@@ -193,15 +233,22 @@ export function ResourcesModal({
                                     ))}
                                 </SelectContent>
                             </Select>
-                            <Button onClick={() => handleAdd('vehicle')}><Plus className="w-4 h-4 mr-2" /> Add</Button>
+                            <Button
+                                onClick={() => handleAdd('vehicle')}
+                                className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+                            >
+                                <Plus className="w-4 h-4 mr-2" /> Add
+                            </Button>
                         </div>
-                        <div className="flex-1 overflow-y-auto border rounded-md">
-                            {Object.entries(vehiclesByCategory).map(([category, categoryVehicles]) => (
-                                <div key={category} className="border-b last:border-b-0">
-                                    <div className="px-3 py-2 bg-slate-50 font-semibold text-sm text-slate-700 border-b">
+                        <div className="flex-1 overflow-y-auto border border-slate-200 rounded-md bg-slate-50">
+                            {sortedCategories.map((category) => {
+                                const categoryVehicles = vehiclesByCategory[category];
+                                return (
+                                <div key={category}>
+                                    <div className="bg-slate-50 px-3 py-1.5 text-xs font-semibold text-slate-600 uppercase tracking-wider sticky top-0 z-10 border-y border-slate-100">
                                         {category}
                                     </div>
-                                    <div className="divide-y">
+                                    <div className="divide-y divide-slate-100 border-b border-slate-100 last:border-b-0 bg-white">
                                         {categoryVehicles.map(veh => (
                                 <div key={veh.id} className="p-3 flex items-center justify-between hover:bg-slate-50">
                                     {editingVehicle?.id === veh.id ? (
@@ -286,6 +333,22 @@ export function ResourcesModal({
                                     
                                     {editingVehicle?.id !== veh.id && (
                                         <div className="flex gap-1">
+                                            {/* Book vehicle off road / maintenance */}
+                                            <Button
+                                                size="icon"
+                                                variant="ghost"
+                                                className="text-amber-600 hover:text-amber-700 hover:bg-amber-50"
+                                                title="Book vehicle off road / maintenance"
+                                                onClick={() =>
+                                                    setVehicleOffModal({
+                                                        open: true,
+                                                        vehicleId: veh.id,
+                                                        vehicleName: veh.name,
+                                                    })
+                                                }
+                                            >
+                                                <CalendarIcon className="w-4 h-4" />
+                                            </Button>
                                             <Button size="icon" variant="ghost" onClick={() => setEditingVehicle(veh)}>
                                                 <Edit className="w-4 h-4 text-slate-500" />
                                             </Button>
@@ -298,15 +361,357 @@ export function ResourcesModal({
                                         ))}
                                     </div>
                                 </div>
-                            ))}
+                            );
+                            })}
                         </div>
                     </TabsContent>
                 </Tabs>
 
                 <DialogFooter>
-                    <Button onClick={() => onOpenChange(false)}>Close</Button>
+                    <Button
+                        variant="outline"
+                        className="border-slate-300 text-slate-700 hover:bg-slate-50"
+                        onClick={() => onOpenChange(false)}
+                    >
+                        Close
+                    </Button>
                 </DialogFooter>
             </DialogContent>
+            {/* Employee Time Off Modal (currently UI-only, wiring to scheduling engine to come) */}
+            <EmployeeTimeOffModal
+              open={timeOffModal.open}
+              onOpenChange={(open) =>
+                setTimeOffModal((prev) => ({ ...prev, open }))
+              }
+              employeeName={timeOffModal.employeeName}
+            />
+            {/* Vehicle Off Road / Maintenance Modal (UI-only for now) */}
+            <VehicleOffRoadModal
+              open={vehicleOffModal.open}
+              onOpenChange={(open) =>
+                setVehicleOffModal((prev) => ({ ...prev, open }))
+              }
+              vehicleName={vehicleOffModal.vehicleName}
+            />
         </Dialog>
     );
+}
+
+// ---- Employee Time Off Modal (UI only / Style 2) ----
+
+interface TimeOffModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  employeeName: string;
+}
+
+function EmployeeTimeOffModal({ open, onOpenChange, employeeName }: TimeOffModalProps) {
+  const [absenceType, setAbsenceType] = useState<"holiday" | "sick" | "other">("holiday");
+  const [mode, setMode] = useState<"single" | "range">("single");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [recurrence, setRecurrence] = useState<"none" | "weekly" | "biweekly">("none");
+
+  const handleSave = () => {
+    // NOTE: This currently only logs the selection.
+    // Wiring this into the scheduling engine will require backend support
+    // for per-day unavailability and recurrence rules.
+    console.log("[TimeOff] Requested:", {
+      employeeName,
+      absenceType,
+      mode,
+      startDate,
+      endDate: mode === "single" ? startDate : endDate,
+      recurrence,
+    });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[420px] bg-white text-slate-900">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CalendarIcon className="w-5 h-5 text-blue-600" />
+            Book Time Off – {employeeName}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-2">
+          <div className="space-y-1">
+            <Label className="text-sm font-semibold">Reason</Label>
+            <Select value={absenceType} onValueChange={(v: any) => setAbsenceType(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                <SelectItem value="holiday">Holiday</SelectItem>
+                <SelectItem value="sick">Sickness</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Dates</Label>
+            <div className="flex gap-3 items-center">
+              <div className="flex items-center gap-1">
+                <input
+                  id="timeoff-single"
+                  type="radio"
+                  checked={mode === "single"}
+                  onChange={() => setMode("single")}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="timeoff-single" className="text-sm">
+                  Single day
+                </Label>
+              </div>
+              <div className="flex items-center gap-1">
+                <input
+                  id="timeoff-range"
+                  type="radio"
+                  checked={mode === "range"}
+                  onChange={() => setMode("range")}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="timeoff-range" className="text-sm">
+                  Date range
+                </Label>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                className="text-sm"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+              {mode === "range" && (
+                <Input
+                  type="date"
+                  className="text-sm"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Recurrence</Label>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "none"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("none")}
+              >
+                None
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "weekly"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("weekly")}
+              >
+                Weekly
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "biweekly"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("biweekly")}
+              >
+                Every other week
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="mt-4">
+          <Button
+            variant="outline"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            onClick={handleSave}
+          >
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ---- Vehicle Off Road / Maintenance Modal (UI only / Style 2) ----
+
+interface VehicleOffModalProps {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  vehicleName: string;
+}
+
+function VehicleOffRoadModal({ open, onOpenChange, vehicleName }: VehicleOffModalProps) {
+  const [reason, setReason] = useState<"off_road" | "maintenance" | "other">("off_road");
+  const [mode, setMode] = useState<"single" | "range">("single");
+  const [startDate, setStartDate] = useState("");
+  const [endDate, setEndDate] = useState("");
+  const [recurrence, setRecurrence] = useState<"none" | "weekly" | "biweekly">("none");
+
+  const handleSave = () => {
+    console.log("[VehicleOff] Requested:", {
+      vehicleName,
+      reason,
+      mode,
+      startDate,
+      endDate: mode === "single" ? startDate : endDate,
+      recurrence,
+    });
+    onOpenChange(false);
+  };
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="sm:max-w-[420px] bg-white text-slate-900">
+        <DialogHeader>
+          <DialogTitle className="flex items-center gap-2">
+            <CalendarIcon className="w-5 h-5 text-blue-600" />
+            Book Vehicle Off Road – {vehicleName}
+          </DialogTitle>
+        </DialogHeader>
+
+        <div className="space-y-4 mt-2">
+          <div className="space-y-1">
+            <Label className="text-sm font-semibold">Reason</Label>
+            <Select value={reason} onValueChange={(v: any) => setReason(v)}>
+              <SelectTrigger>
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                <SelectItem value="off_road">VOR / Off Road</SelectItem>
+                <SelectItem value="maintenance">Maintenance</SelectItem>
+                <SelectItem value="other">Other</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Dates</Label>
+            <div className="flex gap-3 items-center">
+              <div className="flex items-center gap-1">
+                <input
+                  id="vehicle-single"
+                  type="radio"
+                  checked={mode === "single"}
+                  onChange={() => setMode("single")}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="vehicle-single" className="text-sm">
+                  Single day
+                </Label>
+              </div>
+              <div className="flex items-center gap-1">
+                <input
+                  id="vehicle-range"
+                  type="radio"
+                  checked={mode === "range"}
+                  onChange={() => setMode("range")}
+                  className="h-4 w-4"
+                />
+                <Label htmlFor="vehicle-range" className="text-sm">
+                  Date range
+                </Label>
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <Input
+                type="date"
+                className="text-sm"
+                value={startDate}
+                onChange={(e) => setStartDate(e.target.value)}
+              />
+              {mode === "range" && (
+                <Input
+                  type="date"
+                  className="text-sm"
+                  value={endDate}
+                  onChange={(e) => setEndDate(e.target.value)}
+                />
+              )}
+            </div>
+          </div>
+
+          <div className="space-y-2">
+            <Label className="text-sm font-semibold">Recurrence</Label>
+            <div className="flex flex-wrap gap-3 text-sm">
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "none"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("none")}
+              >
+                None
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "weekly"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("weekly")}
+              >
+                Weekly
+              </button>
+              <button
+                type="button"
+                className={`px-3 py-1 rounded-full border ${
+                  recurrence === "biweekly"
+                    ? "bg-slate-900 text-white border-slate-900"
+                    : "border-slate-300 text-slate-700 hover:bg-slate-50"
+                }`}
+                onClick={() => setRecurrence("biweekly")}
+              >
+                Every other week
+              </button>
+            </div>
+          </div>
+        </div>
+
+        <DialogFooter className="mt-4">
+          <Button
+            variant="outline"
+            className="border-slate-300 text-slate-700 hover:bg-slate-50"
+            onClick={() => onOpenChange(false)}
+          >
+            Cancel
+          </Button>
+          <Button
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+            onClick={handleSave}
+          >
+            Save
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
 }

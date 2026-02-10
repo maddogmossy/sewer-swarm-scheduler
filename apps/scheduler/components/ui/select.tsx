@@ -19,8 +19,8 @@ const SelectTrigger = React.forwardRef<
   <SelectPrimitive.Trigger
     ref={ref}
     className={cn(
-      // Style 2: solid white field, clear border, darker text for better legibility
-      "flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm ring-offset-background data-[placeholder]:text-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 [&>span]:line-clamp-1",
+      // Style 2: solid white field, clear border, brighter text for legibility
+      "flex h-9 w-full items-center justify-between whitespace-nowrap rounded-md border border-slate-300 bg-white px-3 py-2 text-sm text-slate-900 shadow-sm ring-offset-background data-[placeholder]:text-slate-500 focus:outline-none focus:ring-1 focus:ring-blue-500 disabled:cursor-not-allowed disabled:opacity-60 [&>span]:line-clamp-1",
       className
     )}
     {...props}
@@ -121,7 +121,7 @@ const SelectItem = React.forwardRef<
     ref={ref}
     className={cn(
       // Style 2: clear text, soft hover, disabled items still readable but non-interactive
-      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm text-slate-800 outline-none hover:bg-slate-50 data-[highlighted]:bg-slate-100 data-[highlighted]:text-slate-900 data-[disabled]:pointer-events-none data-[disabled]:text-slate-400",
+      "relative flex w-full cursor-default select-none items-center rounded-sm py-1.5 pl-2 pr-8 text-sm text-slate-800 outline-none hover:bg-slate-50 data-[highlighted]:bg-slate-100 data-[highlighted]:text-slate-900 data-[disabled]:pointer-events-none data-[disabled]:text-slate-600",
       className
     )}
     {...props}

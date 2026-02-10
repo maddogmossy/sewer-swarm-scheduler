@@ -23,7 +23,7 @@ interface ResourcesModalProps {
 }
 
 // Common vehicle categories
-const VEHICLE_CATEGORIES = ["CCTV", "JETTING", "RECYCLER", "VAN", "OTHER"];
+const VEHICLE_CATEGORIES = ["CCTV", "JETTING", "CCTV/Jet Vac", "RECYCLER", "VAN", "OTHER"];
 
 export function ResourcesModal({ 
     open, onOpenChange, 

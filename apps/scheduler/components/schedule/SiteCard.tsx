@@ -38,9 +38,13 @@ interface SiteCardProps {
   onDuplicateSelected?: (mode: 'single' | 'week' | 'following_week' | 'custom' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year', days?: number) => void;
   onDeleteSelected?: (mode: 'single' | 'week' | 'remainder_month' | 'remainder_year' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months') => void;
   vehicles?: { id: string; name: string; vehicleType?: string; category?: string; color?: string }[];
+  /** Optional override for the label shown in the ghost (free) address bar. */
+  ghostVehicleLabel?: string;
+  /** Vehicle types configuration to look up colors for categories like "CCTV/Jet Vac" */
+  vehicleTypes?: string[] | Array<{ type: string; defaultColor?: string }>;
 }
 
-export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [] }: SiteCardProps) {
+export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [], ghostVehicleLabel, vehicleTypes }: SiteCardProps) {
   const hasMultipleSelected = selectedItemIds && selectedItemIds.size > 1 && selectedItemIds.has(item.id);
   const {
     attributes,
@@ -102,12 +106,49 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
     free: "bg-white border-dashed border-slate-300 text-slate-400", 
   };
 
-  // Use vehicle color as base color if available, otherwise use item color, otherwise default to blue
-  const baseColorKey = vehicleColor || item.color || 'blue';
-  const baseColor = colorClasses[baseColorKey] || colorClasses.blue;
-  
   // Check if this is a free/ghost job
   const isFreeJob = item.jobStatus === 'free' || item.customer === 'Free';
+  const freeJobVehicleLabel = ghostVehicleLabel || vehicle?.vehicleType || vehicle?.category || "No Vehicle Type";
+  
+  // Helper to get default color for a vehicle type from vehicleTypes config
+  const getDefaultColorForType = (type: string): string | undefined => {
+    if (!vehicleTypes || vehicleTypes.length === 0) return undefined;
+    const typeObj = vehicleTypes.find(t => (typeof t === 'string' ? t : t.type) === type);
+    return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : undefined;
+  };
+
+  // For free jobs, look up color from vehicleTypes config based on ghostVehicleLabel
+  let effectiveVehicleColor = vehicleColor;
+  if (isFreeJob && ghostVehicleLabel) {
+    // First try to get color from vehicleTypes configuration for the label
+    const typeColor = getDefaultColorForType(ghostVehicleLabel);
+    if (typeColor) {
+      effectiveVehicleColor = typeColor;
+    } else if (ghostVehicleLabel === "CCTV/Jet Vac") {
+      // Fallback for "CCTV/Jet Vac": look for a vehicle with that category
+      const cctvJetVacVehicle = vehicles.find(v => 
+        v.category === "CCTV/Jet Vac" || v.category === "CCTV/JET VAC"
+      );
+      if (cctvJetVacVehicle?.color) {
+        effectiveVehicleColor = cctvJetVacVehicle.color;
+      }
+    } else {
+      // For individual types like "CCTV" or "Jet Vac", try to find a vehicle with matching category/type
+      const matchingVehicle = vehicles.find(v => {
+        const normalizedLabel = ghostVehicleLabel.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+        const normalizedCategory = (v.category || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+        const normalizedType = (v.vehicleType || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+        return normalizedCategory.includes(normalizedLabel) || normalizedType.includes(normalizedLabel);
+      });
+      if (matchingVehicle?.color) {
+        effectiveVehicleColor = matchingVehicle.color;
+      }
+    }
+  }
+
+  // Use vehicle color as base color if available, otherwise use item color, otherwise default to blue
+  const baseColorKey = effectiveVehicleColor || item.color || 'blue';
+  const baseColor = colorClasses[baseColorKey] || colorClasses.blue;
   
   // Check if this is a past job (allow editing job status even in read-only mode)
   const isPastJob = item.date ? isBefore(startOfDay(new Date(item.date)), startOfDay(new Date())) : false;
@@ -153,30 +194,30 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                 // Ghost styling for free jobs
                 isFreeJob && "opacity-60 border-dashed",
                 // Use named color classes if not hex
-                !vehicleColor?.startsWith('#') && !item.color?.startsWith('#') && 
-                (vehicleColor || item.color || 'blue') && colorClasses[vehicleColor || item.color || 'blue'] 
-                  ? colorClasses[vehicleColor || item.color || 'blue'].replace('bg-', 'border-l-').split(' ')[1] 
+                !effectiveVehicleColor?.startsWith('#') && !item.color?.startsWith('#') && 
+                (effectiveVehicleColor || item.color || 'blue') && colorClasses[effectiveVehicleColor || item.color || 'blue'] 
+                  ? colorClasses[effectiveVehicleColor || item.color || 'blue'].replace('bg-', 'border-l-').split(' ')[1] 
                   : 'border-l-blue-500'
             )}
             style={{
                 // Use hex color directly for border if available
-                ...(vehicleColor?.startsWith('#') ? { borderLeftColor: vehicleColor } :
+                ...(effectiveVehicleColor?.startsWith('#') ? { borderLeftColor: effectiveVehicleColor } :
                     item.color?.startsWith('#') ? { borderLeftColor: item.color } : {})
             }}
             >
             {/* Top Row: Customer | Site | Onsite Time */}
             <div 
                 className={cn("px-1.5 py-1 text-[10px] font-bold flex justify-between items-center bg-opacity-30", 
-                    // Only use colorClasses if it's a named color, not hex
-                    vehicleColor && !vehicleColor.startsWith('#') ? baseColor.split(' ')[0] :
-                    item.color && !item.color.startsWith('#') ? baseColor.split(' ')[0] :
-                    "bg-blue-100"
+                    // Use baseColor background class if it's a named color (not hex)
+                    !effectiveVehicleColor?.startsWith('#') && !item.color?.startsWith('#') && baseColor
+                        ? baseColor.split(' ')[0] 
+                        : "bg-blue-100"
                 )}
                 style={{
-                    // Use hex color directly if available
-                    backgroundColor: vehicleColor && vehicleColor.startsWith('#') 
-                        ? `${vehicleColor}30` 
-                        : item.color && item.color.startsWith('#')
+                    // Use hex color directly if available (effectiveVehicleColor takes priority)
+                    backgroundColor: effectiveVehicleColor?.startsWith('#') 
+                        ? `${effectiveVehicleColor}30` 
+                        : item.color?.startsWith('#')
                         ? `${item.color}30`
                         : undefined
                 }}
@@ -376,11 +417,11 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
             {/* Bottom Row: Job Number | Address */}
             <div className="p-2 space-y-1 bg-white flex items-center gap-2">
                 {isFreeJob ? (
-                    // For free jobs, show vehicle type in address field
+                    // For free jobs, show derived vehicle / category label in the address field
                     <div className="flex items-center gap-1 min-w-0 flex-1">
                         <MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
                         <span className="break-words whitespace-normal leading-tight text-[10px] text-slate-600 line-clamp-2">
-                            {vehicle?.vehicleType || "No Vehicle Type"}
+                            {freeJobVehicleLabel}
                         </span>
                     </div>
                 ) : (

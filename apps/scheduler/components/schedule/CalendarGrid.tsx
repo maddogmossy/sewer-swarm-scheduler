@@ -65,6 +65,52 @@ export interface ScheduleItem {
     noteContent?: string;
 }
 
+const isFreeJobItem = (item: ScheduleItem) =>
+  item.type === "job" &&
+  (item.jobStatus === "free" || item.customer === "Free");
+
+function getGhostVehicleLabelForCell(
+  peopleItems: ScheduleItem[],
+  vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; vehicleType: string; category?: string; color?: string }[]
+): string | undefined {
+  const vehicleIds = Array.from(
+    new Set(
+      peopleItems
+        .map((p) => p.vehicleId)
+        .filter((id): id is string => Boolean(id))
+    )
+  );
+  if (vehicleIds.length === 0) return undefined;
+
+  const cellVehicles = vehicles.filter((v) => vehicleIds.includes(v.id));
+  if (cellVehicles.length === 0) return undefined;
+
+  const normalize = (value?: string) =>
+    (value || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+
+  const isCctv = (v: (typeof cellVehicles)[number]) => {
+    const cat = normalize(v.category);
+    const type = normalize(v.vehicleType);
+    return cat.includes("cctv") || type.includes("cctv");
+  };
+
+  const isJetVac = (v: (typeof cellVehicles)[number]) => {
+    const cat = normalize(v.category);
+    const type = normalize(v.vehicleType);
+    return cat.includes("jet") || type.includes("jet");
+  };
+
+  const hasCctv = cellVehicles.some(isCctv);
+  const hasJetVac = cellVehicles.some(isJetVac);
+
+  if (hasCctv && hasJetVac) return "CCTV/Jet Vac";
+  if (hasCctv) return "CCTV";
+  if (hasJetVac) return "Jet Vac";
+
+  const first = cellVehicles[0];
+  return first.vehicleType || first.category || undefined;
+}
+
 interface CalendarGridProps {
   items: ScheduleItem[];
   crews: Crew[];
@@ -1968,6 +2014,16 @@ export function CalendarGrid({
                                 const noteItems = displayItems.filter(i => i.type === 'note');
                                 const jobItems = displayItems.filter(i => i.type === 'job');
 
+                                // Only ever show a single free/ghost job per crew/day.
+                                const freeJobs = jobItems.filter(isFreeJobItem);
+                                const nonFreeJobs = jobItems.filter(j => !isFreeJobItem(j));
+                                const visibleJobItems = [
+                                  ...(freeJobs[0] ? [freeJobs[0]] : []),
+                                  ...nonFreeJobs,
+                                ];
+
+                                const ghostVehicleLabel = getGhostVehicleLabelForCell(peopleItems, vehicles);
+
                                 const isToday = isSameDay(day, new Date());
 
                                 return (
@@ -2036,7 +2092,7 @@ export function CalendarGrid({
                                                     </div>
                                                 )}
                                                 {/* Jobs appear last */}
-                                                {jobItems.map((item) => (
+                                                {visibleJobItems.map((item) => (
                                                     <SiteCard 
                                                         key={item.id} 
                                                         item={item} 
@@ -2050,6 +2106,8 @@ export function CalendarGrid({
                                                         selectedItemIds={selectedItemIds}
                                                         onDuplicateSelected={handleDuplicateSelected}
                                                         onDeleteSelected={handleDeleteSelected}
+                                                        ghostVehicleLabel={ghostVehicleLabel}
+                                                        vehicleTypes={vehicleTypes}
                                                     />
                                                 ))}
                                             </div>
@@ -2236,6 +2294,16 @@ export function CalendarGrid({
                                 const noteItems = displayItems.filter(i => i.type === 'note');
                                 const jobItems = displayItems.filter(i => i.type === 'job');
 
+                                // Only ever show a single free/ghost job per crew/day.
+                                const freeJobs = jobItems.filter(isFreeJobItem);
+                                const nonFreeJobs = jobItems.filter(j => !isFreeJobItem(j));
+                                const visibleJobItems = [
+                                  ...(freeJobs[0] ? [freeJobs[0]] : []),
+                                  ...nonFreeJobs,
+                                ];
+
+                                const ghostVehicleLabel = getGhostVehicleLabelForCell(peopleItems, vehicles);
+
                                 const isToday = isSameDay(day, new Date());
 
                                 return (
@@ -2304,7 +2372,7 @@ export function CalendarGrid({
                                                     </div>
                                                 )}
                                                 {/* Jobs appear last */}
-                                                {jobItems.map((item) => (
+                                                {visibleJobItems.map((item) => (
                                                     <SiteCard 
                                                         key={item.id} 
                                                         item={item} 
@@ -2318,6 +2386,8 @@ export function CalendarGrid({
                                                         selectedItemIds={selectedItemIds}
                                                         onDuplicateSelected={handleDuplicateSelected}
                                                         onDeleteSelected={handleDeleteSelected}
+                                                        ghostVehicleLabel={ghostVehicleLabel}
+                                                        vehicleTypes={vehicleTypes}
                                                     />
                                                 ))}
                                             </div>
@@ -2343,6 +2413,7 @@ export function CalendarGrid({
                         onEdit={() => {}} 
                         onDelete={() => {}} 
                         onDuplicate={() => {}} 
+                        vehicleTypes={vehicleTypes}
                     />
                 </div>
              ) : (

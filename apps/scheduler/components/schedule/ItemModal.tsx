@@ -89,13 +89,6 @@ const AVAILABLE_COLORS = [
     { value: "yellow_dark", class: "bg-[#FEF08A] border-[#A16207]", defaultLabel: "New Category" },
 ];
 
-// Mock Data for Address/Client Autocomplete
-const MOCK_CLIENTS = [
-    "Thames Water", "Balfour Beatty", "Murphy Group", "Skanska", "Costain", 
-    "Network Rail", "United Utilities", "Severn Trent", "Anglian Water", 
-    "Highways England", "Transport for London"
-];
-
 const MOCK_ADDRESSES = [
     "10 Downing Street, London, SW1A 2AA",
     "Buckingham Palace, London, SW1A 1AA",
@@ -319,7 +312,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
       return STANDARD_COLORS;
   });
   const [isAddingColor, setIsAddingColor] = useState(false);
-
+ 
   // Sync active colors if colorLabels prop updates
   useEffect(() => {
       if (colorLabels) {
@@ -375,6 +368,24 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
   const [openClient, setOpenClient] = useState(false);
   const [openAddress, setOpenAddress] = useState(false);
 
+  // --- Persistent Client Memory (local suggestions) ---
+  const [clientHistory, setClientHistory] = useState<string[]>([]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+    try {
+      const saved = localStorage.getItem("scheduler_clients");
+      if (saved) {
+        const parsed = JSON.parse(saved);
+        if (Array.isArray(parsed)) {
+          setClientHistory(parsed);
+        }
+      }
+    } catch (err) {
+      console.error("Failed to load client history", err);
+    }
+  }, []);
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px] bg-white text-slate-900 max-h-[90vh] overflow-y-auto">
@@ -405,6 +416,24 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
             } else {
               submitData = data;
             }
+
+            // Persist customer into active memory list (for autocomplete)
+            try {
+              if (typeof window !== "undefined") {
+                const rawName = (submitData.customer || "").trim();
+                if (rawName && rawName !== "Free") {
+                  setClientHistory((prev) => {
+                    if (prev.includes(rawName)) return prev;
+                    const next = [...prev, rawName].sort((a, b) => a.localeCompare(b));
+                    localStorage.setItem("scheduler_clients", JSON.stringify(next));
+                    return next;
+                  });
+                }
+              }
+            } catch (err) {
+              console.error("Failed to save client to history", err);
+            }
+
             onSubmit(submitData, applyPeriod); 
             onOpenChange(false); 
             form.reset(); 
@@ -585,15 +614,15 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                 className="w-full justify-between font-normal text-slate-900 border-slate-200 bg-white hover:bg-slate-50 disabled:opacity-50 disabled:cursor-not-allowed"
                             >
                                 {form.watch("customer") || "Select or type customer..."}
-                                <Briefcase className="ml-2 h-4 w-4 shrink-0 opacity-50" />
+                                <Briefcase className="ml-2 h-4 w-4 shrink-0 opacity-60" />
                             </Button>
                         </PopoverTrigger>
                         <PopoverContent className="w-[400px] p-0 bg-white" align="start">
                             <div className="flex items-center border-b px-3 bg-white">
-                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
+                                <Search className="mr-2 h-4 w-4 shrink-0 opacity-60" />
                                 <input
-                                    className="flex h-11 w-full rounded-md bg-white py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border-0"
-                                    placeholder="Search customer..."
+                                    className="flex h-11 w-full rounded-md bg-white py-3 text-sm outline-none text-slate-900 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-50 border-0"
+                                    placeholder="Search or type customer..."
                                     value={form.watch("customer")}
                                     onChange={(e) => form.setValue("customer", e.target.value)}
                                     disabled={isPastItem}
@@ -607,17 +636,33 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                             </div>
                             <div className="max-h-[300px] overflow-y-auto overflow-x-hidden">
                                 {(() => {
-                                    const filtered = MOCK_CLIENTS.filter(client => 
-                                        client.toLowerCase().includes((form.watch("customer") || "").toLowerCase())
+                                    const term = (form.watch("customer") || "").toLowerCase();
+                                    const source = clientHistory;
+                                    const filtered = source.filter(client =>
+                                        client.toLowerCase().includes(term)
                                     );
-                                    
+
+                                    if (source.length === 0) {
+                                        return (
+                                            <div className="py-6 text-center text-sm text-slate-500">
+                                                No saved clients yet. Type a name and save a job to remember it.
+                                            </div>
+                                        );
+                                    }
+
                                     if (filtered.length === 0) {
-                                        return <div className="py-6 text-center text-sm text-slate-500">No customer found. Type to add new.</div>;
+                                        return (
+                                            <div className="py-6 text-center text-sm text-slate-500">
+                                                No matching client. Continue typing to add a new one.
+                                            </div>
+                                        );
                                     }
 
                                     return (
                                         <div className="overflow-hidden p-1 text-foreground bg-white">
-                                            <div className="px-2 py-1.5 text-xs font-medium text-muted-foreground bg-white">Suggestions</div>
+                                            <div className="px-2 py-1.5 text-xs font-medium text-slate-500 bg-white">
+                                                Recent clients
+                                            </div>
                                             {filtered.map((client) => (
                                                 <div
                                                     key={client}
@@ -636,7 +681,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                                             form.watch("customer") === client ? "opacity-100" : "opacity-0"
                                                         )}
                                                     />
-                                                    {client}
+                                                    <span className="text-slate-900">{client}</span>
                                                 </div>
                                             ))}
                                         </div>
@@ -692,7 +737,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                             <div className="flex items-center border-b px-3 bg-white">
                                 <Search className="mr-2 h-4 w-4 shrink-0 opacity-50" />
                                 <input
-                                    className="flex h-11 w-full rounded-md bg-white py-3 text-sm outline-none placeholder:text-muted-foreground disabled:cursor-not-allowed disabled:opacity-50 border-0"
+                                    className="flex h-11 w-full rounded-md bg-white py-3 text-sm outline-none text-slate-900 placeholder:text-slate-400 disabled:cursor-not-allowed disabled:opacity-50 border-0"
                                     placeholder="Search address (Google Maps)..."
                                     value={form.watch("address")}
                                     onChange={(e) => form.setValue("address", e.target.value)}

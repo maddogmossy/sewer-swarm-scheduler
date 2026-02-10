@@ -376,26 +376,42 @@ export function CalendarGrid({
   };
 
   const handleSelection = (type: 'job' | 'operative' | 'assistant' | 'note') => {
-    if (selectionMenu) {
-        if (isBefore(startOfDay(selectionMenu.date), startOfDay(new Date()))) return;
-        
-        // For jobs, create a free/ghost job by default
-        const initialData = type === 'job' ? {
-            jobStatus: 'free',
-            customer: 'Free',
-            address: 'Free',
-            startTime: '08:00',
-            duration: 8,
-        } : undefined;
-        
-        setModalState({ 
-            isOpen: true, 
-            type, 
-            target: { date: selectionMenu.date, crewId: selectionMenu.crewId },
-            data: initialData
-        });
-        setSelectionMenu(null);
+    if (!selectionMenu) return;
+
+    // Never allow creating items in the past
+    if (isBefore(startOfDay(selectionMenu.date), startOfDay(new Date()))) return;
+
+    // For jobs we ONLY want to drop a "ghost" / free box on the diary.
+    // The full site UI (Convert Free Job to Booking) is used later when editing that box.
+    if (type === 'job') {
+      const baseItem: ScheduleItem = {
+        id: Math.random().toString(36).substr(2, 9),
+        type: 'job',
+        date: selectionMenu.date,
+        crewId: selectionMenu.crewId,
+        // depotId is intentionally left blank; parent handler will inject selected depot
+        depotId: "",
+        jobStatus: 'free',
+        customer: 'Free',
+        address: 'Free',
+        startTime: '08:00',
+        onsiteTime: '09:00',
+        duration: 8,
+        color: 'blue',
+      };
+
+      onItemCreate(baseItem);
+      setSelectionMenu(null);
+      return;
     }
+
+    // For operatives, assistants, and notes we still open the detailed modal
+    setModalState({
+      isOpen: true,
+      type,
+      target: { date: selectionMenu.date, crewId: selectionMenu.crewId },
+    });
+    setSelectionMenu(null);
   };
 
   const handleToggleSelection = (id: string, multi: boolean) => {

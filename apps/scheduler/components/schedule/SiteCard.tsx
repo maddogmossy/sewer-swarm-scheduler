@@ -57,6 +57,17 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
     opacity: isDragging ? 0.5 : 1,
   };
 
+  // Style 1 menu item classes (soft text, subtle hovers)
+  const softMenuItemClass =
+    "cursor-pointer flex items-center gap-2 text-slate-700 hover:bg-slate-50";
+  const softSubTriggerClass =
+    "cursor-pointer flex items-center gap-2 text-slate-700 data-[state=open]:bg-slate-50";
+  // Delete options: solid white background (Style 1), only subtle neutral hover
+  const softDangerItemClass =
+    "cursor-pointer flex items-center gap-2 text-red-500 hover:bg-slate-50 focus:bg-slate-50 focus:text-red-600";
+  const softDangerSubTriggerClass =
+    "cursor-pointer flex items-center gap-2 text-red-500 data-[state=open]:bg-slate-50 data-[state=open]:text-red-600";
+
   // Get vehicle color if vehicle is assigned - this is the base color for the job
   const vehicle = item.vehicleId ? vehicles.find(v => v.id === item.vehicleId) : null;
   const vehicleColor = vehicle?.color;
@@ -194,7 +205,7 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                         <DropdownMenuItem
                             onClick={() => onEdit(item)}
                             disabled={hasMultipleSelected}
-                            className={hasMultipleSelected ? "opacity-50 cursor-not-allowed" : "text-black"}
+                            className={hasMultipleSelected ? "opacity-50 cursor-not-allowed" : softMenuItemClass}
                         >
                             <Edit className="w-3 h-3 mr-2" /> {canEditPastJobStatus ? "Update Job Status" : "Edit"}
                         </DropdownMenuItem>
@@ -202,42 +213,42 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                         {hasMultipleSelected && onDuplicateSelected ? (
                             <>
                                 <DropdownMenuSub>
-                                    <DropdownMenuSubTrigger className="text-black">
+                                    <DropdownMenuSubTrigger className={softSubTriggerClass}>
                                         <Copy className="w-3 h-3 mr-2" /> Duplicate Selected ({selectedItemIds?.size || 0})
                                     </DropdownMenuSubTrigger>
                                     <DropdownMenuSubContent className="w-48 bg-white">
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('single')} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('single')} className={softMenuItemClass}>
                                             Duplicate Single
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('custom', 5)} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('custom', 5)} className={softMenuItemClass}>
                                             <CalendarDays className="w-3 h-3 mr-2" /> Next 5 Days
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('week')} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('week')} className={softMenuItemClass}>
                                             <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('following_week')} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('following_week')} className={softMenuItemClass}>
                                             <CalendarRange className="w-3 h-3 mr-2" /> Following Week
                                         </DropdownMenuItem>
                                         <DropdownMenuSeparator />
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('remainder_month')} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('remainder_month')} className={softMenuItemClass}>
                                             <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('remainder_year')} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('remainder_year')} className={softMenuItemClass}>
                                             <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('next_2_months')} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('next_2_months')} className={softMenuItemClass}>
                                             <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('next_3_months')} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('next_3_months')} className={softMenuItemClass}>
                                             <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('next_4_months')} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('next_4_months')} className={softMenuItemClass}>
                                             <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('next_5_months')} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('next_5_months')} className={softMenuItemClass}>
                                             <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
                                         </DropdownMenuItem>
-                                        <DropdownMenuItem onClick={() => onDuplicateSelected('next_6_months')} className="text-black">
+                                        <DropdownMenuItem onClick={() => onDuplicateSelected('next_6_months')} className={softMenuItemClass}>
                                             <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
                                         </DropdownMenuItem>
                                     </DropdownMenuSubContent>
@@ -246,11 +257,11 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                                     <>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuSub>
-                                            <DropdownMenuSubTrigger className="text-red-600">
+                                            <DropdownMenuSubTrigger className={softDangerSubTriggerClass}>
                                                 <Trash2 className="w-3 h-3 mr-2" /> Delete Selected ({selectedItemIds?.size || 0})
                                             </DropdownMenuSubTrigger>
                                             <DropdownMenuSubContent className="w-48">
-                                                <DropdownMenuItem onClick={() => onDeleteSelected('single')} className="text-red-600">
+                                                <DropdownMenuItem onClick={() => onDeleteSelected('single')} className={softDangerItemClass}>
                                                     Delete Selected
                                                 </DropdownMenuItem>
                                             </DropdownMenuSubContent>
@@ -263,78 +274,78 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                                 {!canEditPastJobStatus && (
                                     <>
                                         <DropdownMenuSub>
-                                            <DropdownMenuSubTrigger className="text-black">
+                                            <DropdownMenuSubTrigger className={softSubTriggerClass}>
                                                 <Copy className="w-3 h-3 mr-2" /> Duplicate
                                             </DropdownMenuSubTrigger>
                                             <DropdownMenuSubContent className="w-48 bg-white">
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'single')} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'single')} className={softMenuItemClass}>
                                                     Duplicate Single
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'custom', 5)} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'custom', 5)} className={softMenuItemClass}>
                                                     <CalendarDays className="w-3 h-3 mr-2" /> Next 5 Days
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'week')} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'week')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'following_week')} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'following_week')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Following Week
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator />
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'remainder_month')} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'remainder_month')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'remainder_year')} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'remainder_year')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_2_months')} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_2_months')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_3_months')} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_3_months')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_4_months')} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_4_months')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_5_months')} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_5_months')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_6_months')} className="text-black">
+                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_6_months')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
                                                 </DropdownMenuItem>
                                             </DropdownMenuSubContent>
                                         </DropdownMenuSub>
                                         <DropdownMenuSeparator />
                                         <DropdownMenuSub>
-                                            <DropdownMenuSubTrigger className="text-red-600">
+                                            <DropdownMenuSubTrigger className={softDangerSubTriggerClass}>
                                                 <Trash2 className="w-3 h-3 mr-2" /> Delete
                                             </DropdownMenuSubTrigger>
                                             <DropdownMenuSubContent className="w-48">
-                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'single')} className="text-red-600">
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'single')} className={softDangerItemClass}>
                                                     Delete Single
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'week')} className="text-red-600">
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'week')} className={softDangerItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator />
-                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'remainder_month')} className="text-red-600">
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'remainder_month')} className={softDangerItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'remainder_year')} className="text-red-600">
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'remainder_year')} className={softDangerItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_2_months')} className="text-red-600">
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_2_months')} className={softDangerItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_3_months')} className="text-red-600">
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_3_months')} className={softDangerItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_4_months')} className="text-red-600">
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_4_months')} className={softDangerItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_5_months')} className="text-red-600">
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_5_months')} className={softDangerItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_6_months')} className="text-red-600">
+                                                <DropdownMenuItem onClick={() => onDelete(item.id, 'next_6_months')} className={softDangerItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
                                                 </DropdownMenuItem>
                                             </DropdownMenuSubContent>
@@ -378,49 +389,49 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
         <ContextMenuContent className="w-48 bg-white">
             {(!isReadOnly || canEditPastJobStatus) && (
                 <>
-                <ContextMenuItem onClick={() => onEdit(item)}>
+                <ContextMenuItem onClick={() => onEdit(item)} className={softMenuItemClass}>
                     <Edit className="w-3 h-3 mr-2" /> {canEditPastJobStatus ? "Update Job Status" : "Edit"}
                 </ContextMenuItem>
                 
                 {!canEditPastJobStatus && (
                     <>
-                        <ContextMenuSub>
-                            <ContextMenuSubTrigger className="text-black">
+                <ContextMenuSub>
+                    <ContextMenuSubTrigger className={softSubTriggerClass}>
                                 <Copy className="w-3 h-3 mr-2" /> Duplicate
                             </ContextMenuSubTrigger>
-                            <ContextMenuSubContent className="w-48 bg-white">
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'single')} className="text-black">
+                    <ContextMenuSubContent className="w-48 bg-white">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'single')} className={softMenuItemClass}>
                                     Duplicate Single
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'custom', 5)} className="text-black">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'custom', 5)} className={softMenuItemClass}>
                                     <CalendarDays className="w-3 h-3 mr-2" /> Next 5 Days
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'week')} className="text-black">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'week')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'following_week')} className="text-black">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'following_week')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Following Week
                                 </ContextMenuItem>
                                 <ContextMenuSeparator />
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'remainder_month')} className="text-black">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'remainder_month')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'remainder_year')} className="text-black">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'remainder_year')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'next_2_months')} className="text-black">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_2_months')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'next_3_months')} className="text-black">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_3_months')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'next_4_months')} className="text-black">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_4_months')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'next_5_months')} className="text-black">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_5_months')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDuplicate(item, 'next_6_months')} className="text-black">
+                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_6_months')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
                                 </ContextMenuItem>
                             </ContextMenuSubContent>
@@ -428,37 +439,37 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
 
                         <ContextMenuSeparator />
 
-                        <ContextMenuSub>
-                            <ContextMenuSubTrigger className="text-red-600">
+                <ContextMenuSub>
+                    <ContextMenuSubTrigger className={softDangerSubTriggerClass}>
                                 <Trash2 className="w-3 h-3 mr-2" /> Delete
                             </ContextMenuSubTrigger>
-                            <ContextMenuSubContent className="w-48">
-                                <ContextMenuItem onClick={() => onDelete(item.id, 'single')} className="text-red-600">
+                    <ContextMenuSubContent className="w-48">
+                        <ContextMenuItem onClick={() => onDelete(item.id, 'single')} className={softDangerItemClass}>
                                     Delete Single
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDelete(item.id, 'week')} className="text-red-600">
+                        <ContextMenuItem onClick={() => onDelete(item.id, 'week')} className={softDangerItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
                                 </ContextMenuItem>
                                 <ContextMenuSeparator />
-                                <ContextMenuItem onClick={() => onDelete(item.id, 'remainder_month')} className="text-red-600">
+                        <ContextMenuItem onClick={() => onDelete(item.id, 'remainder_month')} className={softDangerItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDelete(item.id, 'remainder_year')} className="text-red-600">
+                        <ContextMenuItem onClick={() => onDelete(item.id, 'remainder_year')} className={softDangerItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDelete(item.id, 'next_2_months')} className="text-red-600">
+                        <ContextMenuItem onClick={() => onDelete(item.id, 'next_2_months')} className={softDangerItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDelete(item.id, 'next_3_months')} className="text-red-600">
+                        <ContextMenuItem onClick={() => onDelete(item.id, 'next_3_months')} className={softDangerItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDelete(item.id, 'next_4_months')} className="text-red-600">
+                        <ContextMenuItem onClick={() => onDelete(item.id, 'next_4_months')} className={softDangerItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDelete(item.id, 'next_5_months')} className="text-red-600">
+                        <ContextMenuItem onClick={() => onDelete(item.id, 'next_5_months')} className={softDangerItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
                                 </ContextMenuItem>
-                                <ContextMenuItem onClick={() => onDelete(item.id, 'next_6_months')} className="text-red-600">
+                        <ContextMenuItem onClick={() => onDelete(item.id, 'next_6_months')} className={softDangerItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
                                 </ContextMenuItem>
                             </ContextMenuSubContent>

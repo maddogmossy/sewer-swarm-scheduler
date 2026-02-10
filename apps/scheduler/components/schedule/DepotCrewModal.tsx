@@ -219,14 +219,31 @@ export function DepotCrewModal({
           <DialogTitle>Manage Depot - {depotName}</DialogTitle>
         </DialogHeader>
 
-        <Tabs defaultValue="employees" className="flex-1 flex flex-col min-h-0">
-          <TabsList className="grid w-full grid-cols-2">
-            <TabsTrigger value="employees">Employees</TabsTrigger>
-            <TabsTrigger value="vehicles">Vehicles</TabsTrigger>
+        {/* Style 2 (Replit-style) segmented tabs */}
+        <Tabs defaultValue="crews" className="flex-1 flex flex-col min-h-0">
+          <TabsList className="grid w-full grid-cols-3 bg-slate-100 rounded-lg p-1">
+            <TabsTrigger
+              value="crews"
+              className="text-xs font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
+            >
+              Crews
+            </TabsTrigger>
+            <TabsTrigger
+              value="employees"
+              className="text-xs font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
+            >
+              Employees
+            </TabsTrigger>
+            <TabsTrigger
+              value="vehicles"
+              className="text-xs font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
+            >
+              Vehicles
+            </TabsTrigger>
           </TabsList>
 
-          {/* CREWS TAB - REMOVED */}
-          <TabsContent value="crews" className="hidden">
+          {/* CREWS TAB - STYLE 2 */}
+          <TabsContent value="crews" className="flex-1 flex flex-col min-h-0 mt-4 space-y-4 overflow-hidden bg-white">
             <div className="space-y-2">
               <Label className="text-sm font-semibold">Add New Crew</Label>
               <div className="flex gap-2">

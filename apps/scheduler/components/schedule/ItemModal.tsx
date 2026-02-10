@@ -983,20 +983,30 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                                         .map((e: any) => {
                                         const isAssigned = assignedEmployeeIds.includes(e.id);
                                         const isUnavailable = e.status !== 'active';
+                                        const isDisabled = isAssigned || isUnavailable;
                                         return (
                                             <SelectItem 
                                                 key={e.id} 
                                                 value={e.id}
-                                                disabled={isAssigned || isUnavailable}
+                                                disabled={isDisabled}
                                                 className={cn(
-                                                    (isAssigned || isUnavailable) && "opacity-50 bg-slate-50 text-slate-400 cursor-not-allowed"
+                                                    // Style 2: keep disabled options readable but gently muted
+                                                    isDisabled && "bg-slate-50 text-slate-600 cursor-not-allowed"
                                                 )}
                                             >
-                                                <div className="flex items-center justify-between w-full gap-2 min-w-[200px]">
-                                                    <span>{e.name}</span>
-                                                    <div className="flex items-center gap-2">
-                                                        {isUnavailable && <span className="text-xs text-red-500 font-medium">({e.status})</span>}
-                                                        {isAssigned && <span className="text-xs text-slate-400 font-medium italic">(Already Scheduled)</span>}
+                                                <div className="flex items-center justify-between w-full gap-2 min-w-[220px]">
+                                                    <span className="font-medium">{e.name}</span>
+                                                    <div className="flex items-center gap-2 text-xs">
+                                                        {isUnavailable && (
+                                                            <span className="text-red-500 font-semibold">
+                                                                ({e.status})
+                                                            </span>
+                                                        )}
+                                                        {isAssigned && (
+                                                            <span className="text-slate-500 italic">
+                                                                (Already Scheduled)
+                                                            </span>
+                                                        )}
                                                     </div>
                                                 </div>
                                             </SelectItem>

@@ -39,9 +39,10 @@ interface OperativeCardProps {
   selectedItemIds?: Set<string>;
   onDuplicateSelected?: (mode: 'single' | 'week' | 'following_week' | 'custom' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year', days?: number) => void;
   onDeleteSelected?: (mode: 'single' | 'week' | 'remainder_month' | 'remainder_year' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months') => void;
+  onBookTimeOff?: (item: ScheduleItem) => void;
 }
 
-export function OperativeCard({ item, onEdit, onDelete, onDuplicate, vehicles, employees, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected }: OperativeCardProps) {
+export function OperativeCard({ item, onEdit, onDelete, onDuplicate, vehicles, employees, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, onBookTimeOff }: OperativeCardProps) {
   const hasMultipleSelected = selectedItemIds && selectedItemIds.size > 1 && selectedItemIds.has(item.id);
   const {
     attributes,
@@ -155,6 +156,14 @@ export function OperativeCard({ item, onEdit, onDelete, onDuplicate, vehicles, e
                         >
                             <Edit className="w-3 h-3 mr-2" /> Edit
                         </DropdownMenuItem>
+                        {onBookTimeOff && (
+                            <DropdownMenuItem
+                                onClick={() => onBookTimeOff(item)}
+                                className={softMenuItemClass}
+                            >
+                                <CalendarDays className="w-3 h-3 mr-2" /> Book Holiday / Sick
+                            </DropdownMenuItem>
+                        )}
                         
                         {hasMultipleSelected && onDuplicateSelected ? (
                             <>
@@ -314,6 +323,11 @@ export function OperativeCard({ item, onEdit, onDelete, onDuplicate, vehicles, e
                 <ContextMenuItem onClick={() => onEdit(item)} className={softMenuItemClass}>
                     <Edit className="w-3 h-3 mr-2" /> Edit
                 </ContextMenuItem>
+                {onBookTimeOff && (
+                    <ContextMenuItem onClick={() => onBookTimeOff(item)} className={softMenuItemClass}>
+                        <CalendarDays className="w-3 h-3 mr-2" /> Book Holiday / Sick
+                    </ContextMenuItem>
+                )}
                 
                 <ContextMenuSub>
                     <ContextMenuSubTrigger className={softSubTriggerClass}>

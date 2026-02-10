@@ -37,7 +37,7 @@ interface SiteCardProps {
   selectedItemIds?: Set<string>;
   onDuplicateSelected?: (mode: 'single' | 'week' | 'following_week' | 'custom' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year', days?: number) => void;
   onDeleteSelected?: (mode: 'single' | 'week' | 'remainder_month' | 'remainder_year' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months') => void;
-  vehicles?: { id: string; name: string; category?: string; color?: string }[];
+  vehicles?: { id: string; name: string; vehicleType?: string; category?: string; color?: string }[];
 }
 
 export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [] }: SiteCardProps) {
@@ -181,16 +181,23 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                         : undefined
                 }}
             >
-                <div className="flex items-center gap-1 truncate max-w-[90%] min-w-0">
-                    <span className="truncate shrink-1">{item.customer}</span>
-                    <span className="opacity-50">|</span>
-                    <span className="flex items-center gap-1 font-mono">
-                        <Clock className="w-2.5 h-2.5" />
-                        {item.startTime && <span className="opacity-75">{item.startTime} -</span>}
-                        {item.onsiteTime || "TBC"}
-                        {item.projectManager && <span className="ml-1 text-slate-500 opacity-75 font-sans font-semibold">({item.projectManager})</span>}
-                    </span>
-                </div>
+                {isFreeJob ? (
+                    // Simplified display for free jobs - just "Free"
+                    <div className="flex items-center gap-1 truncate max-w-[90%] min-w-0">
+                        <span className="truncate shrink-1">Free</span>
+                    </div>
+                ) : (
+                    <div className="flex items-center gap-1 truncate max-w-[90%] min-w-0">
+                        <span className="truncate shrink-1">{item.customer}</span>
+                        <span className="opacity-50">|</span>
+                        <span className="flex items-center gap-1 font-mono">
+                            <Clock className="w-2.5 h-2.5" />
+                            {item.startTime && <span className="opacity-75">{item.startTime} -</span>}
+                            {item.onsiteTime || "TBC"}
+                            {item.projectManager && <span className="ml-1 text-slate-500 opacity-75 font-sans font-semibold">({item.projectManager})</span>}
+                        </span>
+                    </div>
+                )}
                 
                 <div className="flex gap-1 opacity-0 group-hover:opacity-100 transition-opacity" onPointerDown={(e) => e.stopPropagation()}>
                 <DropdownMenu>
@@ -368,21 +375,33 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
 
             {/* Bottom Row: Job Number | Address */}
             <div className="p-2 space-y-1 bg-white flex items-center gap-2">
-                {/* Compact Job Number */}
-                <div className="flex items-center gap-1 shrink-0">
-                     <span className="text-[9px] font-bold bg-slate-100 px-1 py-0.5 rounded text-slate-600 border border-slate-200">
-                        {item.jobNumber || "NO REF"}
-                     </span>
-                     {/* Explicit Duration Badge */}
-                     <span className="text-[9px] font-semibold bg-blue-50 px-1 py-0.5 rounded text-blue-600 border border-blue-100">
-                        {item.duration}h
-                     </span>
-                </div>
+                {isFreeJob ? (
+                    // For free jobs, show vehicle type in address field
+                    <div className="flex items-center gap-1 min-w-0 flex-1">
+                        <MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
+                        <span className="break-words whitespace-normal leading-tight text-[10px] text-slate-600 line-clamp-2">
+                            {vehicle?.vehicleType || "No Vehicle Type"}
+                        </span>
+                    </div>
+                ) : (
+                    <>
+                        {/* Compact Job Number */}
+                        <div className="flex items-center gap-1 shrink-0">
+                             <span className="text-[9px] font-bold bg-slate-100 px-1 py-0.5 rounded text-slate-600 border border-slate-200">
+                                {item.jobNumber || "NO REF"}
+                             </span>
+                             {/* Explicit Duration Badge */}
+                             <span className="text-[9px] font-semibold bg-blue-50 px-1 py-0.5 rounded text-blue-600 border border-blue-100">
+                                {item.duration}h
+                             </span>
+                        </div>
 
-                <div className="flex items-center gap-1 min-w-0 flex-1">
-                    <MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
-                    <span className="break-words whitespace-normal leading-tight text-[10px] text-slate-600 line-clamp-2">{item.address}</span>
-                </div>
+                        <div className="flex items-center gap-1 min-w-0 flex-1">
+                            <MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
+                            <span className="break-words whitespace-normal leading-tight text-[10px] text-slate-600 line-clamp-2">{item.address}</span>
+                        </div>
+                    </>
+                )}
             </div>
             </div>
         </ContextMenuTrigger>

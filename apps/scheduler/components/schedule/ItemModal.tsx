@@ -248,6 +248,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
   const [newDate, setNewDate] = useState<Date | undefined>(undefined);
   const [moveGroupDialogOpen, setMoveGroupDialogOpen] = useState(false);
   const [pendingMoveDate, setPendingMoveDate] = useState<Date | null>(null);
+  const [updateScope, setUpdateScope] = useState<'single' | 'group'>('single');
   
   // Check if item is in the past (only allow color changes for past items)
   const isPastItem = initialData?.date ? isBefore(startOfDay(new Date(initialData.date)), startOfDay(new Date())) : false;
@@ -266,6 +267,13 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
     i.id !== initialData.id
   ) : [];
   const isPartOfGroup = groupItems.length > 0;
+  
+  // Reset update scope when modal opens
+  useEffect(() => {
+    if (open && isReadOnlyPastJob) {
+      setUpdateScope(isPartOfGroup ? 'single' : 'single');
+    }
+  }, [open, isReadOnlyPastJob, isPartOfGroup]);
   
   const form = useForm({
     resolver: zodResolver(siteSchema),
@@ -373,7 +381,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
             <Briefcase className="w-5 h-5 text-blue-600" />
-            {isReadOnlyPastJob ? "Update Job Status" : (isFreeJob ? "Convert Free Job to Booking" : (initialData ? "Edit Site Details" : "Add New Site"))}
+            {isReadOnlyPastJob ? "Job Status Update" : (isFreeJob ? "Convert Free Job to Booking" : (initialData ? "Edit Site Details" : "Add New Site"))}
           </DialogTitle>
         </DialogHeader>
         <form onSubmit={form.handleSubmit((data) => { 
@@ -406,32 +414,34 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
             <div className="space-y-3 bg-slate-50 p-4 rounded-lg border border-slate-100">
                 <div className="flex items-center justify-between">
                     <Label>Job Status</Label>
-                    <Popover open={isAddingColor} onOpenChange={setIsAddingColor}>
-                        <PopoverTrigger asChild>
-                            <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 p-0">
-                                <Plus className="w-3 h-3 mr-1" /> Add Category
-                            </Button>
-                        </PopoverTrigger>
-                        <PopoverContent className="w-64 p-2 bg-white" align="end">
-                            <div className="text-xs font-semibold mb-2 text-slate-500 uppercase tracking-wider">Select Color to Add</div>
-                            <div className="grid grid-cols-5 gap-2">
-                                {AVAILABLE_COLORS.filter(c => !activeColors.includes(c.value)).map(c => (
-                                    <button
-                                        key={c.value}
-                                        type="button"
-                                        onClick={() => handleAddColor(c.value)}
-                                        className={cn("w-8 h-8 rounded-md border-2 hover:scale-110 transition-transform", c.class)}
-                                        title={c.defaultLabel}
-                                    />
-                                ))}
-                                {AVAILABLE_COLORS.every(c => activeColors.includes(c.value)) && (
-                                    <div className="col-span-5 text-center text-xs text-slate-400 py-2">
-                                        All colors used
-                                    </div>
-                                )}
-                            </div>
-                        </PopoverContent>
-                    </Popover>
+                    {!isReadOnlyPastJob && (
+                        <Popover open={isAddingColor} onOpenChange={setIsAddingColor}>
+                            <PopoverTrigger asChild>
+                                <Button variant="ghost" size="sm" className="h-6 text-xs text-blue-600 hover:text-blue-700 hover:bg-blue-50 p-0">
+                                    <Plus className="w-3 h-3 mr-1" /> Add Category
+                                </Button>
+                            </PopoverTrigger>
+                            <PopoverContent className="w-64 p-2 bg-white" align="end">
+                                <div className="text-xs font-semibold mb-2 text-slate-500 uppercase tracking-wider">Select Color to Add</div>
+                                <div className="grid grid-cols-5 gap-2">
+                                    {AVAILABLE_COLORS.filter(c => !activeColors.includes(c.value)).map(c => (
+                                        <button
+                                            key={c.value}
+                                            type="button"
+                                            onClick={() => handleAddColor(c.value)}
+                                            className={cn("w-8 h-8 rounded-md border-2 hover:scale-110 transition-transform", c.class)}
+                                            title={c.defaultLabel}
+                                        />
+                                    ))}
+                                    {AVAILABLE_COLORS.every(c => activeColors.includes(c.value)) && (
+                                        <div className="col-span-5 text-center text-xs text-slate-400 py-2">
+                                            All colors used
+                                        </div>
+                                    )}
+                                </div>
+                            </PopoverContent>
+                        </Popover>
+                    )}
                 </div>
                 
                 <div className="grid grid-cols-2 gap-2">
@@ -443,13 +453,6 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                     onClick={() => {
                                         const newColor = c.value;
                                         form.setValue("color", newColor);
-                                        // Auto-save for past jobs in read-only mode
-                                        if (isReadOnlyPastJob && newColor !== selectedColor) {
-                                            const submitData = { color: newColor, jobStatus: initialData?.jobStatus || 'booked' };
-                                            onSubmit(submitData, false);
-                                            // Update the selected color immediately for visual feedback
-                                            form.setValue("color", newColor, { shouldValidate: false });
-                                        }
                                     }}
                                     className={cn(
                                         "w-8 h-8 rounded-md cursor-pointer transition-all flex items-center justify-center border-2 shrink-0",
@@ -499,12 +502,63 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
             </div>
 
             {isReadOnlyPastJob && (
-                <div className="bg-blue-50 border border-blue-200 rounded-lg p-3 mb-4">
-                    <div className="flex items-center gap-2 text-blue-800 text-sm">
-                        <AlertCircle className="w-4 h-4" />
-                        <span>Read-only mode: You can only update the job status for this past job. All other fields are locked.</span>
+                <>
+                    {/* Update Scope Selection */}
+                    {isPartOfGroup && (
+                        <div className="space-y-2 mb-4">
+                            <Label className="text-sm font-medium text-slate-700">Update:</Label>
+                            <div className="flex gap-4">
+                                <div className="flex items-center space-x-2">
+                                    <input
+                                        type="radio"
+                                        id="updateSingle"
+                                        name="updateScope"
+                                        value="single"
+                                        checked={updateScope === 'single'}
+                                        onChange={(e) => setUpdateScope(e.target.value as 'single' | 'group')}
+                                        className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                                    />
+                                    <label htmlFor="updateSingle" className="text-sm font-medium text-slate-700 cursor-pointer">
+                                        Single Day
+                                    </label>
+                                </div>
+                                <div className="flex items-center space-x-2">
+                                    <input
+                                        type="radio"
+                                        id="updateGroup"
+                                        name="updateScope"
+                                        value="group"
+                                        checked={updateScope === 'group'}
+                                        onChange={(e) => setUpdateScope(e.target.value as 'single' | 'group')}
+                                        className="w-4 h-4 text-blue-600 border-slate-300 focus:ring-blue-500"
+                                    />
+                                    <label htmlFor="updateGroup" className="text-sm font-medium text-slate-700 cursor-pointer">
+                                        Group ({groupItems.length + 1} jobs)
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                    )}
+                    
+                    {/* Save Button - Moved Up */}
+                    <div className="flex justify-end gap-2 mb-4">
+                        <Button type="button" variant="outline" onClick={() => onOpenChange(false)}>
+                            Close
+                        </Button>
+                        <Button 
+                            type="button" 
+                            className="bg-blue-600 hover:bg-blue-700 text-white"
+                            onClick={() => {
+                                const submitData = { color: selectedColor, jobStatus: initialData?.jobStatus || 'booked' };
+                                // Pass updateScope to determine if we should update the group
+                                onSubmit(submitData, updateScope === 'group' ? 'group' : false);
+                                onOpenChange(false);
+                            }}
+                        >
+                            Save
+                        </Button>
                     </div>
-                </div>
+                </>
             )}
 
             {isPastItem && !isReadOnlyPastJob && (
@@ -743,11 +797,6 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                                 </label>
                             </div>
                         </div>
-                    </div>
-                )}
-                {isReadOnlyPastJob && (
-                    <div className="text-xs text-slate-500 italic">
-                        Changes are saved automatically when you select a status
                     </div>
                 )}
                 <div className="flex gap-2">

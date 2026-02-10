@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 import { SmartSearchModal } from "./SmartSearchModal";
 import { EmailPreviewModal } from "./EmailPreviewModal";
+import { EmployeeTimeOffDialog, EmployeeTimeOffDialogPayload } from "./EmployeeTimeOffDialog";
 import { GroupingDialog } from "./GroupingDialog";
 
 export interface Crew {
@@ -170,6 +171,18 @@ export function CalendarGrid({
     date: Date;
     crewId: string;
   } | null>(null);
+
+  const [employeeTimeOffModal, setEmployeeTimeOffModal] = useState<{
+    open: boolean;
+    employeeId: string | null;
+    employeeName: string;
+    defaultDate: Date | null;
+  }>({
+    open: false,
+    employeeId: null,
+    employeeName: "",
+    defaultDate: null,
+  });
   
   const [crewModal, setCrewModal] = useState<{ isOpen: boolean, mode: 'create' | 'edit', id?: string, name: string, shift: 'day' | 'night' }>({ isOpen: false, mode: 'create', name: "", shift: 'day' });
 
@@ -810,6 +823,46 @@ export function CalendarGrid({
     onCrewDelete(crewId);
   };
 
+  const handleOpenEmployeeTimeOff = (item: ScheduleItem) => {
+    if (!item.employeeId) return;
+    const employee = employees.find((e) => e.id === item.employeeId);
+    if (!employee) return;
+
+    setEmployeeTimeOffModal({
+      open: true,
+      employeeId: employee.id,
+      employeeName: employee.name,
+      defaultDate: new Date(item.date),
+    });
+  };
+
+  const handleEmployeeTimeOffApplied = (payload: EmployeeTimeOffDialogPayload) => {
+    if (!employeeTimeOffModal.employeeId) return;
+
+    const employeeId = employeeTimeOffModal.employeeId;
+    const today = startOfDay(new Date());
+    const start = startOfDay(payload.startDate);
+    const end = startOfDay(payload.endDate);
+
+    items.forEach((item) => {
+      if (item.employeeId !== employeeId) return;
+      if (item.type !== "operative" && item.type !== "assistant") return;
+
+      const itemDate = startOfDay(new Date(item.date));
+
+      // Never touch past days
+      if (isBefore(itemDate, today)) return;
+
+      const inRange =
+        (isSameDay(itemDate, start) || isAfter(itemDate, start)) &&
+        (isSameDay(itemDate, end) || isBefore(itemDate, end));
+
+      if (inRange) {
+        onItemDelete(item.id);
+      }
+    });
+  };
+
   const handleEditItem = (item: ScheduleItem) => {
     const itemDate = startOfDay(new Date(item.date));
     const today = startOfDay(new Date());
@@ -1171,7 +1224,7 @@ export function CalendarGrid({
     }
   };
 
-  const handleModalSubmit = (data: any, applyPeriod: 'none' | 'week' | 'month' | '6months' | '12months' = 'none') => {
+  const handleModalSubmit = (data: any, applyPeriod: 'none' | 'week' | 'month' | '6months' | '12months' | 'group' = 'none') => {
     // Only treat as UPDATE if modalState.data has an id (existing item)
     // If modalState.data exists but has no id, it's a CREATE with initial defaults
     if (modalState.data && modalState.data.id) {
@@ -1198,7 +1251,17 @@ export function CalendarGrid({
           
           // Update only the allowed fields
           const updatedItem = { ...modalState.data, ...filteredData };
-          onItemUpdate(updatedItem);
+          
+          // If applyPeriod is 'group', update all items with the same job number
+          if (applyPeriod === 'group' && updatedItem.jobNumber) {
+            const groupItems = findItemsWithSameJobNumber(updatedItem);
+            groupItems.forEach(groupItem => {
+              onItemUpdate({ ...groupItem, ...filteredData });
+            });
+          } else {
+            // Update just this one item
+            onItemUpdate(updatedItem);
+          }
           return; // Exit early, don't show alerts or do other processing
         } else if (isPast) {
           // For past items in normal mode, only allow color changes for jobs
@@ -1953,7 +2016,7 @@ export function CalendarGrid({
                                                         peopleItems.length === 1 ? "grid-cols-1" : "grid-cols-2"
                                                     )}>
                                                         {peopleItems.map((item) => (
-                                                            <OperativeCard 
+                                                        <OperativeCard 
                                                                 key={item.id} 
                                                                 item={item}
                                                                 onEdit={handleEditItem} 
@@ -1967,6 +2030,7 @@ export function CalendarGrid({
                                                                 selectedItemIds={selectedItemIds}
                                                                 onDuplicateSelected={handleDuplicateSelected}
                                                                 onDeleteSelected={handleDeleteSelected}
+                                                                onBookTimeOff={handleOpenEmployeeTimeOff}
                                                             />
                                                         ))}
                                                     </div>
@@ -2234,6 +2298,7 @@ export function CalendarGrid({
                                                                 selectedItemIds={selectedItemIds}
                                                                 onDuplicateSelected={handleDuplicateSelected}
                                                                 onDeleteSelected={handleDeleteSelected}
+                                                                onBookTimeOff={handleOpenEmployeeTimeOff}
                                                             />
                                                         ))}
                                                     </div>
@@ -2571,6 +2636,16 @@ export function CalendarGrid({
             onSend={handleEmailSent}
           />
       )}
+
+      <EmployeeTimeOffDialog
+        open={employeeTimeOffModal.open}
+        onOpenChange={(open) =>
+          setEmployeeTimeOffModal((prev) => ({ ...prev, open }))
+        }
+        employeeName={employeeTimeOffModal.employeeName}
+        initialDate={employeeTimeOffModal.defaultDate || undefined}
+        onApply={handleEmployeeTimeOffApplied}
+      />
     </div>
   );
 }

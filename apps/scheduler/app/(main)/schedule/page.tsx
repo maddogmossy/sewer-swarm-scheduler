@@ -15,13 +15,13 @@ import { startOfWeek, startOfDay, isBefore, isAfter, isSameDay, addDays } from "
 const INITIAL_COLOR_LABELS: Record<string, string> = {
   blue: "Standard Job",
   green: "Completed",
-  red: "Urgent",
+  red: "Order Required",
   yellow: "Pending",
   purple: "Specialist",
   orange: "Warning",
   pink: "Other",
   teal: "Maintenance",
-  gray: "Cancelled",
+  gray: "On Hold",
 };
 
 const INITIAL_VEHICLE_TYPES = ["Van", "CCTV", "Jetting", "Recycler", "Other"];
@@ -644,9 +644,10 @@ const transformedDepots: Depot[] = depots.map((d) => ({
     async (color: string, label: string) => {
       setColorLabels((prev) => ({ ...prev, [color]: label }));
       if (typeof window !== "undefined") {
+        const next = { ...colorLabels, [color]: label };
         localStorage.setItem(
           "scheduler_color_labels",
-          JSON.stringify({ ...colorLabels, [color]: label })
+          JSON.stringify(next)
         );
       }
       await mutations.saveColorLabel.mutateAsync({ color, label });

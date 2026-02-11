@@ -304,21 +304,45 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
   const selectedColor = form.watch("color");
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [labelValue, setLabelValue] = useState("");
-  // Standard default colors matching the standard labels
-  const STANDARD_COLORS = ["sky", "pink", "gray", "orange", "teal", "stone"];
+  // Default visible colours: primary two unless user has customised
+  const DEFAULT_ACTIVE_COLORS = ["gray", "red"];
   const [activeColors, setActiveColors] = useState<string[]>(() => {
-      // Default visible colors are the ones that exist in colorLabels or standard defaults
-      if (colorLabels && Object.keys(colorLabels).length > 0) return Object.keys(colorLabels);
-      return STANDARD_COLORS;
+    if (typeof window !== "undefined") {
+      try {
+        const saved = localStorage.getItem("scheduler_color_active");
+        const migrated = localStorage.getItem("scheduler_color_active_v2");
+
+        // First run of new logic: ignore old saved list and force defaults
+        if (migrated !== "1") {
+          localStorage.setItem("scheduler_color_active", JSON.stringify(DEFAULT_ACTIVE_COLORS));
+          localStorage.setItem("scheduler_color_active_v2", "1");
+          return DEFAULT_ACTIVE_COLORS;
+        }
+
+        if (saved) {
+          const parsed = JSON.parse(saved);
+          if (Array.isArray(parsed) && parsed.length > 0) {
+            return parsed;
+          }
+        }
+      } catch {
+        // ignore parse errors
+      }
+    }
+    // Fallback if no browser storage: just the two defaults
+    return DEFAULT_ACTIVE_COLORS;
   });
   const [isAddingColor, setIsAddingColor] = useState(false);
- 
-  // Sync active colors if colorLabels prop updates
+
+  // Persist active colors so toggles stick between sessions
   useEffect(() => {
-      if (colorLabels) {
-          setActiveColors(Object.keys(colorLabels));
-      }
-  }, [colorLabels]);
+    if (typeof window === "undefined") return;
+    try {
+      localStorage.setItem("scheduler_color_active", JSON.stringify(activeColors));
+    } catch {
+      // ignore storage errors
+    }
+  }, [activeColors]);
 
 
   const handleLabelEdit = (color: string) => {
@@ -359,9 +383,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
       if (selectedColor === color) {
           form.setValue("color", newColors[0]);
       }
-      
-      // Note: We don't strictly need to remove it from colorLabels in parent, 
-      // but we could if we wanted to cleanup. For now, hiding it is enough.
+      // Note: we intentionally do NOT delete the label itself – this just hides the flag.
   };
 
   // --- Autocomplete State ---
@@ -480,7 +502,9 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
                             <div key={c.value} className="flex items-center gap-2 p-1 rounded-md hover:bg-white hover:shadow-sm transition-all group/item relative pr-6">
                                 <div 
                                     onClick={() => {
-                                        const newColor = c.value;
+                                        const isSelected = selectedColor === c.value;
+                                        // Toggle behaviour: clicking again clears the flag back to Standard Job (blue)
+                                        const newColor = isSelected ? "blue" : c.value;
                                         form.setValue("color", newColor);
                                     }}
                                     className={cn(

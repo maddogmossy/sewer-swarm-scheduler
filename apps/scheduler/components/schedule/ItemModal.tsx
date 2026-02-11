@@ -1065,7 +1065,7 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                                 onValueChange={field.onChange}
                             >
                                 <SelectTrigger><SelectValue placeholder="Select Person" /></SelectTrigger>
-                                <SelectContent className="bg-white">
+                                <SelectContent className="bg-white max-h-72 overflow-y-auto">
                                     {employees
                                         .filter((e: any) => {
                                             // Strict role filtering
@@ -1127,7 +1127,7 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                                     onValueChange={field.onChange}
                                 >
                                     <SelectTrigger><SelectValue placeholder="Select Vehicle" /></SelectTrigger>
-                            <SelectContent className="bg-white">
+                            <SelectContent className="bg-white max-h-72 overflow-y-auto">
                                 {Object.entries(groupedVehicles).sort(([typeA], [typeB]) => typeA.localeCompare(typeB)).map(([type, typeVehicles]) => (
                                     <div key={type}>
                                         <div className="px-2 py-1.5 text-xs font-semibold text-slate-500 bg-slate-50 sticky top-0 z-10">

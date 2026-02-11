@@ -135,9 +135,9 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
     } else {
       // For individual types like "CCTV" or "Jet Vac", try to find a vehicle with matching category/type
       const matchingVehicle = vehicles.find(v => {
-        const normalizedLabel = ghostVehicleLabel.toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
-        const normalizedCategory = (v.category || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
-        const normalizedType = (v.vehicleType || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+        const normalizedLabel = ghostVehicleLabel.toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
+        const normalizedCategory = (v.category || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
+        const normalizedType = (v.vehicleType || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
         return normalizedCategory.includes(normalizedLabel) || normalizedType.includes(normalizedLabel);
       });
       if (matchingVehicle?.color) {

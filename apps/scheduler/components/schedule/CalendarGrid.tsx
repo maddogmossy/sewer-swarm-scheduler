@@ -86,11 +86,12 @@ function getGhostVehicleLabelForCell(
   if (cellVehicles.length === 0) return undefined;
 
   const normalize = (value?: string) =>
-    (value || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "");
+    (value || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
 
   const isCctv = (v: (typeof cellVehicles)[number]) => {
     const cat = normalize(v.category);
     const type = normalize(v.vehicleType);
+    // Check for "cctv" in normalized category/type (handles "CCTV", "CCTV/Van", "CCTV/Van Pack", etc.)
     return cat.includes("cctv") || type.includes("cctv");
   };
 

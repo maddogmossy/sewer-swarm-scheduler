@@ -135,6 +135,8 @@ async function runMigration() {
           "status" text DEFAULT 'active' NOT NULL,
           "job_role" text DEFAULT 'operative' NOT NULL,
           "email" text,
+          "home_postcode" text,
+          "starts_from_home" boolean DEFAULT false NOT NULL,
           "depot_id" varchar NOT NULL,
           "user_id" varchar NOT NULL,
           "organization_id" varchar,

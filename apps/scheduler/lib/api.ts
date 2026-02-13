@@ -29,6 +29,8 @@ export interface Employee {
   status: string;
   jobRole: string;
   email?: string;
+  homePostcode?: string;
+  startsFromHome?: boolean;
   depotId: string;
   userId: string;
 }

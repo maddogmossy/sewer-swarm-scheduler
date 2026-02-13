@@ -16,6 +16,8 @@ import { cn } from "@/lib/utils";
 import { ScheduleItem } from "./CalendarGrid";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
+import { useUISettings } from "@/hooks/useUISettings";
+import { calculateStartTime } from "@/lib/travelTime";
 
 // ------------------- SCHEMAS -------------------
 
@@ -111,10 +113,19 @@ interface ItemModalProps {
   onSubmit: (data: any) => void;
   type: 'job' | 'operative' | 'assistant' | 'note';
   initialData?: Partial<ScheduleItem>;
-  employees: { id: string; name: string; status: 'active' | 'holiday' | 'sick'; jobRole?: 'operative' | 'assistant' }[];
+  employees: { 
+    id: string; 
+    name: string; 
+    status: 'active' | 'holiday' | 'sick'; 
+    jobRole?: 'operative' | 'assistant';
+    homePostcode?: string;
+    startsFromHome?: boolean;
+    depotId?: string;
+  }[];
   vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance' }[];
   items: ScheduleItem[]; // For conflict detection
-  crews?: { id: string }[]; // For validating assignments against active crews
+  crews?: { id: string; shift?: 'day' | 'night'; depotId?: string }[]; // For validating assignments against active crews
+  depots?: { id: string; name: string; address: string }[]; // Depot addresses for employees who start from depot
   colorLabels?: Record<string, string>;
   onColorLabelUpdate?: (color: string, label: string) => void;
   isReadOnly?: boolean;
@@ -125,10 +136,10 @@ const noteSchema = z.object({
   noteContent: z.string().min(1, "Note content is required"),
 });
 
-export function ItemModal({ open, onOpenChange, onSubmit, type, initialData, employees, vehicles, items, crews, colorLabels, onColorLabelUpdate, isReadOnly = false, onMoveDate }: ItemModalProps) {
+export function ItemModal({ open, onOpenChange, onSubmit, type, initialData, employees, vehicles, items, crews, depots, colorLabels, onColorLabelUpdate, isReadOnly = false, onMoveDate }: ItemModalProps) {
   // We conditionally render different forms based on type
   if (type === 'job') {
-    return <SiteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} colorLabels={colorLabels} onColorLabelUpdate={onColorLabelUpdate} isReadOnly={isReadOnly} onMoveDate={onMoveDate} items={items} />;
+    return <SiteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} employees={employees} depots={depots} crews={crews} colorLabels={colorLabels} onColorLabelUpdate={onColorLabelUpdate} isReadOnly={isReadOnly} onMoveDate={onMoveDate} items={items} />;
   }
   if (type === 'note') {
       return <NoteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} />;
@@ -235,7 +246,7 @@ function NoteForm({ open, onOpenChange, onSubmit, initialData }: any) {
 
 // ------------------- SITE FORM -------------------
 
-function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onColorLabelUpdate, isReadOnly = false, onMoveDate, items = [] }: any) {
+function SiteForm({ open, onOpenChange, onSubmit, initialData, employees = [], depots = [], crews = [], colorLabels, onColorLabelUpdate, isReadOnly = false, onMoveDate, items = [] }: any) {
   const [applyPeriod, setApplyPeriod] = useState<'none' | 'week' | 'month' | '6months' | '12months'>('none');
   const [moveDateOpen, setMoveDateOpen] = useState(false);
   const [newDate, setNewDate] = useState<Date | undefined>(undefined);
@@ -268,6 +279,93 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
     }
   }, [open, isReadOnlyPastJob, isPartOfGroup]);
   
+  const { settings } = useUISettings();
+
+  // Get crew shift for day/night default
+  const getCrewShift = (): 'day' | 'night' => {
+    if (initialData?.crewId && crews) {
+      const crew = crews.find(c => c.id === initialData.crewId);
+      return crew?.shift === 'night' ? 'night' : 'day';
+    }
+    return 'day';
+  };
+
+  // Calculate start time based on employee location and job address
+  const calculateStartTimeFromLocation = (address: string, employeeId?: string, crewId?: string): string => {
+    const shift = getCrewShift();
+    const defaultStart = shift === 'night' ? settings.defaultNightStartTime : settings.defaultDayStartTime;
+
+    // If user has turned off auto-calculation, always use default
+    if (!settings.autoCalculateStartFromLocation) {
+      return defaultStart;
+    }
+    
+    if (!address) {
+      return defaultStart;
+    }
+
+    // Determine start location (employee home/depot, or crew depot)
+    let startLocation: string | null = null;
+
+    // First, try to use employee location if employee is assigned
+    if (employeeId) {
+      const employee = employees.find(e => e.id === employeeId);
+      if (employee) {
+        if (employee.startsFromHome && employee.homePostcode) {
+          // Employee starts from home - use their postcode
+          startLocation = employee.homePostcode;
+        } else if (employee.depotId && depots) {
+          // Employee starts from depot - use depot address
+          const depot = depots.find(d => d.id === employee.depotId);
+          if (depot) {
+            startLocation = depot.address;
+          }
+        }
+      }
+    }
+
+    // If no employee location, try to use crew's depot
+    if (!startLocation && crewId && crews && depots) {
+      const crew = crews.find(c => c.id === crewId);
+      if (crew?.depotId) {
+        const depot = depots.find(d => d.id === crew.depotId);
+        if (depot) {
+          startLocation = depot.address;
+        }
+      }
+    }
+
+    // If we have both locations, calculate travel time
+    if (startLocation) {
+      return calculateStartTime(
+        defaultStart,
+        startLocation,
+        address,
+        settings.preStartBufferMinutes
+      );
+    }
+
+    // Fallback to default
+    return defaultStart;
+  };
+
+  const getDefaultStartTime = () => {
+    if (initialData?.startTime) return initialData.startTime;
+    
+    // Calculate based on employee/crew location and job address if available
+    if (initialData?.address) {
+      return calculateStartTimeFromLocation(
+        initialData.address, 
+        initialData?.employeeId, 
+        initialData?.crewId
+      );
+    }
+    
+    // Otherwise use day/night default
+    const shift = getCrewShift();
+    return shift === 'night' ? settings.defaultNightStartTime : settings.defaultDayStartTime;
+  };
+
   const form = useForm({
     resolver: zodResolver(siteSchema),
     defaultValues: {
@@ -275,7 +373,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
       jobNumber: initialData?.jobNumber || "",
       address: initialData?.address === 'Free' ? "" : (initialData?.address || ""),
       projectManager: initialData?.projectManager || "",
-      startTime: initialData?.startTime || "08:00",
+      startTime: initialData?.startTime || getDefaultStartTime() || "08:00",
       onsiteTime: initialData?.onsiteTime || "09:00",
       duration: initialData?.duration?.toString() || "8",
       color: initialData?.color || "blue",
@@ -292,7 +390,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
             jobNumber: initialData?.jobNumber || "",
             address: isFree ? "" : (initialData?.address || ""),
             projectManager: initialData?.projectManager || "",
-            startTime: initialData?.startTime || "08:00",
+            startTime: initialData?.startTime || getDefaultStartTime() || "08:00",
             onsiteTime: initialData?.onsiteTime || "09:00",
             duration: initialData?.duration?.toString() || "8",
             color: initialData?.color || "blue",
@@ -302,8 +400,33 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, colorLabels, onCo
   }, [initialData?.customer, initialData?.jobNumber, initialData?.address, initialData?.projectManager, initialData?.startTime, initialData?.onsiteTime, initialData?.duration, initialData?.color, initialData?.jobStatus, open]);
 
   const selectedColor = form.watch("color");
+  const watchedAddress = form.watch("address");
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [labelValue, setLabelValue] = useState("");
+
+  // Recalculate start time when address changes (if we have employee/crew info)
+  useEffect(() => {
+    if (!open || !watchedAddress || watchedAddress === 'Free') return;
+    
+    // Only auto-calculate if start time hasn't been manually set
+    const currentStartTime = form.getValues("startTime");
+    if (currentStartTime && currentStartTime !== getDefaultStartTime()) {
+      // User has manually set start time, don't override
+      return;
+    }
+
+    // Calculate new start time using employee or crew location
+    const newStartTime = calculateStartTimeFromLocation(
+      watchedAddress, 
+      initialData?.employeeId, 
+      initialData?.crewId
+    );
+    
+    // Only update if it's different to avoid infinite loops
+    if (newStartTime !== currentStartTime) {
+      form.setValue("startTime", newStartTime, { shouldValidate: false });
+    }
+  }, [watchedAddress, open, initialData?.employeeId, initialData?.crewId]);
   // Default visible colours: primary two unless user has customised
   const DEFAULT_ACTIVE_COLORS = ["gray", "red"];
   const [activeColors, setActiveColors] = useState<string[]>(() => {

@@ -132,6 +132,9 @@ export const employees = pgTable("employees", {
   status: text("status").notNull().default("active"),
   jobRole: text("job_role").notNull().default("operative"),
   email: text("email"),
+  // Optional home start details for routing / start-time calculations
+  homePostcode: text("home_postcode"),
+  startsFromHome: boolean("starts_from_home").notNull().default(false),
   depotId: varchar("depot_id").notNull().references(() => depots.id, { onDelete: "cascade" }),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   organizationId: varchar("organization_id").references(() => organizations.id, { onDelete: "cascade" }),

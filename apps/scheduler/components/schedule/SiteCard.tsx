@@ -25,6 +25,7 @@ import {
 } from "@/components/ui/context-menu";
 import { Button } from "@/components/ui/button";
 import { ScheduleItem } from "./CalendarGrid";
+import { useUISettings } from "@/hooks/useUISettings";
 
 interface SiteCardProps {
   item: ScheduleItem;
@@ -46,6 +47,7 @@ interface SiteCardProps {
 
 export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [], ghostVehicleLabel, vehicleTypes }: SiteCardProps) {
   const hasMultipleSelected = selectedItemIds && selectedItemIds.size > 1 && selectedItemIds.has(item.id);
+  const { settings } = useUISettings();
   const {
     attributes,
     listeners,
@@ -230,13 +232,15 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                 ) : (
                     <div className="flex items-center gap-1 truncate max-w-[90%] min-w-0">
                         <span className="truncate shrink-1">{item.customer}</span>
-                        <span className="opacity-50">|</span>
-                        <span className="flex items-center gap-1 font-mono">
-                            <Clock className="w-2.5 h-2.5" />
-                            {item.startTime && <span className="opacity-75">{item.startTime} -</span>}
-                            {item.onsiteTime || "TBC"}
-                            {item.projectManager && <span className="ml-1 text-slate-500 opacity-75 font-sans font-semibold">({item.projectManager})</span>}
-                        </span>
+                        {(settings.showStartTime || settings.showOnsiteTime) && <span className="opacity-50">|</span>}
+                        {(settings.showStartTime || settings.showOnsiteTime) && (
+                            <span className="flex items-center gap-1 font-mono">
+                                <Clock className="w-2.5 h-2.5" />
+                                {settings.showStartTime && item.startTime && <span className="opacity-75">{item.startTime} -</span>}
+                                {settings.showOnsiteTime && (item.onsiteTime || "TBC")}
+                                {item.projectManager && <span className="ml-1 text-slate-500 opacity-75 font-sans font-semibold">({item.projectManager})</span>}
+                            </span>
+                        )}
                     </div>
                 )}
                 
@@ -432,9 +436,11 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                                 {item.jobNumber || "NO REF"}
                              </span>
                              {/* Explicit Duration Badge */}
-                             <span className="text-[9px] font-semibold bg-blue-50 px-1 py-0.5 rounded text-blue-600 border border-blue-100">
-                                {item.duration}h
-                             </span>
+                             {settings.showDurationBadge && (
+                                 <span className="text-[9px] font-semibold bg-blue-50 px-1 py-0.5 rounded text-blue-600 border border-blue-100">
+                                    {item.duration}h
+                                 </span>
+                             )}
                         </div>
 
                         <div className="flex items-center gap-1 min-w-0 flex-1">

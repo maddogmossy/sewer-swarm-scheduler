@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trash2, Edit, Plus, Users, Truck, Mail, Settings, X, Check, Calendar as CalendarIcon, ArrowRightLeft } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -16,13 +17,36 @@ interface DepotCrewModalProps {
   currentDepotId: string;
   depots: { id: string; name: string }[];
   crews: { id: string; name: string; shift?: 'day' | 'night' }[];
-  employees: { id: string; name: string; status: 'active' | 'holiday' | 'sick'; jobRole: 'operative' | 'assistant'; email?: string }[];
-  vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; vehicleType: string; category?: string; color?: string }[];
+  employees: {
+    id: string
+    name: string
+    status: 'active' | 'holiday' | 'sick'
+    jobRole: 'operative' | 'assistant'
+    email?: string
+    homePostcode?: string
+    startsFromHome?: boolean
+  }[];
+  vehicles: {
+    id: string
+    name: string
+    status: 'active' | 'off_road' | 'maintenance'
+    vehicleType: string
+    category?: string
+    color?: string
+  }[];
   onCrewCreate: (name: string, shift: 'day' | 'night') => void;
   onCrewUpdate: (id: string, name: string, shift: 'day' | 'night') => void;
   onCrewDelete: (id: string) => void;
   onEmployeeCreate: (name: string, jobRole: 'operative' | 'assistant', email?: string) => void;
-  onEmployeeUpdate: (id: string, name: string, status?: 'active' | 'holiday' | 'sick', jobRole?: 'operative' | 'assistant', email?: string) => void;
+  onEmployeeUpdate: (
+    id: string,
+    name: string,
+    status?: 'active' | 'holiday' | 'sick',
+    jobRole?: 'operative' | 'assistant',
+    email?: string,
+    homePostcode?: string,
+    startsFromHome?: boolean
+  ) => void;
   onEmployeeDelete?: (id: string) => void;
   onEmployeeMoveDepot: (id: string, depotId: string) => void;
   onVehicleCreate: (name: string, vehicleType: string, category?: string, color?: string) => void;
@@ -99,7 +123,15 @@ export function DepotCrewModal({
   const [newVehicleType, setNewVehicleType] = useState(typeNames[0] || "Van");
   const [newVehicleCategory, setNewVehicleCategory] = useState<string>("VAN");
   const [newVehicleColor, setNewVehicleColor] = useState<string>(() => getDefaultColorForType(typeNames[0] || "Van"));
-  const [editingEmployee, setEditingEmployee] = useState<{ id: string; name: string; jobRole: 'operative' | 'assistant'; email?: string; status?: 'active' | 'holiday' | 'sick' } | null>(null);
+  const [editingEmployee, setEditingEmployee] = useState<{
+    id: string
+    name: string
+    jobRole: 'operative' | 'assistant'
+    email?: string
+    status?: 'active' | 'holiday' | 'sick'
+    homePostcode?: string
+    startsFromHome?: boolean
+  } | null>(null);
   const [editingVehicle, setEditingVehicle] = useState<{ id: string; name: string; vehicleType: string; status?: 'active' | 'off_road' | 'maintenance'; category?: string; color?: string } | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeColor, setNewTypeColor] = useState<string>("blue");
@@ -200,7 +232,15 @@ export function DepotCrewModal({
 
   const handleSaveEmployee = () => {
     if (!editingEmployee || !editingEmployee.name.trim()) return;
-    onEmployeeUpdate(editingEmployee.id, editingEmployee.name, editingEmployee.status, editingEmployee.jobRole, editingEmployee.email);
+    onEmployeeUpdate(
+      editingEmployee.id,
+      editingEmployee.name,
+      editingEmployee.status,
+      editingEmployee.jobRole,
+      editingEmployee.email,
+      editingEmployee.homePostcode,
+      editingEmployee.startsFromHome
+    );
     setEditingEmployee(null);
   };
 
@@ -307,21 +347,55 @@ export function DepotCrewModal({
                                     </SelectContent>
                                 </Select>
                             </div>
-                            <div className="flex items-center gap-2">
-                                <Input
-                                    value={editingEmployee.email || ""}
-                                    onChange={(e) => setEditingEmployee({ ...editingEmployee, email: e.target.value })}
-                                    className="flex-1 text-sm"
-                                    placeholder="Email address"
-                                    type="email"
-                                />
-                                <div className="flex gap-2 w-32 justify-end">
-                                    <Button size="sm" onClick={handleSaveEmployee}>
-                                        Save
-                                    </Button>
-                                    <Button size="sm" variant="ghost" onClick={() => setEditingEmployee(null)}>
-                                        Cancel
-                                    </Button>
+                            <div className="flex flex-col gap-2">
+                                <div className="flex items-center gap-2">
+                                  <Input
+                                      value={editingEmployee.email || ""}
+                                      onChange={(e) => setEditingEmployee({ ...editingEmployee, email: e.target.value })}
+                                      className="flex-1 text-sm"
+                                      placeholder="Email address"
+                                      type="email"
+                                  />
+                                  <Input
+                                      value={editingEmployee.homePostcode || ""}
+                                      onChange={(e) =>
+                                        setEditingEmployee({
+                                          ...editingEmployee,
+                                          homePostcode: e.target.value,
+                                        })
+                                      }
+                                      className="w-32 text-xs"
+                                      placeholder="Home postcode"
+                                  />
+                                </div>
+                                <div className="flex items-center justify-between">
+                                  <div className="flex items-center gap-2">
+                                    <Switch
+                                      id={`depot-emp-home-${editingEmployee.id}`}
+                                      checked={!!editingEmployee.startsFromHome}
+                                      onCheckedChange={(checked) =>
+                                        setEditingEmployee({
+                                          ...editingEmployee,
+                                          startsFromHome: checked,
+                                        })
+                                      }
+                                      className="data-[state=checked]:bg-blue-600"
+                                    />
+                                    <Label
+                                      htmlFor={`depot-emp-home-${editingEmployee.id}`}
+                                      className="text-[11px] text-slate-700 cursor-pointer"
+                                    >
+                                      Starts from home (else depot)
+                                    </Label>
+                                  </div>
+                                  <div className="flex gap-2">
+                                      <Button size="sm" onClick={handleSaveEmployee}>
+                                          Save
+                                      </Button>
+                                      <Button size="sm" variant="ghost" onClick={() => setEditingEmployee(null)}>
+                                          Cancel
+                                      </Button>
+                                  </div>
                                 </div>
                             </div>
                         </div>

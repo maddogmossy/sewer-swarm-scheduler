@@ -25,6 +25,7 @@ import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from "@/comp
 
 import { SmartSearchModal } from "./SmartSearchModal";
 import { EmailPreviewModal } from "./EmailPreviewModal";
+import { useUISettings } from "@/hooks/useUISettings";
 import { EmployeeTimeOffDialog, EmployeeTimeOffDialogPayload } from "./EmployeeTimeOffDialog";
 import { GroupingDialog } from "./GroupingDialog";
 
@@ -115,7 +116,15 @@ function getGhostVehicleLabelForCell(
 interface CalendarGridProps {
   items: ScheduleItem[];
   crews: Crew[];
-  employees: { id: string; name: string; status: 'active' | 'holiday' | 'sick'; email?: string; jobRole?: 'operative' | 'assistant' }[];
+  employees: {
+    id: string
+    name: string
+    status: 'active' | 'holiday' | 'sick'
+    email?: string
+    jobRole?: 'operative' | 'assistant'
+    homePostcode?: string
+    startsFromHome?: boolean
+  }[];
   vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; vehicleType: string; category?: string; color?: string }[];
   colorLabels: Record<string, string>;
   isReadOnly: boolean;
@@ -129,7 +138,15 @@ interface CalendarGridProps {
   onCrewUpdate: (id: string, name: string, shift: 'day' | 'night') => void;
   onCrewDelete: (id: string) => void;
   onEmployeeCreate: (name: string) => void;
-  onEmployeeUpdate: (id: string, name: string, status?: 'active' | 'holiday' | 'sick', jobRole?: 'operative' | 'assistant', email?: string) => void;
+  onEmployeeUpdate: (
+    id: string,
+    name: string,
+    status?: 'active' | 'holiday' | 'sick',
+    jobRole?: 'operative' | 'assistant',
+    email?: string,
+    homePostcode?: string,
+    startsFromHome?: boolean
+  ) => void;
   onEmployeeDelete: (id: string) => void;
   onVehicleCreate: (name: string) => void;
   onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance', category?: string, color?: string) => void;
@@ -173,6 +190,7 @@ export function CalendarGrid({
     onColorLabelUpdate, depots, allItems, vehicleTypes, allCrews,
     onUndo, onRedo, canUndo, canRedo, onLogout
 }: CalendarGridProps) {
+  const { settings } = useUISettings();
   // Always start on the current week - calculate fresh each time
   const getCurrentWeekStart = () => {
     const now = new Date();
@@ -199,6 +217,11 @@ export function CalendarGrid({
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
+
+  // Generate a unique ID to avoid collisions
+  const generateUniqueId = () => {
+    return `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.random().toString(36).substr(2, 9)}`;
+  };
   
   // Mock Email Status State
   const [emailStatus, setEmailStatus] = useState<Record<string, { sent: boolean, timestamp?: string }>>({});
@@ -362,7 +385,7 @@ export function CalendarGrid({
              // Duplicate
              onItemCreate({
                 ...activeItem,
-                id: Math.random().toString(36).substr(2, 9),
+                id: generateUniqueId(),
                 crewId: targetCrewId,
                 date: newDate
             });
@@ -466,8 +489,19 @@ export function CalendarGrid({
     // For jobs we ONLY want to drop a "ghost" / free box on the diary.
     // The full site UI (Convert Free Job to Booking) is used later when editing that box.
     if (type === 'job') {
+      const crew = crews.find(c => c.id === selectionMenu.crewId);
+      const isNight = crew?.shift === 'night';
+      const defaultStart = isNight ? settings.defaultNightStartTime : settings.defaultDayStartTime;
+      // Keep onsite one hour after start by default
+      const [h, m] = (defaultStart || "08:00").split(":").map(Number);
+      const onsiteDate = new Date(2000, 0, 1, h ?? 8, m ?? 0);
+      onsiteDate.setHours(onsiteDate.getHours() + 1);
+      const onsiteTime = `${onsiteDate.getHours().toString().padStart(2, "0")}:${onsiteDate
+        .getMinutes()
+        .toString()
+        .padStart(2, "0")}`;
       const baseItem: ScheduleItem = {
-        id: Math.random().toString(36).substr(2, 9),
+        id: generateUniqueId(),
         type: 'job',
         date: selectionMenu.date,
         crewId: selectionMenu.crewId,
@@ -476,8 +510,8 @@ export function CalendarGrid({
         jobStatus: 'free',
         customer: 'Free',
         address: 'Free',
-        startTime: '08:00',
-        onsiteTime: '09:00',
+        startTime: defaultStart || '08:00',
+        onsiteTime,
         duration: 8,
         color: 'blue',
       };
@@ -931,13 +965,15 @@ export function CalendarGrid({
     setModalState({ isOpen: true, type: item.type, data: item });
   };
 
-  const handleDuplicateItem = (item: ScheduleItem, mode: 'single' | 'week' | 'following_week' | 'custom' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year' = 'single', days = 1) => {
+  const handleDuplicateItem = (item: ScheduleItem, mode: 'single' | 'week' | 'following_week' | 'custom' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year' = 'single', days = 1, skipSelectedCheck = false) => {
     if (isReadOnly) return;
 
     // Determine which items to process
-    const targetItems = selectedItemIds.has(item.id) 
-        ? items.filter(i => selectedItemIds.has(i.id))
-        : [item];
+    // If skipSelectedCheck is true (called from handleDuplicateSelected), only process this one item
+    // Otherwise, if item is selected, process all selected items
+    const targetItems = (skipSelectedCheck || !selectedItemIds.has(item.id))
+        ? [item]
+        : items.filter(i => selectedItemIds.has(i.id));
 
     const itemsToCreate: ScheduleItem[] = [];
 
@@ -945,7 +981,7 @@ export function CalendarGrid({
         const startDate = new Date(sourceItem.date);
         
         if (mode === 'single') {
-             itemsToCreate.push({ ...sourceItem, id: Math.random().toString(36).substr(2, 9) });
+             itemsToCreate.push({ ...sourceItem, id: generateUniqueId() });
         } else if (mode === 'week') {
             // Duplicate for remainder of the displayed week
             const currentViewEnd = addDays(weekStart, viewDays - 1);
@@ -954,7 +990,7 @@ export function CalendarGrid({
             while (isSameDay(nextDate, currentViewEnd) || isBefore(nextDate, currentViewEnd)) {
                 itemsToCreate.push({
                     ...sourceItem,
-                    id: Math.random().toString(36).substr(2, 9),
+                    id: generateUniqueId(),
                     date: new Date(nextDate)
                 });
                 nextDate = addDays(nextDate, 1);
@@ -967,7 +1003,7 @@ export function CalendarGrid({
             for (let i = 0; i < daysToFill; i++) {
                  itemsToCreate.push({
                     ...sourceItem,
-                    id: Math.random().toString(36).substr(2, 9),
+                    id: generateUniqueId(),
                     date: addDays(nextWeekStart, i)
                 });
             }
@@ -976,7 +1012,7 @@ export function CalendarGrid({
             for (let i = 1; i <= days; i++) {
                  itemsToCreate.push({
                     ...sourceItem,
-                    id: Math.random().toString(36).substr(2, 9),
+                    id: generateUniqueId(),
                     date: addDays(startDate, i)
                 });
             }
@@ -998,7 +1034,7 @@ export function CalendarGrid({
             while ((isBefore(nextDate, endDate) || isSameDay(nextDate, endDate)) && safetyCounter < MAX_ITEMS_PER_SOURCE) {
                 itemsToCreate.push({
                     ...sourceItem,
-                    id: Math.random().toString(36).substr(2, 9),
+                    id: generateUniqueId(),
                     date: new Date(nextDate)
                 });
                 nextDate = addDays(nextDate, 1);
@@ -1162,8 +1198,9 @@ export function CalendarGrid({
     if (selectedItemIds.size === 0) return;
     
     const selectedItems = items.filter(i => selectedItemIds.has(i.id));
+    // Pass skipSelectedCheck=true to prevent double-processing
     selectedItems.forEach(item => {
-      handleDuplicateItem(item, mode, days);
+      handleDuplicateItem(item, mode, days || 1, true);
     });
     setSelectedItemIds(new Set());
   };
@@ -1208,7 +1245,7 @@ export function CalendarGrid({
         if (!isBefore(startOfDay(targetDate), startOfDay(new Date())) && targetDate <= endDate) {
           itemsToCreate.push({
             ...sourceItem,
-            id: Math.random().toString(36).substr(2, 9),
+            id: generateUniqueId(),
             date: targetDate
           });
         }
@@ -1427,7 +1464,7 @@ export function CalendarGrid({
         const isFreeJob = modalState.type === 'job' && (data.customer === 'Free' || !data.customer || data.customer.trim() === '');
         
         const baseItem = {
-            id: Math.random().toString(36).substr(2, 9),
+            id: generateUniqueId(),
             type: modalState.type,
             date: createDate,
             crewId: createCrewId,
@@ -1479,7 +1516,7 @@ export function CalendarGrid({
             
             // 1. Create free job on the same day (below the operative)
                 onItemCreate({
-                    id: Math.random().toString(36).substr(2, 9),
+                    id: generateUniqueId(),
                     type: 'job',
                     date: new Date(startDate),
                     crewId: createCrewId,
@@ -1509,7 +1546,7 @@ export function CalendarGrid({
                 
                 // Create operative for this day
                 onItemCreate({
-                    id: Math.random().toString(36).substr(2, 9),
+                    id: generateUniqueId(),
                     type: modalState.type,
                     date: new Date(nextDate),
                     crewId: createCrewId,
@@ -1519,7 +1556,7 @@ export function CalendarGrid({
                 
                 // Create free job for this day
                 onItemCreate({
-                    id: Math.random().toString(36).substr(2, 9),
+                    id: generateUniqueId(),
                     type: 'job',
                     date: new Date(nextDate),
                     crewId: createCrewId,
@@ -1572,7 +1609,7 @@ export function CalendarGrid({
                 }
                 
                 onItemCreate({
-                    id: Math.random().toString(36).substr(2, 9),
+                    id: generateUniqueId(),
                     type: modalState.type,
                     date: new Date(nextDate),
                     crewId: createCrewId,
@@ -1610,7 +1647,15 @@ export function CalendarGrid({
   const activeItem = activeId ? items.find(i => i.id === activeId) : null;
 
   // --- FILTERING ---
-  const filteredItems = items.filter(item => {
+  // Deduplicate items by ID before filtering (in case duplicates exist)
+  const uniqueItems = items.reduce((acc, item) => {
+    if (!acc.find(i => i.id === item.id)) {
+      acc.push(item);
+    }
+    return acc;
+  }, [] as ScheduleItem[]);
+
+  const filteredItems = uniqueItems.filter(item => {
       if (!searchQuery) return true;
       const query = searchQuery.toLowerCase();
       
@@ -2609,6 +2654,7 @@ export function CalendarGrid({
         vehicles={vehicles}
         items={items} // Pass items for conflict detection
         crews={crews} // Pass crews for validating assignments
+        depots={depots} // Pass depots for address calculation
         colorLabels={colorLabels}
         isReadOnly={isReadOnly}
         onColorLabelUpdate={onColorLabelUpdate}
@@ -2681,7 +2727,7 @@ export function CalendarGrid({
         colorLabels={colorLabels}
         onBookSlot={(date, crewId, depotId, duration, color) => {
             onItemCreate({
-                id: Math.random().toString(36).substr(2, 9),
+                id: generateUniqueId(),
                 type: 'job',
                 date: date,
                 crewId: crewId,
@@ -2704,7 +2750,15 @@ export function CalendarGrid({
             date={emailModalDate}
             items={items}
             employees={employees.map(e => ({...e, jobRole: e.jobRole || 'operative'}))} // Normalize role just in case
-            onUpdateEmail={(id, email) => onEmployeeUpdate(id, employees.find(e => e.id === id)?.name || "Unknown", undefined, undefined, email)}
+            onUpdateEmail={(id, email) =>
+              onEmployeeUpdate(
+                id,
+                employees.find(e => e.id === id)?.name || "Unknown",
+                undefined,
+                undefined,
+                email
+              )
+            }
             onSend={handleEmailSent}
           />
       )}

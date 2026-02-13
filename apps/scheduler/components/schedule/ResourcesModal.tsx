@@ -3,6 +3,7 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trash2, Edit, Plus, User, Truck, AlertCircle, Mail, Calendar as CalendarIcon } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -11,13 +12,42 @@ import { Badge } from "@/components/ui/badge";
 interface ResourcesModalProps {
     open: boolean;
     onOpenChange: (open: boolean) => void;
-    employees: { id: string; name: string; status: 'active' | 'holiday' | 'sick'; email?: string; jobRole?: 'operative' | 'assistant' }[];
-    vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; category?: string; color?: string; vehicleType?: string }[];
+    employees: {
+        id: string
+        name: string
+        status: 'active' | 'holiday' | 'sick'
+        email?: string
+        jobRole?: 'operative' | 'assistant'
+        homePostcode?: string
+        startsFromHome?: boolean
+    }[];
+    vehicles: {
+        id: string
+        name: string
+        status: 'active' | 'off_road' | 'maintenance'
+        category?: string
+        color?: string
+        vehicleType?: string
+    }[];
     onEmployeeCreate: (name: string) => void;
-    onEmployeeUpdate: (id: string, name: string, status?: 'active' | 'holiday' | 'sick', jobRole?: 'operative' | 'assistant', email?: string) => void;
+    onEmployeeUpdate: (
+        id: string,
+        name: string,
+        status?: 'active' | 'holiday' | 'sick',
+        jobRole?: 'operative' | 'assistant',
+        email?: string,
+        homePostcode?: string,
+        startsFromHome?: boolean
+    ) => void;
     onEmployeeDelete: (id: string) => void;
     onVehicleCreate: (name: string, category?: string) => void;
-    onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance', category?: string, color?: string) => void;
+    onVehicleUpdate: (
+        id: string,
+        name: string,
+        status?: 'active' | 'off_road' | 'maintenance',
+        category?: string,
+        color?: string
+    ) => void;
     onVehicleDelete: (id: string) => void;
     vehicleTypes?: string[];
 }
@@ -34,7 +64,14 @@ export function ResourcesModal({
 }: ResourcesModalProps) {
     const [newItemName, setNewItemName] = useState("");
     const [newVehicleCategory, setNewVehicleCategory] = useState<string>("VAN");
-    const [editingEmployee, setEditingEmployee] = useState<{ id: string, name: string, status: 'active' | 'holiday' | 'sick', email?: string } | null>(null);
+    const [editingEmployee, setEditingEmployee] = useState<{
+        id: string
+        name: string
+        status: 'active' | 'holiday' | 'sick'
+        email?: string
+        homePostcode?: string
+        startsFromHome?: boolean
+    } | null>(null);
     const [editingVehicle, setEditingVehicle] = useState<{ id: string, name: string, status: 'active' | 'off_road' | 'maintenance', category?: string, color?: string } | null>(null);
     const [timeOffModal, setTimeOffModal] = useState<{
         open: boolean;
@@ -80,7 +117,15 @@ export function ResourcesModal({
 
     const handleEmployeeSave = () => {
         if (!editingEmployee || !editingEmployee.name.trim()) return;
-        onEmployeeUpdate(editingEmployee.id, editingEmployee.name, editingEmployee.status, undefined, editingEmployee.email);
+        onEmployeeUpdate(
+            editingEmployee.id,
+            editingEmployee.name,
+            editingEmployee.status,
+            undefined,
+            editingEmployee.email,
+            editingEmployee.homePostcode,
+            editingEmployee.startsFromHome
+        );
         setEditingEmployee(null);
     };
 
@@ -137,7 +182,7 @@ export function ResourcesModal({
                                 <div key={emp.id} className="p-3 flex items-center justify-between hover:bg-slate-50 bg-white">
                                     {editingEmployee?.id === emp.id ? (
                                         <div className="flex items-center gap-2 flex-1 mr-4">
-                                            <div className="flex flex-col gap-1 flex-1">
+                                            <div className="flex flex-col gap-2 flex-1">
                                                 <Input 
                                                     value={editingEmployee.name} 
                                                     onChange={(e) => setEditingEmployee({ ...editingEmployee, name: e.target.value })}
@@ -149,9 +194,41 @@ export function ResourcesModal({
                                                     value={editingEmployee.email || ""} 
                                                     onChange={(e) => setEditingEmployee({ ...editingEmployee, email: e.target.value })}
                                                     className="w-full text-xs"
-                                                    placeholder="Email Address"
+                                                    placeholder="Email address (optional)"
                                                     type="email"
                                                 />
+                                                <div className="flex items-center gap-3">
+                                                    <Input
+                                                        value={editingEmployee.homePostcode || ""}
+                                                        onChange={(e) =>
+                                                          setEditingEmployee({
+                                                            ...editingEmployee,
+                                                            homePostcode: e.target.value,
+                                                          })
+                                                        }
+                                                        className="w-32 text-xs"
+                                                        placeholder="Home postcode"
+                                                    />
+                                                    <div className="flex items-center gap-2">
+                                                        <Switch
+                                                          id={`starts-from-home-${editingEmployee.id}`}
+                                                          checked={!!editingEmployee.startsFromHome}
+                                                          onCheckedChange={(checked) =>
+                                                            setEditingEmployee({
+                                                              ...editingEmployee,
+                                                              startsFromHome: checked,
+                                                            })
+                                                          }
+                                                          className="data-[state=checked]:bg-blue-600"
+                                                        />
+                                                        <Label
+                                                          htmlFor={`starts-from-home-${editingEmployee.id}`}
+                                                          className="text-[11px] text-slate-700 cursor-pointer"
+                                                        >
+                                                          Starts from home (else depot)
+                                                        </Label>
+                                                    </div>
+                                                </div>
                                             </div>
                                             <Button size="sm" onClick={handleEmployeeSave}>Save</Button>
                                             <Button size="sm" variant="ghost" onClick={() => setEditingEmployee(null)}>Cancel</Button>
@@ -177,6 +254,12 @@ export function ResourcesModal({
                                                         <span className="text-xs text-red-400 flex items-center gap-1">
                                                             <AlertCircle className="w-3 h-3" /> No Email
                                                         </span>
+                                                    )}
+                                                    {emp.homePostcode && (
+                                                      <span className="text-[11px] text-slate-500">
+                                                        Home: {emp.homePostcode}{" "}
+                                                        {emp.startsFromHome ? "(starts from home)" : "(starts from depot)"}
+                                                      </span>
                                                     )}
                                                 </div>
                                             </div>

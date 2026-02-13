@@ -6,7 +6,10 @@ import { CalendarGrid, type Crew, type ScheduleItem } from "@/components/schedul
 import { Sidebar, type Depot } from "@/components/schedule/Sidebar";
 import { DepotCrewModal } from "@/components/schedule/DepotCrewModal";
 import { TeamManagement } from "@/components/schedule/TeamManagement";
+import { UISettings } from "@/components/schedule/UISettings";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
+import { Users, Settings } from "lucide-react";
 import { useScheduleData } from "@/hooks/useScheduleData";
 import { useOrganization, canManageResources, canManageTeam } from "@/hooks/useOrganization";
 import { api } from "@/lib/api";
@@ -465,9 +468,14 @@ const transformedDepots: Depot[] = depots.map((d) => ({
       name: string,
       status?: "active" | "holiday" | "sick",
       jobRole?: "operative" | "assistant",
-      email?: string
+      email?: string,
+      homePostcode?: string,
+      startsFromHome?: boolean
     ) => {
-      await mutations.updateEmployee.mutateAsync({ id, data: { name, status, jobRole, email } });
+      await mutations.updateEmployee.mutateAsync({
+        id,
+        data: { name, status, jobRole, email, homePostcode, startsFromHome },
+      });
     },
     [mutations]
   );
@@ -824,16 +832,41 @@ const transformedDepots: Depot[] = depots.map((d) => ({
       
       {/* Settings Modal with Team Management */}
       <Dialog open={isSettingsModalOpen} onOpenChange={setIsSettingsModalOpen}>
-        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto">
+        <DialogContent className="max-w-4xl max-h-[90vh] overflow-y-auto bg-white text-slate-900">
           <DialogHeader>
-            <DialogTitle>Team & Settings</DialogTitle>
+            <DialogTitle className="text-slate-900">Team & Settings</DialogTitle>
           </DialogHeader>
-          {currentUserId && (
-            <TeamManagement
-              currentUserRole={userRole}
-              currentUserId={currentUserId}
-            />
-          )}
+          <Tabs defaultValue="team" className="mt-4">
+            <TabsList className="grid w-full grid-cols-2 bg-slate-100 rounded-lg p-1">
+              <TabsTrigger
+                value="team"
+                className="flex items-center gap-2 text-sm font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
+              >
+                <Users className="w-4 h-4" />
+                Team
+              </TabsTrigger>
+              <TabsTrigger
+                value="settings"
+                className="flex items-center gap-2 text-sm font-semibold data-[state=active]:bg-slate-900 data-[state=active]:text-white data-[state=inactive]:text-slate-600"
+              >
+                <Settings className="w-4 h-4" />
+                Settings
+              </TabsTrigger>
+            </TabsList>
+            
+            <TabsContent value="team" className="mt-4">
+              {currentUserId && (
+                <TeamManagement
+                  currentUserRole={userRole}
+                  currentUserId={currentUserId}
+                />
+              )}
+            </TabsContent>
+            
+            <TabsContent value="settings" className="mt-4">
+              <UISettings />
+            </TabsContent>
+          </Tabs>
         </DialogContent>
       </Dialog>
     </div>

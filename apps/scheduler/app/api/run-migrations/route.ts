@@ -47,6 +47,19 @@ async function runMigration() {
           END $$;
         `);
 
+        // Add home_postcode and starts_from_home columns to employees if they don't exist
+        await client.query(`
+          DO $$ 
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'employees' AND column_name = 'home_postcode') THEN
+              ALTER TABLE "employees" ADD COLUMN "home_postcode" text;
+            END IF;
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'employees' AND column_name = 'starts_from_home') THEN
+              ALTER TABLE "employees" ADD COLUMN "starts_from_home" boolean NOT NULL DEFAULT false;
+            END IF;
+          END $$;
+        `);
+
         // Add job_status column to schedule_items if it doesn't exist
         await client.query(`
           DO $$ 
@@ -175,6 +188,8 @@ async function runMigration() {
           "status" text DEFAULT 'active' NOT NULL,
           "job_role" text DEFAULT 'operative' NOT NULL,
           "email" text,
+          "home_postcode" text,
+          "starts_from_home" boolean DEFAULT false NOT NULL,
           "depot_id" varchar NOT NULL,
           "user_id" varchar NOT NULL,
           "organization_id" varchar,

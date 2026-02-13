@@ -226,7 +226,9 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                 {isSelected && !isCollapsed && editingDepotId === depot.id && (
                     <div className="flex flex-col gap-2 px-3 pb-3 bg-green-50 rounded-b-lg -mt-1 border-x border-b border-green-200">
                       <div className="space-y-1">
-                        <label className="text-[10px] font-semibold text-slate-500 uppercase">Depot Name</label>
+                        <label className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide">
+                          Depot Name
+                        </label>
                         <input
                           type="text"
                           value={editForm.name}
@@ -240,13 +242,15 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                             }
                           }}
                           autoFocus
-                          className="w-full text-xs px-2 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                          placeholder="Depot Name"
+                          className="w-full text-xs px-2 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-900 placeholder:text-slate-400"
+                          placeholder="Depot name"
                         />
                       </div>
                       
                       <div className="space-y-1">
-                        <label className="text-[10px] font-semibold text-slate-500 uppercase">Address / Postcode</label>
+                        <label className="text-[10px] font-semibold text-slate-700 uppercase tracking-wide">
+                          Address / Postcode
+                        </label>
                         <input
                           type="text"
                           value={editForm.address}
@@ -259,8 +263,8 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                               setEditingDepotId(null);
                             }
                           }}
-                          className="w-full text-xs px-2 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white"
-                          placeholder="Full Address"
+                          className="w-full text-xs px-2 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-900 placeholder:text-slate-400"
+                          placeholder="Unit, street, town, postcode"
                         />
                       </div>
 
@@ -268,7 +272,7 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                           <Button
                             size="sm"
                             variant="ghost"
-                            className="text-xs h-7 px-2"
+                            className="text-xs h-7 px-2 text-slate-700 hover:bg-slate-100"
                             onClick={() => setEditingDepotId(null)}
                           >
                             Cancel

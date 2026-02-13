@@ -135,6 +135,8 @@ export function DepotCrewModal({
   const [editingVehicle, setEditingVehicle] = useState<{ id: string; name: string; vehicleType: string; status?: 'active' | 'off_road' | 'maintenance'; category?: string; color?: string } | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeColor, setNewTypeColor] = useState<string>("blue");
+  const [editingType, setEditingType] = useState<{ type: string; defaultColor: string } | null>(null);
+  const [isEditTypeOpen, setIsEditTypeOpen] = useState(false);
   const [employeeTimeOffModal, setEmployeeTimeOffModal] = useState<{
     open: boolean;
     employeeId: string | null;
@@ -218,6 +220,37 @@ export function DepotCrewModal({
     onVehicleTypeCreate(newTypeName.trim(), newTypeColor);
     setNewTypeName("");
     setNewTypeColor("blue"); // Reset to default
+  };
+
+  const handleEditVehicleType = (type: string) => {
+    const defaultColor = getDefaultColorForType(type);
+    setEditingType({ type, defaultColor });
+    setNewTypeName(type);
+    setNewTypeColor(defaultColor);
+    setIsEditTypeOpen(true);
+    // Close the Select dropdown by resetting the vehicle type (this will close the select)
+    // We'll restore it after editing
+  };
+
+  const handleSaveVehicleType = () => {
+    if (!editingType || !newTypeName.trim()) return;
+    if (newTypeName.trim() !== editingType.type || newTypeColor !== editingType.defaultColor) {
+      onVehicleTypeUpdate(editingType.type, newTypeName.trim(), newTypeColor);
+      // If the type name changed, update the selected vehicle type if it was the old one
+      if (newVehicleType === editingType.type && newTypeName.trim() !== editingType.type) {
+        setNewVehicleType(newTypeName.trim());
+      }
+    }
+    setEditingType(null);
+    setNewTypeName("");
+    setNewTypeColor("blue");
+    setIsEditTypeOpen(false);
+  };
+
+  const handleDeleteVehicleType = (type: string) => {
+    if (window.confirm(`Are you sure you want to delete the vehicle type "${type}"? This cannot be undone.`)) {
+      onVehicleTypeDelete(type);
+    }
   };
 
   const handleDeleteEmployee = (empId: string) => {
@@ -532,48 +565,124 @@ export function DepotCrewModal({
                   className="flex-1"
                 />
                 <div className="flex gap-1">
-                  <Select 
-                    value={newVehicleType} 
-                    onValueChange={(val) => {
-                      setNewVehicleType(val);
-                      setNewVehicleColor(getDefaultColorForType(val));
-                    }}
-                  >
-                    <SelectTrigger className="w-32">
-                      <SelectValue />
-                    </SelectTrigger>
-                    <SelectContent className="bg-white">
-                      {typeNames.map(type => (
-                          <SelectItem key={type} value={type}>{type}</SelectItem>
-                      ))}
-                    </SelectContent>
-                  </Select>
-                  <Popover open={isAddTypeOpen} onOpenChange={setIsAddTypeOpen}>
+                  <div className="flex flex-col gap-1">
+                    <Label className="text-xs font-semibold text-slate-700 uppercase tracking-wide">Vehicle Type</Label>
+                    <Select 
+                      value={newVehicleType} 
+                      onValueChange={(val) => {
+                        setNewVehicleType(val);
+                        setNewVehicleColor(getDefaultColorForType(val));
+                      }}
+                    >
+                      <SelectTrigger className="w-32">
+                        <SelectValue />
+                      </SelectTrigger>
+                      <SelectContent className="bg-white">
+                        {typeNames.map(type => {
+                          const typeDefaultColor = getDefaultColorForType(type);
+                          const colorHex = AVAILABLE_COLORS.find(c => c.value === typeDefaultColor)?.hex || "#3B82F6";
+                          return (
+                            <SelectItem key={type} value={type} className="pr-20">
+                              <div className="flex items-center justify-between w-full gap-2 group/item">
+                                <div className="flex items-center gap-2 flex-1 min-w-0">
+                                  <div 
+                                    className="w-3 h-3 rounded border shrink-0" 
+                                    style={{ 
+                                      backgroundColor: `${colorHex}40`,
+                                      borderColor: colorHex 
+                                    }}
+                                  />
+                                  <span className="truncate">{type}</span>
+                                </div>
+                                <div 
+                                  className="flex items-center gap-1 opacity-0 group-hover/item:opacity-100 transition-opacity absolute right-8"
+                                  onPointerDown={(e) => e.stopPropagation()}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6"
+                                    onPointerDown={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      handleEditVehicleType(type);
+                                    }}
+                                    title="Edit vehicle type"
+                                  >
+                                    <Edit className="w-3 h-3 text-slate-500" />
+                                  </Button>
+                                  <Button
+                                    type="button"
+                                    size="icon"
+                                    variant="ghost"
+                                    className="h-6 w-6"
+                                    onPointerDown={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                    }}
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      e.preventDefault();
+                                      handleDeleteVehicleType(type);
+                                    }}
+                                    title="Delete vehicle type"
+                                  >
+                                    <Trash2 className="w-3 h-3 text-red-500" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </SelectItem>
+                          );
+                        })}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                  <Popover open={isAddTypeOpen || isEditTypeOpen} onOpenChange={(open) => {
+                    setIsAddTypeOpen(open);
+                    if (!open) {
+                      setIsEditTypeOpen(false);
+                      setEditingType(null);
+                      setNewTypeName("");
+                      setNewTypeColor("blue");
+                    }
+                  }}>
                   <PopoverTrigger asChild>
                     <Button
                       type="button"
                       size="icon"
                       className="h-9 w-9 bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
-                      title="Add new vehicle type"
+                      title={editingType ? "Edit vehicle type" : "Add new vehicle type"}
                     >
-                      <Plus className="w-4 h-4" />
+                      {editingType ? <Edit className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
                     </Button>
                   </PopoverTrigger>
                     <PopoverContent className="w-80 p-3 bg-white" align="start">
                       <div className="space-y-3">
-                        <h4 className="font-semibold text-sm text-slate-900">Add Vehicle Type</h4>
+                        <h4 className="font-semibold text-sm text-slate-900">
+                          {editingType ? "Edit Vehicle Type" : "Add Vehicle Type"}
+                        </h4>
                         <div className="space-y-2">
                           <Input 
-                            placeholder="New type name..." 
+                            placeholder="Type name..." 
                             className="h-8 text-sm text-slate-900 placeholder:text-slate-400"
                             value={newTypeName}
                             onChange={(e) => setNewTypeName(e.target.value)}
                             onKeyDown={(e) => {
                               if (e.key === 'Enter' && newTypeName.trim()) {
                                 e.preventDefault();
-                                handleAddVehicleType();
-                                setNewVehicleType(newTypeName.trim());
-                                setIsAddTypeOpen(false);
+                                if (editingType) {
+                                  handleSaveVehicleType();
+                                } else {
+                                  handleAddVehicleType();
+                                  setNewVehicleType(newTypeName.trim());
+                                  setIsAddTypeOpen(false);
+                                }
                               }
                             }}
                             autoFocus
@@ -598,19 +707,49 @@ export function DepotCrewModal({
                               ))}
                             </div>
                           </div>
-                          <Button 
-                            size="sm" 
-                            className="w-full h-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm" 
-                            onClick={() => {
-                              if (newTypeName.trim()) {
-                                handleAddVehicleType();
-                                setNewVehicleType(newTypeName.trim());
-                                setIsAddTypeOpen(false);
-                              }
-                            }}
-                          >
-                            <Plus className="w-4 h-4 mr-2" /> Add Type
-                          </Button>
+                          <div className="flex gap-2">
+                            {editingType && (
+                              <Button 
+                                size="sm" 
+                                variant="outline"
+                                className="flex-1 h-8 border-slate-300 text-slate-700 hover:bg-slate-50" 
+                                onClick={() => {
+                                  setEditingType(null);
+                                  setNewTypeName("");
+                                  setNewTypeColor("blue");
+                                  setIsEditTypeOpen(false);
+                                }}
+                              >
+                                Cancel
+                              </Button>
+                            )}
+                            <Button 
+                              size="sm" 
+                              className={cn(
+                                "h-8 bg-blue-600 hover:bg-blue-700 text-white shadow-sm",
+                                editingType ? "flex-1" : "w-full"
+                              )} 
+                              onClick={() => {
+                                if (editingType) {
+                                  handleSaveVehicleType();
+                                } else if (newTypeName.trim()) {
+                                  handleAddVehicleType();
+                                  setNewVehicleType(newTypeName.trim());
+                                  setIsAddTypeOpen(false);
+                                }
+                              }}
+                            >
+                              {editingType ? (
+                                <>
+                                  <Check className="w-4 h-4 mr-2" /> Save
+                                </>
+                              ) : (
+                                <>
+                                  <Plus className="w-4 h-4 mr-2" /> Add Type
+                                </>
+                              )}
+                            </Button>
+                          </div>
                         </div>
                       </div>
                     </PopoverContent>

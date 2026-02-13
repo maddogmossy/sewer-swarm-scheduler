@@ -1,8 +1,9 @@
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUISettings } from "@/hooks/useUISettings";
-import { Clock, MapPin, Timer, Calendar } from "lucide-react";
+import { Clock, MapPin, Timer, Calendar, Mail, Bell } from "lucide-react";
 
 export function UISettings() {
   const { settings, updateSetting } = useUISettings();
@@ -187,6 +188,70 @@ export function UISettings() {
             />
           </div>
         </div>
+      </div>
+
+      <div className="space-y-4 pt-2 border-t border-slate-100">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-900">Approval Workflow</h4>
+          <p className="text-xs text-slate-600 mt-0.5">
+            Control how bookings from availability search require approval.
+          </p>
+        </div>
+        <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 bg-white">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-purple-100 flex items-center justify-center border border-purple-200">
+              <Bell className="h-5 w-5 text-purple-600" />
+            </div>
+            <div>
+              <Label htmlFor="require-approval" className="text-slate-900 font-medium cursor-pointer">
+                Require approval for bookings
+              </Label>
+              <p className="text-sm text-slate-600 mt-0.5">
+                When enabled, bookings from availability search will be marked as provisional and require operations manager approval.
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="require-approval"
+            checked={settings.requireApprovalForBookings}
+            onCheckedChange={(checked) => updateSetting("requireApprovalForBookings", checked)}
+            className="data-[state=checked]:bg-purple-600"
+          />
+        </div>
+        {settings.requireApprovalForBookings && (
+          <div className="space-y-2 p-4 rounded-lg border border-slate-200 bg-white">
+            <Label htmlFor="approval-method" className="text-sm font-medium text-slate-700">
+              Approval Method
+            </Label>
+            <Select
+              value={settings.approvalMethod}
+              onValueChange={(value: 'email' | 'internal') => updateSetting("approvalMethod", value)}
+            >
+              <SelectTrigger className="bg-white">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent className="bg-white">
+                <SelectItem value="internal">
+                  <div className="flex items-center gap-2">
+                    <Bell className="w-4 h-4 text-slate-500" />
+                    Internal Popup
+                  </div>
+                </SelectItem>
+                <SelectItem value="email">
+                  <div className="flex items-center gap-2">
+                    <Mail className="w-4 h-4 text-slate-500" />
+                    Email Notification
+                  </div>
+                </SelectItem>
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-slate-500 mt-1">
+              {settings.approvalMethod === 'internal' 
+                ? 'Operations manager will see a popup notification in the app when a booking requires approval.'
+                : 'Operations manager will receive an email notification when a booking requires approval.'}
+            </p>
+          </div>
+        )}
       </div>
     </div>
   );

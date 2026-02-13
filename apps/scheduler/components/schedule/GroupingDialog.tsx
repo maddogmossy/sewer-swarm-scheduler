@@ -77,10 +77,10 @@ export function GroupingDialog({
           <div className="mt-4 p-3 bg-slate-50 border border-slate-200 rounded-lg">
             <div className="text-sm font-semibold text-slate-900 mb-2">Other items are on:</div>
             <div className="space-y-1.5">
-              {otherItems.map((item, idx) => {
+              {otherItems.map((item) => {
                 const crew = crews.find(c => c.id === item.crewId);
                 return (
-                  <div key={item.id || idx} className="flex items-center gap-2 text-sm text-slate-700">
+                  <div key={item.id || `grouped-item-${item.date}-${item.crewId}-${item.type}`} className="flex items-center gap-2 text-sm text-slate-700">
                     <Calendar className="w-3.5 h-3.5 text-slate-500" />
                     <span className="font-medium">{format(new Date(item.date), 'EEE, MMM d, yyyy')}</span>
                     {crew && (

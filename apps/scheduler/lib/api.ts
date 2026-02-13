@@ -53,6 +53,7 @@ export interface ScheduleItem {
   crewId: string;
   depotId: string;
   userId: string;
+  status?: 'approved' | 'pending' | 'rejected';
   jobStatus?: 'free' | 'booked' | 'cancelled';
   customer?: string;
   jobNumber?: string;

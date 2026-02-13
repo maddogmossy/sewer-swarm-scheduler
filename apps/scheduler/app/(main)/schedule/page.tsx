@@ -370,10 +370,13 @@ const transformedDepots: Depot[] = depots.map((d) => ({
       const durationValue = item.type === 'job' && duration ? Number(duration) : undefined;
       
       // Ensure date is included in the request
+      // Preserve status if it exists (for provisional bookings)
       const requestData = {
         ...itemWithDepot,
         date: dateValue,
         duration: durationValue,
+        // Explicitly include status if present
+        ...(item.status ? { status: item.status } : {}),
       };
       
       console.log('[handleItemCreate] Creating item:', {
@@ -382,11 +385,20 @@ const transformedDepots: Depot[] = depots.map((d) => ({
         dateValue: requestData.date,
         depotId: requestData.depotId,
         employeeId: requestData.employeeId,
+        status: requestData.status,
+        hasStatus: 'status' in requestData,
       });
       
       try {
         const createdItem = await mutations.createScheduleItem.mutateAsync(requestData as any);
         console.log('[handleItemCreate] Item created successfully:', createdItem?.id);
+        
+        // Show notification if this is a provisional booking
+        if (item.status === 'pending' && item.type === 'job') {
+          // The notification will be handled by the approval system
+          // For now, we'll rely on the existing PendingApprovals component
+          console.log('[handleItemCreate] Provisional booking created, awaiting approval');
+        }
       } catch (error: any) {
         console.error('[handleItemCreate] Failed to create item:', error);
         // Re-throw so UI can show error if needed

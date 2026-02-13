@@ -16,13 +16,15 @@ interface SmartSearchModalProps {
   crews: Crew[];
   depots: { id: string; name: string; address: string }[];
   vehicles: { id: string; name: string; vehicleType: string }[];
-  vehicleTypes?: string[];
+  // Can be simple strings or objects with metadata (type + defaultColor)
+  vehicleTypes?: string[] | Array<{ type: string; defaultColor?: string }>;
   colorLabels: Record<string, string>;
   onBookSlot: (date: Date, crewId: string, depotId: string, duration: number, color: string) => void;
+  onOpenItemModal?: (initialData: Partial<ScheduleItem>) => void;
 }
 
 export function SmartSearchModal({ 
-  open, onOpenChange, items, crews, depots, vehicles, vehicleTypes, colorLabels, onBookSlot 
+  open, onOpenChange, items, crews, depots, vehicles, vehicleTypes, colorLabels, onBookSlot, onOpenItemModal 
 }: SmartSearchModalProps) {
   const [vehicleType, setVehicleType] = useState("any");
   const [shiftType, setShiftType] = useState<'any' | 'day' | 'night'>("any");
@@ -31,17 +33,44 @@ export function SmartSearchModal({
   const [jobPostcode, setJobPostcode] = useState("");
   const [results, setResults] = useState<any[] | null>(null);
   const [isSearching, setIsSearching] = useState(false);
+  const [plannerWarning, setPlannerWarning] = useState<string | null>(null);
 
   // Extract unique vehicle types or use provided types
   const availableVehicleTypes = useMemo(() => {
-      if (vehicleTypes && vehicleTypes.length > 0) return vehicleTypes;
+      if (vehicleTypes && vehicleTypes.length > 0) {
+        // Normalise to plain string names in case we receive objects
+        return vehicleTypes.map((t) => (typeof t === "string" ? t : t.type));
+      }
       const types = new Set(vehicles.map(v => v.vehicleType).filter(Boolean));
       return Array.from(types).sort();
   }, [vehicles, vehicleTypes]);
 
+  // Helper: determine if a job item represents free/ghost time rather than real work
+  const isFreeJobItem = (item: ScheduleItem) =>
+    item.type === "job" &&
+    (item.jobStatus === "free" || item.customer === "Free");
+
+  // Helper: build a friendly shift label like "Day Shift 1", "Night Shift 2"
+  const getCrewShiftLabel = (crew: Crew) => {
+    const isNight = crew.shift === 'night';
+    const shiftName = isNight ? 'Night' : 'Day';
+
+    // Keep the original ordering of crews in this shift
+    const sameShiftCrews = crews.filter(c => {
+      const cIsNight = c.shift === 'night';
+      return cIsNight === isNight;
+    });
+
+    const index = sameShiftCrews.findIndex(c => c.id === crew.id);
+    const number = index >= 0 ? index + 1 : undefined;
+
+    return number ? `${shiftName} Shift ${number}` : `${shiftName} Shift`;
+  };
+
   const handleSearch = () => {
     setIsSearching(true);
     setResults(null);
+    setPlannerWarning(null);
 
     // Simulate API delay
     setTimeout(() => {
@@ -49,12 +78,22 @@ export function SmartSearchModal({
       const today = startOfToday();
       const searchResults: any[] = [];
 
+      // Determine how far the diary is actually planned (latest scheduled item date)
+      const plannedDates = items.map(i => new Date(i.date).getTime());
+      const maxPlannedTime = plannedDates.length > 0 ? Math.max(...plannedDates) : null;
+      const maxPlannedDate = maxPlannedTime ? new Date(maxPlannedTime) : null;
+
       // Iterate through next 60 days (increased from 30 to catch next month)
       // Start from start of week if user expects to see current week's past days? 
       // No, "Availability Search" usually implies future booking. 
       // But we'll ensure we check 'today' properly.
       for (let i = 0; i < 60; i++) {
         const date = addDays(today, i);
+
+          // If the diary isn't planned this far ahead, treat as unplanned rather than free
+          if (maxPlannedDate && date > maxPlannedDate) {
+            continue;
+          }
         
         // Iterate through all depots
         depots.forEach(depot => {
@@ -138,8 +177,8 @@ export function SmartSearchModal({
                  return; // Working elsewhere
              }
 
-             // Calculate used time (excluding free slots)
-             const realWorkItems = dayItems.filter(i => i.customer !== 'FREE_SLOT');
+             // Calculate used time (excluding free/ghost jobs)
+             const realWorkItems = dayItems.filter(i => !isFreeJobItem(i));
              const realUsedDuration = realWorkItems.reduce((acc, item) => acc + (Number(item.duration) || 0), 0);
              
              const freeSpace = 8 - realUsedDuration;
@@ -195,13 +234,44 @@ export function SmartSearchModal({
       });
 
       setResults(uniqueResults.slice(0, 100));
+
+      // If no results but the diary stops before our search horizon, show planner warning
+      if (uniqueResults.length === 0 && maxPlannedDate) {
+        const searchEnd = addDays(today, 59);
+        if (maxPlannedDate < searchEnd) {
+          setPlannerWarning(
+            `The diary currently only has planned work up to ${format(maxPlannedDate, 'EEE, dd MMM yyyy')}. Please ask the ops manager to plan the diary beyond this date.`
+          );
+        }
+      }
+
       setIsSearching(false);
     }, 800);
   };
 
   const handleBook = (res: any) => {
-      onBookSlot(res.date, res.crew.id, res.depot.id, parseInt(duration), "blue");
-      onOpenChange(false);
+      // If onOpenItemModal is provided, open the item modal for provisional booking
+      if (onOpenItemModal) {
+        onOpenItemModal({
+          type: 'job',
+          date: res.date,
+          crewId: res.crew.id,
+          depotId: res.depot.id,
+          duration: parseInt(duration),
+          color: "blue",
+          customer: "",
+          address: "",
+          startTime: "",
+          onsiteTime: "",
+          // Mark as provisional booking from search
+          isProvisional: true,
+        });
+        onOpenChange(false);
+      } else {
+        // Fallback to old behavior
+        onBookSlot(res.date, res.crew.id, res.depot.id, parseInt(duration), "blue");
+        onOpenChange(false);
+      }
   };
 
   return (
@@ -330,6 +400,11 @@ export function SmartSearchModal({
                     <div className="h-full flex flex-col items-center justify-center text-slate-500 p-8">
                         <p>No slots found matching your criteria.</p>
                         <Button variant="link" onClick={() => setDuration("4")}>Try shorter duration?</Button>
+                        {plannerWarning && (
+                          <p className="mt-3 text-xs text-amber-600 text-center max-w-md">
+                            {plannerWarning}
+                          </p>
+                        )}
                     </div>
                 )}
 
@@ -381,8 +456,15 @@ export function SmartSearchModal({
                                                                 </span>
                                                             </div>
                                                             <div className="text-xs text-slate-500 mt-1 flex items-center gap-3">
-                                                                <span className="flex items-center"><CheckCircle2 className="w-3 h-3 mr-1" /> {res.crew.name}</span>
-                                                                {res.isPotential && <span className="text-amber-600 font-medium">Needs Vehicle Assignment</span>}
+                                                                <span className="flex items-center">
+                                                                  <CheckCircle2 className="w-3 h-3 mr-1" />
+                                                                  {getCrewShiftLabel(res.crew)}
+                                                                </span>
+                                                                {res.isPotential && (
+                                                                  <span className="text-amber-600 font-medium">
+                                                                    Needs Vehicle Assignment
+                                                                  </span>
+                                                                )}
                                                             </div>
                                                         </div>
                                                     </div>

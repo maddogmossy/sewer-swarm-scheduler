@@ -46,6 +46,9 @@ export interface ScheduleItem {
     crewId: string;
     depotId: string;
 
+    // Approval status (approved/pending/rejected) - separate from job status
+    status?: 'approved' | 'pending' | 'rejected';
+
     // Job Status (free/booked/cancelled) - separate from approval status
     jobStatus?: 'free' | 'booked' | 'cancelled';
 
@@ -305,7 +308,7 @@ export function CalendarGrid({
     hasPastItems: boolean;
     hasFutureItems: boolean;
     futureItemsCount: number;
-    futureItems: Array<{ type: string; date: string; displayDate: string; customer?: string; employeeId?: string }>;
+    futureItems: Array<{ id: string; type: string; date: string; displayDate: string; customer?: string; employeeId?: string }>;
     previousCrewId: string | null;
     onConfirm: (moveItemsUp: boolean) => void;
   } | null>(null);
@@ -686,7 +689,7 @@ export function CalendarGrid({
       }
       
       // Prepare future items details for display
-      const futureItemsDetails = futureItems.map(item => {
+      const futureItemsDetails = futureItems.map((item, idx) => {
         let displayName = '';
         if (item.type === 'job') {
           displayName = item.customer || 'Job';
@@ -698,6 +701,7 @@ export function CalendarGrid({
         }
         
         return {
+          id: item.id || `future-item-${idx}-${Date.now()}`,
           type: item.type,
           date: format(new Date(item.date), 'yyyy-MM-dd'),
           displayDate: format(new Date(item.date), 'EEE, MMM d'),
@@ -943,6 +947,14 @@ export function CalendarGrid({
       if (inRange) {
         onItemDelete(item.id);
       }
+    });
+  };
+
+  const handleOpenItemModal = (initialData: Partial<ScheduleItem>) => {
+    setModalState({
+      isOpen: true,
+      type: initialData.type || 'job',
+      data: initialData as ScheduleItem,
     });
   };
 
@@ -1490,6 +1502,13 @@ export function CalendarGrid({
         // Ensure jobStatus is set for jobs - if customer is 'Free' or empty, it's a free job
         const isFreeJob = modalState.type === 'job' && (data.customer === 'Free' || !data.customer || data.customer.trim() === '');
         
+        // Check if this is a provisional booking from availability search
+        // Only mark as pending if: 1) it's from search (isProvisional flag), 2) approval is required in settings, 3) it's a job
+        const isProvisional = (modalState.data as any)?.isProvisional === true && 
+                              settings.requireApprovalForBookings && 
+                              modalState.type === 'job' &&
+                              !isFreeJob; // Don't mark free jobs as pending
+        
         // For jobs, get vehicle color from the operative assigned to this crew on this day
         let jobColor = data.color || 'blue';
         if (modalState.type === 'job') {
@@ -1522,6 +1541,10 @@ export function CalendarGrid({
                 jobStatus: 'free',
                 customer: 'Free',
                 address: 'Free'
+            } : {}),
+            // Mark as provisional if from availability search
+            ...(isProvisional && modalState.type === 'job' ? {
+                status: 'pending' as const
             } : {})
         };
         
@@ -2248,7 +2271,7 @@ export function CalendarGrid({
                                                         "w-full grid gap-1",
                                                         peopleItems.length === 1 ? "grid-cols-1" : "grid-cols-2"
                                                     )}>
-                                                        {peopleItems.map((item) => (
+                                                        {peopleItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
                                                         <OperativeCard 
                                                                 key={item.id} 
                                                                 item={item}
@@ -2567,6 +2590,15 @@ export function CalendarGrid({
 
                                 const isToday = isSameDay(day, new Date());
 
+                                // Ensure all displayItems have valid string IDs and deduplicate
+                                const validDisplayItems2 = displayItems.filter(i => i.id && typeof i.id === 'string');
+                                const seenIds2 = new Set<string>();
+                                const deduplicatedDisplayItems2 = validDisplayItems2.filter(i => {
+                                  if (seenIds2.has(i.id)) return false;
+                                  seenIds2.add(i.id);
+                                  return true;
+                                });
+
                                 return (
                                     <DroppableCell 
                                         key={cellId}
@@ -2585,13 +2617,13 @@ export function CalendarGrid({
                                     >
                                         <SortableContext 
                                             id={cellId} 
-                                            items={displayItems.map(i => i.id)} 
+                                            items={deduplicatedDisplayItems2.map(i => i.id)}
                                             strategy={rectSortingStrategy}
                                             disabled={isReadOnly}
                                         >
                                             <div className="h-full min-h-[120px] w-full flex flex-col gap-1 min-w-0">
                                                 {/* Notes appear first, above crew names */}
-                                                {noteItems.map((item) => (
+                                                {noteItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
                                                     <NoteCard 
                                                         key={item.id} 
                                                         item={item} 
@@ -2607,13 +2639,13 @@ export function CalendarGrid({
                                                     />
                                                 ))}
                                                 {/* Crew names (operatives/assistants) appear after notes */}
-                                                {peopleItems.length > 0 && (
+                                                {peopleItems.filter(i => i.id && typeof i.id === 'string').length > 0 && (
                                                     <div className={cn(
                                                         "w-full grid gap-1",
-                                                        peopleItems.length === 1 ? "grid-cols-1" : "grid-cols-2"
+                                                        peopleItems.filter(i => i.id && typeof i.id === 'string').length === 1 ? "grid-cols-1" : "grid-cols-2"
                                                     )}>
-                                                        {peopleItems.map((item) => (
-                                                            <OperativeCard 
+                                                        {peopleItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
+                                                        <OperativeCard 
                                                                 key={item.id} 
                                                                 item={item}
                                                                 onEdit={handleEditItem} 
@@ -2633,9 +2665,9 @@ export function CalendarGrid({
                                                     </div>
                                                 )}
                                                 {/* Jobs appear last */}
-                                                {visibleJobItems.map((item) => (
+                                                {visibleJobItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
                                                     <SiteCard 
-                                                        key={item.id} 
+                                                        key={item.id}
                                                         item={item} 
                                                         vehicles={vehicles}
                                                         onEdit={handleEditItem} 
@@ -2783,8 +2815,8 @@ export function CalendarGrid({
                 <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
                   <p className="text-sm font-semibold text-slate-700 mb-2">Scheduled items:</p>
                   <ul className="space-y-1">
-                    {crewDeleteDialog.futureItems.map((item, idx) => (
-                      <li key={idx} className="text-sm text-slate-600 flex items-center gap-2">
+                    {crewDeleteDialog.futureItems.map((item) => (
+                      <li key={item.id} className="text-sm text-slate-600 flex items-center gap-2">
                         <span className="font-medium text-slate-900">{item.displayDate}</span>
                         <span className="text-slate-400">•</span>
                         <span className="capitalize">{item.type}</span>
@@ -2958,6 +2990,7 @@ export function CalendarGrid({
                 onsiteTime: "09:00"
             });
         }}
+        onOpenItemModal={handleOpenItemModal}
       />
 
       {/* Email Preview Modal */}

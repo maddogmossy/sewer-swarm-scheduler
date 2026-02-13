@@ -50,8 +50,9 @@ export async function POST(req: Request) {
     // - Admin and operations: auto-approved
     // - User on Starter plan: auto-approved
     // - User on Pro plan: pending (requires approval)
+    // If status is explicitly provided (e.g., 'pending' from provisional bookings), use it
     let status = body.status;
-    if (!status) {
+    if (!status || (typeof status === 'string' && status.trim() === '')) {
       if (canApproveBookings(ctx)) {
         status = "approved"; // Admin/operations auto-approve
       } else {
@@ -60,6 +61,12 @@ export async function POST(req: Request) {
         // This can be enhanced later with plan checking
         status = ctx.plan === "starter" ? "approved" : "pending";
       }
+    }
+    
+    // Validate status value
+    if (status && !['approved', 'pending', 'rejected'].includes(status)) {
+      console.warn(`[POST /api/schedule-items] Invalid status value: ${status}, defaulting to 'approved'`);
+      status = "approved";
     }
 
     // Ensure date is a string (ISO format) before passing to storage

@@ -12,6 +12,9 @@ export interface UISettings {
   defaultNightStartTime: string;
   // Extra minutes before start for traffic / vehicle checks
   preStartBufferMinutes: number;
+  // Approval workflow settings
+  requireApprovalForBookings: boolean;
+  approvalMethod: 'email' | 'internal';
 }
 
 const DEFAULT_SETTINGS: UISettings = {
@@ -23,6 +26,8 @@ const DEFAULT_SETTINGS: UISettings = {
   defaultDayStartTime: "08:30",
   defaultNightStartTime: "20:00",
   preStartBufferMinutes: 15,
+  requireApprovalForBookings: true,
+  approvalMethod: 'internal',
 };
 
 const STORAGE_KEY = "sewer-swarm-ui-settings";

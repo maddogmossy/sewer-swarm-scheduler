@@ -28,6 +28,7 @@ import { EmailPreviewModal } from "./EmailPreviewModal";
 import { useUISettings } from "@/hooks/useUISettings";
 import { EmployeeTimeOffDialog, EmployeeTimeOffDialogPayload } from "./EmployeeTimeOffDialog";
 import { GroupingDialog } from "./GroupingDialog";
+import { calculateJobEndTime, calculateNextJobStartTime, calculateTravelTime, extractPostcode } from "@/lib/travelTime";
 
 export interface Crew {
     id: string;
@@ -293,6 +294,7 @@ export function CalendarGrid({
     type: 'delete' | 'color';
     itemId: string;
     groupCount: number;
+    groupedItems?: ScheduleItem[];
     onConfirm: (applyToGroup: boolean) => void;
   } | null>(null);
 
@@ -945,6 +947,29 @@ export function CalendarGrid({
   };
 
   const handleEditItem = (item: ScheduleItem) => {
+    // Check if this is a virtual remaining free time ghost item (not in database)
+    const isRemainingFreeTimeGhost = item.id?.startsWith('free-remaining-');
+    
+    // For ghost items, create a new job instead of trying to edit
+    if (isRemainingFreeTimeGhost) {
+      // Create a new free job payload WITHOUT an id so it goes through the CREATE path
+      const { id, ...rest } = item as any;
+      const newJobData: Partial<ScheduleItem> = {
+        ...rest,
+        customer: 'Free',
+        address: 'Free',
+        jobStatus: 'free',
+      };
+
+      // Open the modal to create this new job; handleModalSubmit will treat data-without-id as CREATE
+      setModalState({
+        isOpen: true,
+        type: 'job',
+        data: newJobData as ScheduleItem,
+      });
+      return;
+    }
+    
     const itemDate = startOfDay(new Date(item.date));
     const today = startOfDay(new Date());
     const isPast = isBefore(itemDate, today);
@@ -1119,6 +1144,7 @@ export function CalendarGrid({
               type: 'delete',
               itemId: validTargetIds[0],
               groupCount: groupItems.length,
+              groupedItems: groupItems,
               onConfirm: (applyToGroup: boolean) => {
                 if (applyToGroup) {
                   // Delete all items with the same job number
@@ -1379,6 +1405,7 @@ export function CalendarGrid({
               type: 'color',
               itemId: updatedItem.id,
               groupCount: groupItems.length,
+              groupedItems: groupItems,
               onConfirm: (applyToGroup: boolean) => {
                 if (applyToGroup) {
                   // Change color for all items with the same job number (including past items)
@@ -1463,6 +1490,25 @@ export function CalendarGrid({
         // Ensure jobStatus is set for jobs - if customer is 'Free' or empty, it's a free job
         const isFreeJob = modalState.type === 'job' && (data.customer === 'Free' || !data.customer || data.customer.trim() === '');
         
+        // For jobs, get vehicle color from the operative assigned to this crew on this day
+        let jobColor = data.color || 'blue';
+        if (modalState.type === 'job') {
+            // Find operative assigned to this crew on this day
+            const operativeItem = items.find((item: ScheduleItem) => 
+                item.type === 'operative' &&
+                item.crewId === createCrewId &&
+                isSameDay(new Date(item.date), new Date(createDate)) &&
+                item.vehicleId
+            );
+            
+            if (operativeItem?.vehicleId) {
+                const vehicle = vehicles.find((v: any) => v.id === operativeItem.vehicleId);
+                if (vehicle?.color) {
+                    jobColor = vehicle.color;
+                }
+            }
+        }
+        
         const baseItem = {
             id: generateUniqueId(),
             type: modalState.type,
@@ -1470,6 +1516,7 @@ export function CalendarGrid({
             crewId: createCrewId,
             depotId: createDepotId,
             ...data,
+            color: modalState.type === 'job' ? jobColor : (data.color || 'blue'),
             // Override for free jobs to ensure they're marked correctly
             ...(isFreeJob && modalState.type === 'job' ? {
                 jobStatus: 'free',
@@ -2060,12 +2107,96 @@ export function CalendarGrid({
                                 const noteItems = displayItems.filter(i => i.type === 'note');
                                 const jobItems = displayItems.filter(i => i.type === 'job');
 
-                                // Only ever show a single free/ghost job per crew/day.
+                                // Separate free and booked jobs
                                 const freeJobs = jobItems.filter(isFreeJobItem);
-                                const nonFreeJobs = jobItems.filter(j => !isFreeJobItem(j));
+                                const bookedJobs = jobItems.filter(j => !isFreeJobItem(j));
+                                
+                                // Calculate remaining free time ONLY if there are booked jobs and total < 8 hours
+                                const totalBookedDuration = bookedJobs.reduce((sum, job) => {
+                                  return sum + (Number(job.duration) || 0);
+                                }, 0);
+                                
+                                let remainingFreeTimeItem: ScheduleItem | null = null;
+                                
+                                // Only show remaining free time if there are booked jobs and total < 8 hours
+                                if (bookedJobs.length > 0 && totalBookedDuration < 8 && totalBookedDuration > 0) {
+                                  // Sort jobs by start time to process them in order
+                                  const sortedJobs = [...bookedJobs].sort((a, b) => {
+                                    if (!a.startTime || !b.startTime) return 0;
+                                    return a.startTime.localeCompare(b.startTime);
+                                  });
+                                  
+                                  // Calculate actual end time accounting for travel between jobs
+                                  let actualEndTime = "";
+                                  let lastJobEndTime = "";
+                                  let lastJobAddress = "";
+                                  
+                                  sortedJobs.forEach((job, index) => {
+                                    if (job.startTime && job.duration) {
+                                      // Calculate this job's end time
+                                      const jobEndTime = calculateJobEndTime(job.startTime, Number(job.duration));
+                                      
+                                      // Track the latest end time (accounting for travel if multiple jobs)
+                                      if (index === 0) {
+                                        // First job - just use its end time
+                                        actualEndTime = jobEndTime;
+                                      } else if (lastJobEndTime && lastJobAddress && job.address) {
+                                        // Subsequent jobs - account for travel from previous job
+                                        const travelMinutes = calculateTravelTime(
+                                          extractPostcode(lastJobAddress),
+                                          extractPostcode(job.address)
+                                        );
+                                        // The actual end time is this job's end time (travel already accounted in start time)
+                                        actualEndTime = jobEndTime;
+                                      }
+                                      
+                                      lastJobEndTime = jobEndTime;
+                                      lastJobAddress = job.address || "";
+                                    }
+                                  });
+                                  
+                                  // Use the calculated actual end time, or fallback
+                                  const isNight = crew?.shift === 'night';
+                                  const defaultStart = isNight ? "20:00" : "08:00";
+                                  const latestEndTime = actualEndTime || (sortedJobs.length > 0 && sortedJobs[sortedJobs.length - 1].startTime 
+                                    ? calculateJobEndTime(sortedJobs[sortedJobs.length - 1].startTime, Number(sortedJobs[sortedJobs.length - 1].duration || 0))
+                                    : defaultStart);
+                                  
+                                  // Calculate free time end (8 hours from default start)
+                                  const [defaultH, defaultM] = defaultStart.split(':').map(Number);
+                                  const defaultEndDate = new Date(2000, 0, 1, defaultH || 8, defaultM || 0);
+                                  defaultEndDate.setHours(defaultEndDate.getHours() + 8);
+                                  const defaultEndTime = `${defaultEndDate.getHours().toString().padStart(2, '0')}:${defaultEndDate.getMinutes().toString().padStart(2, '0')}`;
+                                  
+                                  // Calculate remaining hours (accounting for actual end time)
+                                  const [endH, endM] = latestEndTime.split(':').map(Number);
+                                  const [defaultEndH, defaultEndM] = defaultEndTime.split(':').map(Number);
+                                  const endDate = new Date(2000, 0, 1, endH || 8, endM || 0);
+                                  const defaultEndDate2 = new Date(2000, 0, 1, defaultEndH || 16, defaultEndM || 0);
+                                  const diffMs = defaultEndDate2.getTime() - endDate.getTime();
+                                  const remainingHours = Math.max(0, diffMs / (1000 * 60 * 60));
+                                  
+                                  // Create ghost UI for remaining free time
+                                  remainingFreeTimeItem = {
+                                    id: `free-remaining-${crew.id}-${dateStr}`,
+                                    type: 'job' as const,
+                                    date: day,
+                                    crewId: crew.id,
+                                    depotId: crew.depotId || "",
+                                    jobStatus: 'free' as const,
+                                    customer: 'Free',
+                                    address: `${latestEndTime} - ${defaultEndTime} available`,
+                                    duration: Math.round(remainingHours * 10) / 10, // Round to 1 decimal
+                                    startTime: latestEndTime,
+                                    color: 'gray',
+                                  };
+                                }
+                                
+                                // Build visible job items: existing free job (if any), booked jobs, then remaining free time
                                 const visibleJobItems = [
                                   ...(freeJobs[0] ? [freeJobs[0]] : []),
-                                  ...nonFreeJobs,
+                                  ...bookedJobs,
+                                  ...(remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
                                 ];
 
                                 const ghostVehicleLabel = getGhostVehicleLabelForCell(peopleItems, vehicles);
@@ -2340,12 +2471,96 @@ export function CalendarGrid({
                                 const noteItems = displayItems.filter(i => i.type === 'note');
                                 const jobItems = displayItems.filter(i => i.type === 'job');
 
-                                // Only ever show a single free/ghost job per crew/day.
+                                // Separate free and booked jobs
                                 const freeJobs = jobItems.filter(isFreeJobItem);
-                                const nonFreeJobs = jobItems.filter(j => !isFreeJobItem(j));
+                                const bookedJobs = jobItems.filter(j => !isFreeJobItem(j));
+                                
+                                // Calculate remaining free time ONLY if there are booked jobs and total < 8 hours
+                                const totalBookedDuration = bookedJobs.reduce((sum, job) => {
+                                  return sum + (Number(job.duration) || 0);
+                                }, 0);
+                                
+                                let remainingFreeTimeItem: ScheduleItem | null = null;
+                                
+                                // Only show remaining free time if there are booked jobs and total < 8 hours
+                                if (bookedJobs.length > 0 && totalBookedDuration < 8 && totalBookedDuration > 0) {
+                                  // Sort jobs by start time to process them in order
+                                  const sortedJobs = [...bookedJobs].sort((a, b) => {
+                                    if (!a.startTime || !b.startTime) return 0;
+                                    return a.startTime.localeCompare(b.startTime);
+                                  });
+                                  
+                                  // Calculate actual end time accounting for travel between jobs
+                                  let actualEndTime = "";
+                                  let lastJobEndTime = "";
+                                  let lastJobAddress = "";
+                                  
+                                  sortedJobs.forEach((job, index) => {
+                                    if (job.startTime && job.duration) {
+                                      // Calculate this job's end time
+                                      const jobEndTime = calculateJobEndTime(job.startTime, Number(job.duration));
+                                      
+                                      // Track the latest end time (accounting for travel if multiple jobs)
+                                      if (index === 0) {
+                                        // First job - just use its end time
+                                        actualEndTime = jobEndTime;
+                                      } else if (lastJobEndTime && lastJobAddress && job.address) {
+                                        // Subsequent jobs - account for travel from previous job
+                                        const travelMinutes = calculateTravelTime(
+                                          extractPostcode(lastJobAddress),
+                                          extractPostcode(job.address)
+                                        );
+                                        // The actual end time is this job's end time (travel already accounted in start time)
+                                        actualEndTime = jobEndTime;
+                                      }
+                                      
+                                      lastJobEndTime = jobEndTime;
+                                      lastJobAddress = job.address || "";
+                                    }
+                                  });
+                                  
+                                  // Use the calculated actual end time, or fallback
+                                  const isNight = crew?.shift === 'night';
+                                  const defaultStart = isNight ? "20:00" : "08:00";
+                                  const latestEndTime = actualEndTime || (sortedJobs.length > 0 && sortedJobs[sortedJobs.length - 1].startTime 
+                                    ? calculateJobEndTime(sortedJobs[sortedJobs.length - 1].startTime, Number(sortedJobs[sortedJobs.length - 1].duration || 0))
+                                    : defaultStart);
+                                  
+                                  // Calculate free time end (8 hours from default start)
+                                  const [defaultH, defaultM] = defaultStart.split(':').map(Number);
+                                  const defaultEndDate = new Date(2000, 0, 1, defaultH || 8, defaultM || 0);
+                                  defaultEndDate.setHours(defaultEndDate.getHours() + 8);
+                                  const defaultEndTime = `${defaultEndDate.getHours().toString().padStart(2, '0')}:${defaultEndDate.getMinutes().toString().padStart(2, '0')}`;
+                                  
+                                  // Calculate remaining hours (accounting for actual end time)
+                                  const [endH, endM] = latestEndTime.split(':').map(Number);
+                                  const [defaultEndH, defaultEndM] = defaultEndTime.split(':').map(Number);
+                                  const endDate = new Date(2000, 0, 1, endH || 8, endM || 0);
+                                  const defaultEndDate2 = new Date(2000, 0, 1, defaultEndH || 16, defaultEndM || 0);
+                                  const diffMs = defaultEndDate2.getTime() - endDate.getTime();
+                                  const remainingHours = Math.max(0, diffMs / (1000 * 60 * 60));
+                                  
+                                  // Create ghost UI for remaining free time
+                                  remainingFreeTimeItem = {
+                                    id: `free-remaining-${crew.id}-${dateStr}`,
+                                    type: 'job' as const,
+                                    date: day,
+                                    crewId: crew.id,
+                                    depotId: crew.depotId || "",
+                                    jobStatus: 'free' as const,
+                                    customer: 'Free',
+                                    address: `${latestEndTime} - ${defaultEndTime} available`,
+                                    duration: Math.round(remainingHours * 10) / 10, // Round to 1 decimal
+                                    startTime: latestEndTime,
+                                    color: 'gray',
+                                  };
+                                }
+                                
+                                // Build visible job items: existing free job (if any), booked jobs, then remaining free time
                                 const visibleJobItems = [
                                   ...(freeJobs[0] ? [freeJobs[0]] : []),
-                                  ...nonFreeJobs,
+                                  ...bookedJobs,
+                                  ...(remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
                                 ];
 
                                 const ghostVehicleLabel = getGhostVehicleLabelForCell(peopleItems, vehicles);
@@ -2541,6 +2756,9 @@ export function CalendarGrid({
           onConfirm={groupingDialog.onConfirm}
           itemType={groupingDialog.type}
           groupCount={groupingDialog.groupCount}
+          groupedItems={groupingDialog.groupedItems}
+          crews={crews}
+          currentItemId={groupingDialog.itemId}
         />
       )}
 

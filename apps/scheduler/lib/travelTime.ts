@@ -92,3 +92,64 @@ export function calculateStartTime(
   // Format as HH:MM
   return `${defaultDate.getHours().toString().padStart(2, '0')}:${defaultDate.getMinutes().toString().padStart(2, '0')}`;
 }
+
+/**
+ * Calculate the end time of a job (start time + duration)
+ * 
+ * @param startTime Start time in HH:MM format
+ * @param duration Duration in hours
+ * @returns End time in HH:MM format
+ */
+export function calculateJobEndTime(startTime: string, duration: number): string {
+  if (!startTime) return "16:00"; // Default end time
+  
+  const [hours, minutes] = startTime.split(':').map(Number);
+  const startDate = new Date(2000, 0, 1, hours || 8, minutes || 0);
+  startDate.setHours(startDate.getHours() + duration);
+  
+  return `${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')}`;
+}
+
+/**
+ * Calculate start time for a job based on the previous job's end time
+ * Start time = when they leave the previous job site
+ * 
+ * @param previousJobEndTime End time of previous job in HH:MM format
+ * @returns Start time in HH:MM format (leave time)
+ */
+export function calculateNextJobStartTime(previousJobEndTime: string): string {
+  if (!previousJobEndTime) return "08:00";
+  // Start time is simply when they leave (previous job end time)
+  return previousJobEndTime;
+}
+
+/**
+ * Calculate onsite time for a job based on start time and travel
+ * Onsite time = when they arrive at the job site
+ * 
+ * @param startTime Start time (leave time) in HH:MM format
+ * @param fromAddress Address of previous location
+ * @param toAddress Address of job site
+ * @returns Onsite time in HH:MM format (arrival time)
+ */
+export function calculateOnsiteTime(
+  startTime: string,
+  fromAddress: string | null,
+  toAddress: string | null
+): string {
+  if (!startTime) return "09:00";
+  
+  // Calculate travel time
+  const travelMinutes = fromAddress && toAddress 
+    ? calculateTravelTime(extractPostcode(fromAddress), extractPostcode(toAddress))
+    : 30; // Default 30 minutes if addresses missing
+  
+  // Parse start time
+  const [hours, minutes] = startTime.split(':').map(Number);
+  const startDate = new Date(2000, 0, 1, hours || 8, minutes || 0);
+  
+  // Add travel time to get arrival time
+  startDate.setMinutes(startDate.getMinutes() + travelMinutes);
+  
+  return `${startDate.getHours().toString().padStart(2, '0')}:${startDate.getMinutes().toString().padStart(2, '0')}`;
+}

@@ -17,7 +17,7 @@ import { ScheduleItem } from "./CalendarGrid";
 import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Checkbox } from "@/components/ui/checkbox";
 import { useUISettings } from "@/hooks/useUISettings";
-import { calculateStartTime } from "@/lib/travelTime";
+import { calculateStartTime, calculateNextJobStartTime, calculateOnsiteTime, calculateJobEndTime, calculateTravelTime, extractPostcode } from "@/lib/travelTime";
 
 // ------------------- SCHEMAS -------------------
 
@@ -304,6 +304,42 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, employees = [], d
       return defaultStart;
     }
 
+    // First, check if there are other jobs on the same day for this crew
+    // If so, calculate based on the previous job's end time + travel
+    if (initialData?.date && initialData?.crewId && items) {
+      const sameDayJobs = items.filter((item: any) => 
+        item.type === 'job' && 
+        item.crewId === initialData.crewId &&
+        item.id !== initialData.id &&
+        item.customer !== 'Free' &&
+        item.address !== 'Free' &&
+        item.jobStatus !== 'free' &&
+        isSameDay(new Date(item.date), new Date(initialData.date))
+      );
+      
+      if (sameDayJobs.length > 0) {
+        // Sort jobs by start time
+        const sortedJobs = [...sameDayJobs].sort((a: any, b: any) => {
+          if (!a.startTime || !b.startTime) return 0;
+          return a.startTime.localeCompare(b.startTime);
+        });
+        
+        // Find the latest job (or the one that would come before this one)
+        const latestJob = sortedJobs[sortedJobs.length - 1];
+        
+        if (latestJob.startTime && latestJob.duration && latestJob.address) {
+          // Calculate end time of previous job
+          const previousEndTime = calculateJobEndTime(latestJob.startTime, Number(latestJob.duration));
+          
+          // Start time = when they leave previous job (end time of previous job)
+          const nextStartTime = calculateNextJobStartTime(previousEndTime);
+          
+          return nextStartTime;
+        }
+      }
+    }
+
+    // If no previous jobs, calculate from employee/depot location
     // Determine start location (employee home/depot, or crew depot)
     let startLocation: string | null = null;
 
@@ -415,7 +451,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, employees = [], d
       return;
     }
 
-    // Calculate new start time using employee or crew location
+    // Calculate new start time using employee or crew location (or previous job)
     const newStartTime = calculateStartTimeFromLocation(
       watchedAddress, 
       initialData?.employeeId, 
@@ -425,8 +461,89 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, employees = [], d
     // Only update if it's different to avoid infinite loops
     if (newStartTime !== currentStartTime) {
       form.setValue("startTime", newStartTime, { shouldValidate: false });
+      
+      // Auto-calculate onsite time based on start time
+      // Start time = when they leave, Onsite time = when they arrive
+      let newOnsiteTime = newStartTime;
+      
+      // Check if this is based on a previous job by finding same-day jobs
+      if (initialData?.date && initialData?.crewId && items && watchedAddress && watchedAddress !== 'Free') {
+        const sameDayJobs = items.filter((item: any) => 
+          item.type === 'job' && 
+          item.crewId === initialData.crewId &&
+          item.id !== initialData.id &&
+          item.customer !== 'Free' &&
+          item.address !== 'Free' &&
+          item.jobStatus !== 'free' &&
+          item.address &&
+          item.startTime &&
+          item.duration &&
+          isSameDay(new Date(item.date), new Date(initialData.date))
+        );
+        
+        if (sameDayJobs.length > 0) {
+          // Sort jobs by start time to find the latest one
+          const sortedJobs = [...sameDayJobs].sort((a: any, b: any) => {
+            if (!a.startTime || !b.startTime) return 0;
+            return a.startTime.localeCompare(b.startTime);
+          });
+          
+          // Find the job that would end just before this one starts
+          // Check if newStartTime matches the end time of any previous job
+          let foundPreviousJob = null;
+          for (const job of sortedJobs) {
+            const jobEndTime = calculateJobEndTime(job.startTime, Number(job.duration));
+            if (jobEndTime === newStartTime) {
+              foundPreviousJob = job;
+              break;
+            }
+          }
+          
+          // If we found a previous job that ends when this one starts, calculate travel
+          if (foundPreviousJob && foundPreviousJob.address && foundPreviousJob.address !== 'Free') {
+            // Onsite time = start time (leave time) + travel time to arrive
+            newOnsiteTime = calculateOnsiteTime(
+              newStartTime,
+              foundPreviousJob.address,
+              watchedAddress
+            );
+          } else if (sortedJobs.length > 0) {
+            // Use the latest job even if times don't match exactly (might be approximate)
+            const latestJob = sortedJobs[sortedJobs.length - 1];
+            if (latestJob.address && latestJob.address !== 'Free') {
+              newOnsiteTime = calculateOnsiteTime(
+                newStartTime,
+                latestJob.address,
+                watchedAddress
+              );
+            } else {
+              // Previous job has no address, use default
+              const shift = getCrewShift();
+              newOnsiteTime = shift === 'night' ? settings.defaultNightStartTime : settings.defaultDayStartTime;
+            }
+          } else {
+            // Coming from depot/home - start time is leave time, onsite = default start time (arrival)
+            const shift = getCrewShift();
+            newOnsiteTime = shift === 'night' ? settings.defaultNightStartTime : settings.defaultDayStartTime;
+          }
+        } else {
+          // Coming from depot/home - start time is leave time, onsite = default start time (arrival)
+          const shift = getCrewShift();
+          newOnsiteTime = shift === 'night' ? settings.defaultNightStartTime : settings.defaultDayStartTime;
+        }
+      } else {
+        // No address or missing data - use default
+        const shift = getCrewShift();
+        newOnsiteTime = shift === 'night' ? settings.defaultNightStartTime : settings.defaultDayStartTime;
+      }
+      
+      const currentOnsiteTime = form.getValues("onsiteTime");
+      if (newOnsiteTime !== currentOnsiteTime) {
+        form.setValue("onsiteTime", newOnsiteTime, { shouldValidate: false });
+      }
     }
-  }, [watchedAddress, open, initialData?.employeeId, initialData?.crewId]);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [watchedAddress, open, initialData?.employeeId, initialData?.crewId, initialData?.date]);
   // Default visible colours: primary two unless user has customised
   const DEFAULT_ACTIVE_COLORS = ["gray", "red"];
   const [activeColors, setActiveColors] = useState<string[]>(() => {

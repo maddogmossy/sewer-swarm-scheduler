@@ -110,6 +110,8 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
 
   // Check if this is a free/ghost job
   const isFreeJob = item.jobStatus === 'free' || item.customer === 'Free';
+  // Check if this is a virtual remaining free time ghost item (not in database)
+  const isRemainingFreeTimeGhost = item.id?.startsWith('free-remaining-');
   const freeJobVehicleLabel = ghostVehicleLabel || vehicle?.vehicleType || vehicle?.category || "No Vehicle Type";
   
   // Helper to get default color for a vehicle type from vehicleTypes config
@@ -175,7 +177,8 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
             {...listeners}
             onDoubleClick={(e) => {
                 e.stopPropagation();
-                // Allow editing past jobs even in read-only mode (for job status updates)
+                // For remaining free time ghost items, create a new job instead of editing
+                // The handleEditItem in CalendarGrid will handle creating a new job
                 if (!isReadOnly || canEditPastJobStatus) {
                     onEdit(item);
                 }
@@ -225,9 +228,15 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                 }}
             >
                 {isFreeJob ? (
-                    // Simplified display for free jobs - just "Free"
+                    // Display for free jobs - show time range if it's a remaining free time slot
                     <div className="flex items-center gap-1 truncate max-w-[90%] min-w-0">
-                        <span className="truncate shrink-1">Free</span>
+                        {item.address && item.address.includes('available') ? (
+                            // Remaining free time slot - show time range
+                            <span className="truncate shrink-1 text-slate-600 font-medium">{item.address}</span>
+                        ) : (
+                            // Regular free job - just "Free"
+                            <span className="truncate shrink-1">Free</span>
+                        )}
                     </div>
                 ) : (
                     <div className="flex items-center gap-1 truncate max-w-[90%] min-w-0">
@@ -259,10 +268,10 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                             disabled={hasMultipleSelected}
                             className={hasMultipleSelected ? "opacity-50 cursor-not-allowed" : softMenuItemClass}
                         >
-                            <Edit className="w-3 h-3 mr-2" /> {canEditPastJobStatus ? "Update Job Status" : "Edit"}
+                            <Edit className="w-3 h-3 mr-2" /> {canEditPastJobStatus ? "Update Job Status" : isRemainingFreeTimeGhost ? "Click to book" : "Edit"}
                         </DropdownMenuItem>
                         
-                        {hasMultipleSelected && onDuplicateSelected ? (
+                        {hasMultipleSelected && onDuplicateSelected && !isRemainingFreeTimeGhost ? (
                             <>
                                 <DropdownMenuSub>
                                     <DropdownMenuSubTrigger className={softSubTriggerClass}>
@@ -325,6 +334,7 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                             <>
                                 {!canEditPastJobStatus && (
                                     <>
+                                        {!isRemainingFreeTimeGhost && (
                                         <DropdownMenuSub>
                                             <DropdownMenuSubTrigger className={softSubTriggerClass}>
                                                 <Copy className="w-3 h-3 mr-2" /> Duplicate
@@ -366,7 +376,9 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                                                 </DropdownMenuItem>
                                             </DropdownMenuSubContent>
                                         </DropdownMenuSub>
+                                        )}
                                         <DropdownMenuSeparator />
+                                        {!isRemainingFreeTimeGhost && (
                                         <DropdownMenuSub>
                                             <DropdownMenuSubTrigger className={softDangerSubTriggerClass}>
                                                 <Trash2 className="w-3 h-3 mr-2" /> Delete
@@ -402,6 +414,7 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                                                 </DropdownMenuItem>
                                             </DropdownMenuSubContent>
                                         </DropdownMenuSub>
+                                        )}
                                     </>
                                 )}
                             </>
@@ -456,10 +469,10 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
             {(!isReadOnly || canEditPastJobStatus) && (
                 <>
                 <ContextMenuItem onClick={() => onEdit(item)} className={softMenuItemClass}>
-                    <Edit className="w-3 h-3 mr-2" /> {canEditPastJobStatus ? "Update Job Status" : "Edit"}
+                    <Edit className="w-3 h-3 mr-2" /> {canEditPastJobStatus ? "Update Job Status" : isRemainingFreeTimeGhost ? "Click to book" : "Edit"}
                 </ContextMenuItem>
                 
-                {!canEditPastJobStatus && (
+                {!canEditPastJobStatus && !isRemainingFreeTimeGhost && (
                     <>
                 <ContextMenuSub>
                     <ContextMenuSubTrigger className={softSubTriggerClass}>
@@ -505,6 +518,7 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
 
                         <ContextMenuSeparator />
 
+                {!isRemainingFreeTimeGhost && (
                 <ContextMenuSub>
                     <ContextMenuSubTrigger className={softDangerSubTriggerClass}>
                                 <Trash2 className="w-3 h-3 mr-2" /> Delete
@@ -540,6 +554,7 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                                 </ContextMenuItem>
                             </ContextMenuSubContent>
                         </ContextMenuSub>
+                )}
                     </>
                 )}
                 </>

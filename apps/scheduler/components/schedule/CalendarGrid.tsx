@@ -93,25 +93,76 @@ function getGhostVehicleLabelForCell(
   const normalize = (value?: string) =>
     (value || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
 
+  // Check if vehicle is BJJ (should be treated as CCTV/Van Pack)
+  const isBjj = (v: (typeof cellVehicles)[number]) => {
+    const name = normalize(v.name);
+    const cat = normalize(v.category);
+    const type = normalize(v.vehicleType);
+    return name.includes("bjj") || cat.includes("bjj") || type.includes("bjj");
+  };
+
+  // Check if vehicle has CCTV/Van Pack category (BJJ or explicit category)
+  const isCctvVanPack = (v: (typeof cellVehicles)[number]) => {
+    const cat = normalize(v.category);
+    const type = normalize(v.vehicleType);
+    const name = normalize(v.name);
+    // Check for "cctvvanpack" or "cctv/vanpack" in normalized category/type/name
+    // Also check for original category value (before normalization) for exact match
+    const originalCat = (v.category || "").toLowerCase();
+    const originalType = (v.vehicleType || "").toLowerCase();
+    return cat.includes("cctvvanpack") || cat.includes("cctvvan") || 
+           type.includes("cctvvanpack") || type.includes("cctvvan") ||
+           name.includes("cctvvanpack") || name.includes("cctvvan") ||
+           originalCat.includes("cctv/van pack") || originalCat.includes("cctv/vanpack") ||
+           originalType.includes("cctv/van pack") || originalType.includes("cctv/vanpack") ||
+           isBjj(v); // BJJ is also CCTV/Van Pack
+  };
+
   const isCctv = (v: (typeof cellVehicles)[number]) => {
     const cat = normalize(v.category);
     const type = normalize(v.vehicleType);
-    // Check for "cctv" in normalized category/type (handles "CCTV", "CCTV/Van", "CCTV/Van Pack", etc.)
-    return cat.includes("cctv") || type.includes("cctv");
+    const name = normalize(v.name);
+    // Check for "cctv" in normalized category/type/name (handles "CCTV", "CCTV/Van", "CCTV/Van Pack", etc.)
+    // Also treat BJJ as CCTV
+    return cat.includes("cctv") || type.includes("cctv") || name.includes("cctv") || isBjj(v);
   };
 
   const isJetVac = (v: (typeof cellVehicles)[number]) => {
     const cat = normalize(v.category);
     const type = normalize(v.vehicleType);
-    return cat.includes("jet") || type.includes("jet");
+    const name = normalize(v.name);
+    return cat.includes("jet") || type.includes("jet") || name.includes("jet");
+  };
+
+  const isRecycler = (v: (typeof cellVehicles)[number]) => {
+    const cat = normalize(v.category);
+    const type = normalize(v.vehicleType);
+    const name = normalize(v.name);
+    return cat.includes("recycl") || type.includes("recycl") || name.includes("recycl");
+  };
+
+  // Check if vehicle is Jet Vac or Recycler (both trigger CCTV/Jet Vac when paired with CCTV)
+  const isJetVacOrRecycler = (v: (typeof cellVehicles)[number]) => {
+    return isJetVac(v) || isRecycler(v);
   };
 
   const hasCctv = cellVehicles.some(isCctv);
   const hasJetVac = cellVehicles.some(isJetVac);
+  const hasRecycler = cellVehicles.some(isRecycler);
+  const hasJetVacOrRecycler = cellVehicles.some(isJetVacOrRecycler);
+  const hasBjj = cellVehicles.some(isBjj);
+  const hasCctvVanPack = cellVehicles.some(isCctvVanPack);
 
-  if (hasCctv && hasJetVac) return "CCTV/Jet Vac";
+  // Priority: CCTV/Jet Vac > CCTV/Van Pack > CCTV
+  // If CCTV/Van Pack (BJJ or category) and Jet Vac/Recycler are both present, return "CCTV/Jet Vac"
+  if (hasCctvVanPack && hasJetVacOrRecycler) return "CCTV/Jet Vac";
+  // If only CCTV/Van Pack is present, return "CCTV/Van Pack"
+  if (hasCctvVanPack && !hasJetVacOrRecycler) return "CCTV/Van Pack";
+  // Standard logic for other combinations
+  if (hasCctv && hasJetVacOrRecycler) return "CCTV/Jet Vac";
   if (hasCctv) return "CCTV";
   if (hasJetVac) return "Jet Vac";
+  if (hasRecycler) return "Recycler";
 
   const first = cellVehicles[0];
   return first.vehicleType || first.category || undefined;
@@ -152,10 +203,14 @@ interface CalendarGridProps {
     startsFromHome?: boolean
   ) => void;
   onEmployeeDelete: (id: string) => void;
-  onVehicleCreate: (name: string) => void;
-  onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance', category?: string, color?: string) => void;
+  onVehicleCreate: (name: string, vehicleType?: string, category?: string, color?: string) => void;
+  onVehicleUpdate: (id: string, name: string, status?: 'active' | 'off_road' | 'maintenance', vehicleType?: string, category?: string, color?: string) => void;
   onVehicleDelete: (id: string) => void;
   onColorLabelUpdate: (color: string, label: string) => void;
+  vehicleTypes?: string[] | Array<{ type: string; defaultColor?: string }>;
+  onVehicleTypeCreate?: (type: string, defaultColor?: string) => void;
+  onVehicleTypeUpdate?: (oldType: string, newType: string, defaultColor?: string) => void;
+  onVehicleTypeDelete?: (type: string) => void;
   vehicleTypes?: string[];
   allCrews?: Crew[];
   onUndo?: () => void;
@@ -192,7 +247,8 @@ export function CalendarGrid({
     onEmployeeCreate, onEmployeeUpdate, onEmployeeDelete,
     onVehicleCreate, onVehicleUpdate, onVehicleDelete,
     onColorLabelUpdate, depots, allItems, vehicleTypes, allCrews,
-    onUndo, onRedo, canUndo, canRedo, onLogout
+    onUndo, onRedo, canUndo, canRedo, onLogout,
+    onVehicleTypeCreate, onVehicleTypeUpdate, onVehicleTypeDelete
 }: CalendarGridProps) {
   const { settings } = useUISettings();
   // Always start on the current week - calculate fresh each time
@@ -1509,7 +1565,14 @@ export function CalendarGrid({
                               modalState.type === 'job' &&
                               !isFreeJob; // Don't mark free jobs as pending
         
-        // For jobs, get vehicle color from the operative assigned to this crew on this day
+        // For jobs, get vehicle color from vehicleTypes configuration (not vehicle.color)
+        // Helper to get default color for a vehicle type from vehicleTypes config
+        const getDefaultColorForType = (type: string): string | undefined => {
+          if (!vehicleTypes || vehicleTypes.length === 0) return undefined;
+          const typeObj = vehicleTypes.find(t => (typeof t === 'string' ? t : t.type) === type);
+          return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : undefined;
+        };
+
         let jobColor = data.color || 'blue';
         if (modalState.type === 'job') {
             // Find operative assigned to this crew on this day
@@ -1522,8 +1585,18 @@ export function CalendarGrid({
             
             if (operativeItem?.vehicleId) {
                 const vehicle = vehicles.find((v: any) => v.id === operativeItem.vehicleId);
-                if (vehicle?.color) {
+                // ALWAYS get color from vehicleTypes based on vehicle's vehicleType
+                if (vehicle?.vehicleType) {
+                  const typeColor = getDefaultColorForType(vehicle.vehicleType);
+                  if (typeColor) {
+                    jobColor = typeColor;
+                  } else if (vehicle?.color) {
+                    // Fallback to vehicle.color only if vehicleTypes doesn't have a color
                     jobColor = vehicle.color;
+                  }
+                } else if (vehicle?.color) {
+                  // Fallback if vehicle has no vehicleType
+                  jobColor = vehicle.color;
                 }
             }
         }
@@ -1563,34 +1636,13 @@ export function CalendarGrid({
             
             const startDate = new Date(createDate);
             
-            // Determine end date based on applyPeriod, default to week if not set
-            const periodToUse = applyPeriod !== 'none' ? applyPeriod : 'week';
-            let endDate: Date;
-            
-            switch (periodToUse) {
-                case 'week':
-                    endDate = addDays(weekStart, viewDays - 1);
-                    break;
-                case 'month':
-                    endDate = calculateWeekdayEndDate(startDate, 'month');
-                    break;
-                case '6months':
-                    endDate = calculateWeekdayEndDate(startDate, '6months');
-                    break;
-                case '12months':
-                    endDate = calculateWeekdayEndDate(startDate, '12months');
-                    break;
-                default:
-                    endDate = addDays(weekStart, viewDays - 1);
-            }
-            
             // 1. Create free job on the same day (below the operative)
-                onItemCreate({
-                    id: generateUniqueId(),
-                    type: 'job',
-                    date: new Date(startDate),
-                    crewId: createCrewId,
-                    depotId: modalState.target?.depotId || modalState.data?.depotId || "",
+            onItemCreate({
+                id: generateUniqueId(),
+                type: 'job',
+                date: new Date(startDate),
+                crewId: createCrewId,
+                depotId: modalState.target?.depotId || modalState.data?.depotId || "",
                 jobStatus: 'free',
                 customer: 'Free',
                 address: 'Free',
@@ -1601,48 +1653,70 @@ export function CalendarGrid({
                 vehicleId: data.vehicleId,
             });
             
-            // 2. Add operative and free jobs for the selected period (weekdays only for month/6months/12months)
-            let nextDate = addDays(startDate, 1);
-            let safetyCounter = 0;
-            const MAX_ITEMS = 1000; // Safety limit
-            const skipWeekends = applyPeriod === 'month' || applyPeriod === '6months' || applyPeriod === '12months';
-            
-            while ((isSameDay(nextDate, endDate) || isBefore(nextDate, endDate)) && safetyCounter < MAX_ITEMS) {
-                // Skip weekends for month/6months/12months periods
-                if (skipWeekends && !isWeekday(nextDate)) {
-                    nextDate = addDays(nextDate, 1);
-                    continue;
+            // 2. Only add operative and free jobs for additional days if applyPeriod is not 'none'
+            if (applyPeriod !== 'none') {
+                let endDate: Date;
+                
+                switch (applyPeriod) {
+                    case 'week':
+                        endDate = addDays(weekStart, viewDays - 1);
+                        break;
+                    case 'month':
+                        endDate = calculateWeekdayEndDate(startDate, 'month');
+                        break;
+                    case '6months':
+                        endDate = calculateWeekdayEndDate(startDate, '6months');
+                        break;
+                    case '12months':
+                        endDate = calculateWeekdayEndDate(startDate, '12months');
+                        break;
+                    default:
+                        endDate = addDays(weekStart, viewDays - 1);
                 }
                 
-                // Create operative for this day
-                onItemCreate({
-                    id: generateUniqueId(),
-                    type: modalState.type,
-                    date: new Date(nextDate),
-                    crewId: createCrewId,
-                    depotId: modalState.target?.depotId || modalState.data?.depotId || "",
-                    ...data
-                });
+                // Add operative and free jobs for the selected period (weekdays only for month/6months/12months)
+                let nextDate = addDays(startDate, 1);
+                let safetyCounter = 0;
+                const MAX_ITEMS = 1000; // Safety limit
+                const skipWeekends = applyPeriod === 'month' || applyPeriod === '6months' || applyPeriod === '12months';
                 
-                // Create free job for this day
-                onItemCreate({
-                    id: generateUniqueId(),
-                    type: 'job',
-                    date: new Date(nextDate),
-                    crewId: createCrewId,
-                    depotId: createDepotId,
-                    jobStatus: 'free',
-                    customer: 'Free',
-                    address: 'Free',
-                    startTime: '08:00',
-                    duration: 8,
-                    color: vehicleColor,
-                    employeeId: data.employeeId,
-                    vehicleId: data.vehicleId,
-                });
-                
-                nextDate = addDays(nextDate, 1);
-                safetyCounter++;
+                while ((isSameDay(nextDate, endDate) || isBefore(nextDate, endDate)) && safetyCounter < MAX_ITEMS) {
+                    // Skip weekends for month/6months/12months periods
+                    if (skipWeekends && !isWeekday(nextDate)) {
+                        nextDate = addDays(nextDate, 1);
+                        continue;
+                    }
+                    
+                    // Create operative for this day
+                    onItemCreate({
+                        id: generateUniqueId(),
+                        type: modalState.type,
+                        date: new Date(nextDate),
+                        crewId: createCrewId,
+                        depotId: modalState.target?.depotId || modalState.data?.depotId || "",
+                        ...data
+                    });
+                    
+                    // Create free job for this day
+                    onItemCreate({
+                        id: generateUniqueId(),
+                        type: 'job',
+                        date: new Date(nextDate),
+                        crewId: createCrewId,
+                        depotId: createDepotId,
+                        jobStatus: 'free',
+                        customer: 'Free',
+                        address: 'Free',
+                        startTime: '08:00',
+                        duration: 8,
+                        color: vehicleColor,
+                        employeeId: data.employeeId,
+                        vehicleId: data.vehicleId,
+                    });
+                    
+                    nextDate = addDays(nextDate, 1);
+                    safetyCounter++;
+                }
             }
         } else if (applyPeriod !== 'none') {
             // For non-operative items or operatives without vehicles, use the applyPeriod checkbox
@@ -2112,15 +2186,69 @@ export function CalendarGrid({
                                     return ia - ib;
                                   });
                                 } else {
-                                  // No manual order: keep priority, but ensure operative appears before assistant
+                                  // No manual order: Default to row-based pairing (Operative 1, Assistant 1, Operative 2, Assistant 2, etc.)
                                   displayItems = [...displayItems].sort((a, b) => {
                                     const pa = getPriority(a.type);
                                     const pb = getPriority(b.type);
                                     if (pa !== pb) return pa - pb;
+                                    
                                     const aIsPerson = a.type === 'operative' || a.type === 'assistant';
                                     const bIsPerson = b.type === 'operative' || b.type === 'assistant';
-                                    if (aIsPerson && bIsPerson && a.type !== b.type) {
-                                      return a.type === 'operative' ? -1 : 1;
+                                    
+                                    if (aIsPerson && bIsPerson) {
+                                      const aIsOperative = a.type === 'operative';
+                                      const bIsOperative = b.type === 'operative';
+                                      
+                                      // Get employee names for consistent sorting
+                                      const getEmployeeName = (item: ScheduleItem) => {
+                                        const emp = employees.find(e => e.id === item.employeeId);
+                                        return emp?.name || item.employeeId || item.id;
+                                      };
+                                      
+                                      const aName = getEmployeeName(a);
+                                      const bName = getEmployeeName(b);
+                                      
+                                      if (aIsOperative && bIsOperative) {
+                                        // Both operatives - sort by name
+                                        return aName.localeCompare(bName);
+                                      } else if (!aIsOperative && !bIsOperative) {
+                                        // Both assistants - sort by name
+                                        return aName.localeCompare(bName);
+                                      } else {
+                                        // One operative, one assistant
+                                        // Pair assistants with their operatives (by employeeId or vehicleId)
+                                        const aEmployeeId = a.employeeId || '';
+                                        const bEmployeeId = b.employeeId || '';
+                                        const aVehicleId = a.vehicleId || '';
+                                        const bVehicleId = b.vehicleId || '';
+                                        
+                                        // If they share employee or vehicle, pair them (operative first)
+                                        if (aEmployeeId && aEmployeeId === bEmployeeId) {
+                                          return aIsOperative ? -1 : 1;
+                                        }
+                                        if (aVehicleId && aVehicleId === bVehicleId) {
+                                          return aIsOperative ? -1 : 1;
+                                        }
+                                        
+                                        // Not paired - find their operatives to determine order
+                                        const allOperatives = displayItems.filter(i => i.type === 'operative');
+                                        const aOperative = aIsOperative ? a : allOperatives.find(op => 
+                                          op.employeeId === aEmployeeId || op.vehicleId === aVehicleId
+                                        );
+                                        const bOperative = bIsOperative ? b : allOperatives.find(op => 
+                                          op.employeeId === bEmployeeId || op.vehicleId === bVehicleId
+                                        );
+                                        
+                                        const aOpName = aOperative ? getEmployeeName(aOperative) : aName;
+                                        const bOpName = bOperative ? getEmployeeName(bOperative) : bName;
+                                        
+                                        // Compare by their operative's name
+                                        const nameCompare = aOpName.localeCompare(bOpName);
+                                        if (nameCompare !== 0) return nameCompare;
+                                        
+                                        // Same operative - operative comes before assistant
+                                        return aIsOperative ? -1 : 1;
+                                      }
                                     }
                                     return 0;
                                   });
@@ -2308,6 +2436,7 @@ export function CalendarGrid({
                                                         onDeleteSelected={handleDeleteSelected}
                                                         ghostVehicleLabel={ghostVehicleLabel}
                                                         vehicleTypes={vehicleTypes}
+                                                        peopleItems={peopleItems}
                                                     />
                                                 ))}
                                             </div>
@@ -2478,17 +2607,100 @@ export function CalendarGrid({
                                     i.crewId === crew.id
                                 );
                                 
-                                // Sort displayItems to match the visual rendering order (Notes first, then People, then Jobs)
-                                const displayItems = [...cellItems].sort((a, b) => {
-                                    // Define priority: note = 0, operative/assistant = 1, job = 2
-                                    const getPriority = (type: string) => {
-                                        if (type === 'note') return 0;
-                                        if (type === 'operative' || type === 'assistant') return 1;
-                                        if (type === 'job') return 2;
-                                        return 3;
-                                    };
-                                    return getPriority(a.type) - getPriority(b.type);
-                                });
+                                // Base sort: Notes first, then People, then Jobs
+                                const getPriority = (type: string) => {
+                                  if (type === 'note') return 0;
+                                  if (type === 'operative' || type === 'assistant') return 1;
+                                  if (type === 'job') return 2;
+                                  return 3;
+                                };
+
+                                let displayItems = [...cellItems].sort(
+                                  (a, b) => getPriority(a.type) - getPriority(b.type)
+                                );
+
+                                // Default within-people order: Operatives on the left, Assistants on the right
+                                const cellKey = cellId;
+                                const manualOrder = cellItemOrder[cellKey];
+
+                                if (manualOrder && manualOrder.length) {
+                                  // Apply user-defined order for this cell (drag & drop)
+                                  displayItems = [...displayItems].sort((a, b) => {
+                                    const ia = manualOrder.indexOf(a.id);
+                                    const ib = manualOrder.indexOf(b.id);
+                                    if (ia === -1 && ib === -1) return 0;
+                                    if (ia === -1) return 1;
+                                    if (ib === -1) return -1;
+                                    return ia - ib;
+                                  });
+                                } else {
+                                  // No manual order: Default to row-based pairing (Operative 1, Assistant 1, Operative 2, Assistant 2, etc.)
+                                  displayItems = [...displayItems].sort((a, b) => {
+                                    const pa = getPriority(a.type);
+                                    const pb = getPriority(b.type);
+                                    if (pa !== pb) return pa - pb;
+                                    
+                                    const aIsPerson = a.type === 'operative' || a.type === 'assistant';
+                                    const bIsPerson = b.type === 'operative' || b.type === 'assistant';
+                                    
+                                    if (aIsPerson && bIsPerson) {
+                                      const aIsOperative = a.type === 'operative';
+                                      const bIsOperative = b.type === 'operative';
+                                      
+                                      // Get employee names for consistent sorting
+                                      const getEmployeeName = (item: ScheduleItem) => {
+                                        const emp = employees.find(e => e.id === item.employeeId);
+                                        return emp?.name || item.employeeId || item.id;
+                                      };
+                                      
+                                      const aName = getEmployeeName(a);
+                                      const bName = getEmployeeName(b);
+                                      
+                                      if (aIsOperative && bIsOperative) {
+                                        // Both operatives - sort by name
+                                        return aName.localeCompare(bName);
+                                      } else if (!aIsOperative && !bIsOperative) {
+                                        // Both assistants - sort by name
+                                        return aName.localeCompare(bName);
+                                      } else {
+                                        // One operative, one assistant
+                                        // Pair assistants with their operatives (by employeeId or vehicleId)
+                                        const aEmployeeId = a.employeeId || '';
+                                        const bEmployeeId = b.employeeId || '';
+                                        const aVehicleId = a.vehicleId || '';
+                                        const bVehicleId = b.vehicleId || '';
+                                        
+                                        // If they share employee or vehicle, pair them (operative first)
+                                        if (aEmployeeId && aEmployeeId === bEmployeeId) {
+                                          return aIsOperative ? -1 : 1;
+                                        }
+                                        if (aVehicleId && aVehicleId === bVehicleId) {
+                                          return aIsOperative ? -1 : 1;
+                                        }
+                                        
+                                        // Not paired - find their operatives to determine order
+                                        const allOperatives = displayItems.filter(i => i.type === 'operative');
+                                        const aOperative = aIsOperative ? a : allOperatives.find(op => 
+                                          op.employeeId === aEmployeeId || op.vehicleId === aVehicleId
+                                        );
+                                        const bOperative = bIsOperative ? b : allOperatives.find(op => 
+                                          op.employeeId === bEmployeeId || op.vehicleId === bVehicleId
+                                        );
+                                        
+                                        const aOpName = aOperative ? getEmployeeName(aOperative) : aName;
+                                        const bOpName = bOperative ? getEmployeeName(bOperative) : bName;
+                                        
+                                        // Compare by their operative's name
+                                        const nameCompare = aOpName.localeCompare(bOpName);
+                                        if (nameCompare !== 0) return nameCompare;
+                                        
+                                        // Same operative - operative comes before assistant
+                                        return aIsOperative ? -1 : 1;
+                                      }
+                                    }
+                                    return 0;
+                                  });
+                                }
                                 
                                 const peopleItems = displayItems.filter(i => i.type !== 'job' && i.type !== 'note');
                                 const noteItems = displayItems.filter(i => i.type === 'note');
@@ -2681,6 +2893,7 @@ export function CalendarGrid({
                                                         onDeleteSelected={handleDeleteSelected}
                                                         ghostVehicleLabel={ghostVehicleLabel}
                                                         vehicleTypes={vehicleTypes}
+                                                        peopleItems={peopleItems}
                                                     />
                                                 ))}
                                             </div>
@@ -2963,6 +3176,10 @@ export function CalendarGrid({
         onVehicleCreate={onVehicleCreate}
         onVehicleUpdate={onVehicleUpdate}
         onVehicleDelete={onVehicleDelete}
+        vehicleTypes={vehicleTypes}
+        onVehicleTypeCreate={onVehicleTypeCreate}
+        onVehicleTypeUpdate={onVehicleTypeUpdate}
+        onVehicleTypeDelete={onVehicleTypeDelete}
       />
 
       {/* Smart Search Modal */}

@@ -660,6 +660,14 @@ const transformedDepots: Depot[] = depots.map((d) => ({
     [vehicleTypes]
   );
 
+  // Save vehicleTypes to localStorage whenever it changes
+  useEffect(() => {
+    if (typeof window !== "undefined" && vehicleTypes) {
+      localStorage.setItem("scheduler_vehicle_types", JSON.stringify(vehicleTypes));
+      console.log('[SchedulePage] Saved vehicleTypes to localStorage:', vehicleTypes);
+    }
+  }, [vehicleTypes]);
+
   const handleColorLabelUpdate = useCallback(
     async (color: string, label: string) => {
       setColorLabels((prev) => ({ ...prev, [color]: label }));
@@ -811,6 +819,9 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           onRedo={handleRedo}
           canUndo={canUndo}
           canRedo={canRedo}
+          onVehicleTypeCreate={handleVehicleTypeCreate}
+          onVehicleTypeUpdate={handleVehicleTypeUpdate}
+          onVehicleTypeDelete={handleVehicleTypeDelete}
         />
       </div>
       {selectedDepotId && (

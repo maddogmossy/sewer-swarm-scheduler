@@ -43,9 +43,20 @@ interface SiteCardProps {
   ghostVehicleLabel?: string;
   /** Vehicle types configuration to look up colors for categories like "CCTV/Jet Vac" */
   vehicleTypes?: string[] | Array<{ type: string; defaultColor?: string }>;
+  /** People items from the same cell (to find actual vehicles for color lookup) */
+  peopleItems?: ScheduleItem[];
 }
 
-export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [], ghostVehicleLabel, vehicleTypes }: SiteCardProps) {
+export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [], ghostVehicleLabel, vehicleTypes, peopleItems = [] }: SiteCardProps) {
+  // Debug: Log props on every render when ghostVehicleLabel is "CCTV/Jet Vac"
+  if (ghostVehicleLabel === "CCTV/Jet Vac") {
+    console.warn('[SiteCard] CCTV/Jet Vac detected!', {
+      vehicleTypes,
+      vehicleTypesType: typeof vehicleTypes,
+      vehicleTypesIsArray: Array.isArray(vehicleTypes),
+      vehicleTypesLength: vehicleTypes?.length
+    });
+  }
   const hasMultipleSelected = selectedItemIds && selectedItemIds.size > 1 && selectedItemIds.has(item.id);
   const { settings } = useUISettings();
   const {
@@ -74,9 +85,31 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
   const softDangerSubTriggerClass =
     "cursor-pointer flex items-center gap-2 text-red-500 data-[state=open]:bg-slate-50 data-[state=open]:text-red-600";
 
-  // Get vehicle color if vehicle is assigned - this is the base color for the job
+  // Get vehicle color if vehicle is assigned - ALWAYS pull from vehicleTypes configuration, not vehicle.color
   const vehicle = item.vehicleId ? vehicles.find(v => v.id === item.vehicleId) : null;
-  const vehicleColor = vehicle?.color;
+  
+  // Helper to get default color for a vehicle type from vehicleTypes config
+  const getDefaultColorForType = (type: string): string | undefined => {
+    if (!vehicleTypes || vehicleTypes.length === 0) return undefined;
+    const typeObj = vehicleTypes.find(t => {
+      const typeName = typeof t === 'string' ? t : t.type;
+      // Exact match (case-sensitive)
+      if (typeName === type) return true;
+      // Also try case-insensitive match
+      return typeName?.toLowerCase() === type?.toLowerCase();
+    });
+    return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : undefined;
+  };
+
+  // Get color from vehicleTypes based on vehicle's vehicleType (this is where colors are set in the UI)
+  let vehicleColor: string | undefined = undefined;
+  if (vehicle?.vehicleType) {
+    vehicleColor = getDefaultColorForType(vehicle.vehicleType);
+  }
+  // Fallback to vehicle.color only if vehicleTypes doesn't have a color for this type
+  if (!vehicleColor && vehicle?.color) {
+    vehicleColor = vehicle.color;
+  }
 
   // Pastel Colors
   const colorClasses: Record<string, string> = {
@@ -113,39 +146,183 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
   // Check if this is a virtual remaining free time ghost item (not in database)
   const isRemainingFreeTimeGhost = item.id?.startsWith('free-remaining-');
   const freeJobVehicleLabel = ghostVehicleLabel || vehicle?.vehicleType || vehicle?.category || "No Vehicle Type";
-  
-  // Helper to get default color for a vehicle type from vehicleTypes config
-  const getDefaultColorForType = (type: string): string | undefined => {
-    if (!vehicleTypes || vehicleTypes.length === 0) return undefined;
-    const typeObj = vehicleTypes.find(t => (typeof t === 'string' ? t : t.type) === type);
-    return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : undefined;
-  };
 
-  // For free jobs, look up color from vehicleTypes config based on ghostVehicleLabel
+  // Look up color from vehicleTypes config based on ghostVehicleLabel (for both free and booked jobs)
   let effectiveVehicleColor = vehicleColor;
-  if (isFreeJob && ghostVehicleLabel) {
-    // First try to get color from vehicleTypes configuration for the label
-    const typeColor = getDefaultColorForType(ghostVehicleLabel);
-    if (typeColor) {
-      effectiveVehicleColor = typeColor;
-    } else if (ghostVehicleLabel === "CCTV/Jet Vac") {
-      // Fallback for "CCTV/Jet Vac": look for a vehicle with that category
-      const cctvJetVacVehicle = vehicles.find(v => 
-        v.category === "CCTV/Jet Vac" || v.category === "CCTV/JET VAC"
-      );
-      if (cctvJetVacVehicle?.color) {
-        effectiveVehicleColor = cctvJetVacVehicle.color;
+  
+  // Debug: Always log when we have a ghostVehicleLabel
+  if (ghostVehicleLabel) {
+    console.log('[SiteCard] Color lookup started:', {
+      ghostVehicleLabel,
+      vehicleTypesLength: vehicleTypes?.length,
+      vehicleTypes: vehicleTypes,
+      vehicleColor,
+      isFreeJob
+    });
+  }
+  
+  if (ghostVehicleLabel) {
+    // PRIORITY: For "CCTV/Jet Vac", always check vehicleTypes for "CCTV/Jet Vac" type first
+    if (ghostVehicleLabel === "CCTV/Jet Vac") {
+      // 1. First check for "CCTV/Jet Vac" type in vehicleTypes (this is where the pink color is set)
+      const cctvJetVacTypeColor = getDefaultColorForType("CCTV/Jet Vac");
+      // Debug: Log what we're finding
+      console.log('[SiteCard] CCTV/Jet Vac lookup:', {
+        ghostVehicleLabel,
+        vehicleTypesLength: vehicleTypes?.length,
+        vehicleTypes: vehicleTypes,
+        cctvJetVacTypeColor,
+        currentEffectiveColor: effectiveVehicleColor,
+        getDefaultColorForTypeResult: getDefaultColorForType("CCTV/Jet Vac")
+      });
+      if (cctvJetVacTypeColor) {
+        effectiveVehicleColor = cctvJetVacTypeColor;
+        console.log('[SiteCard] ✅ Using CCTV/Jet Vac color:', cctvJetVacTypeColor);
+      } else {
+        // 2. Check for "Recycler" type (since Recycler triggers "CCTV/Jet Vac")
+        const recyclerTypeColor = getDefaultColorForType("Recycler");
+        if (recyclerTypeColor) {
+          effectiveVehicleColor = recyclerTypeColor;
+        } else {
+          // 3. Check for "Jet Vac" type
+          const jetVacTypeColor = getDefaultColorForType("Jet Vac");
+          if (jetVacTypeColor) {
+            effectiveVehicleColor = jetVacTypeColor;
+          } else {
+            // 4. Only if vehicleTypes don't have colors, fall back to vehicle colors
+            // Fallback for "CCTV/Jet Vac": look for vehicles from the actual cell (peopleItems) first
+            const normalize = (value?: string) => (value || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
+            
+            // Get vehicle IDs from peopleItems in this cell
+            const cellVehicleIds = peopleItems
+              .map(p => p.vehicleId)
+              .filter((id): id is string => Boolean(id));
+            
+            // Get the actual vehicles from this cell
+            const cellVehicles = vehicles.filter(v => cellVehicleIds.includes(v.id));
+            
+            // First, try to find Jet Vac or Recycler vehicle from the cell (these trigger "CCTV/Jet Vac")
+            let cctvJetVacVehicle = cellVehicles.find(v => {
+              const cat = normalize(v.category);
+              const type = normalize(v.vehicleType);
+              const name = normalize(v.name);
+              return cat.includes("jet") || type.includes("jet") || name.includes("jet") ||
+                     cat.includes("recycl") || type.includes("recycl") || name.includes("recycl");
+            });
+            
+            // If not found in cell vehicles, try exact category match in all vehicles
+            if (!cctvJetVacVehicle) {
+              cctvJetVacVehicle = vehicles.find(v => 
+                v.category === "CCTV/Jet Vac" || v.category === "CCTV/JET VAC"
+              );
+            }
+            
+            // If still not found, look for Jet Vac or Recycler in all vehicles
+            if (!cctvJetVacVehicle) {
+              cctvJetVacVehicle = vehicles.find(v => {
+                const cat = normalize(v.category);
+                const type = normalize(v.vehicleType);
+                const name = normalize(v.name);
+                return cat.includes("jet") || type.includes("jet") || name.includes("jet") ||
+                       cat.includes("recycl") || type.includes("recycl") || name.includes("recycl");
+              });
+            }
+            
+            // If still not found, look for CCTV vehicle from the cell as fallback
+            if (!cctvJetVacVehicle) {
+              cctvJetVacVehicle = cellVehicles.find(v => {
+                const cat = normalize(v.category);
+                const type = normalize(v.vehicleType);
+                const name = normalize(v.name);
+                return cat.includes("cctv") || type.includes("cctv") || name.includes("cctv");
+              });
+            }
+            
+            // Last resort: look for any CCTV vehicle
+            if (!cctvJetVacVehicle) {
+              cctvJetVacVehicle = vehicles.find(v => {
+                const cat = normalize(v.category);
+                const type = normalize(v.vehicleType);
+                const name = normalize(v.name);
+                return cat.includes("cctv") || type.includes("cctv") || name.includes("cctv");
+              });
+            }
+            
+            // Get color from vehicleTypes based on the Recycler/Jet Vac vehicle's vehicleType
+            if (cctvJetVacVehicle?.vehicleType) {
+              const vehicleTypeColor = getDefaultColorForType(cctvJetVacVehicle.vehicleType);
+              if (vehicleTypeColor) {
+                effectiveVehicleColor = vehicleTypeColor;
+              } else {
+                // If vehicleTypes doesn't have a color for this type, try to find ANY Recycler or Jet Vac type in vehicleTypes
+                const recyclerTypeColor = getDefaultColorForType("Recycler");
+                const jetVacTypeColor = getDefaultColorForType("Jet Vac");
+                if (recyclerTypeColor) {
+                  effectiveVehicleColor = recyclerTypeColor;
+                } else if (jetVacTypeColor) {
+                  effectiveVehicleColor = jetVacTypeColor;
+                }
+              }
+            } else {
+              // Fallback: try to find ANY Recycler or Jet Vac vehicle and get its color from vehicleTypes
+              const anyRecyclerOrJetVac = vehicles.find(v => {
+                const cat = normalize(v.category);
+                const type = normalize(v.vehicleType);
+                const name = normalize(v.name);
+                return (cat.includes("jet") || type.includes("jet") || name.includes("jet") ||
+                        cat.includes("recycl") || type.includes("recycl") || name.includes("recycl")) &&
+                       v.vehicleType; // Must have a vehicleType
+              });
+              
+              if (anyRecyclerOrJetVac?.vehicleType) {
+                const vehicleTypeColor = getDefaultColorForType(anyRecyclerOrJetVac.vehicleType);
+                if (vehicleTypeColor) {
+                  effectiveVehicleColor = vehicleTypeColor;
+                }
+              }
+            }
+          }
+        }
+      }
+    } else if (ghostVehicleLabel === "CCTV/Van Pack") {
+      // First try to get color from vehicleTypes for "CCTV/Van Pack"
+      const cctvVanPackTypeColor = getDefaultColorForType("CCTV/Van Pack");
+      if (cctvVanPackTypeColor) {
+        effectiveVehicleColor = cctvVanPackTypeColor;
+      } else {
+        // Look for a vehicle with that category or BJJ and get color from vehicleTypes
+        const cctvVanPackVehicle = vehicles.find(v => 
+          v.category === "CCTV/Van Pack" || 
+          v.category === "CCTV/VAN PACK" ||
+          v.name.toLowerCase().includes("bjj") ||
+          (v.vehicleType && v.vehicleType.toLowerCase().includes("bjj"))
+        );
+        if (cctvVanPackVehicle?.vehicleType) {
+          const vehicleTypeColor = getDefaultColorForType(cctvVanPackVehicle.vehicleType);
+          if (vehicleTypeColor) {
+            effectiveVehicleColor = vehicleTypeColor;
+          }
+        }
       }
     } else {
-      // For individual types like "CCTV" or "Jet Vac", try to find a vehicle with matching category/type
-      const matchingVehicle = vehicles.find(v => {
-        const normalizedLabel = ghostVehicleLabel.toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
-        const normalizedCategory = (v.category || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
-        const normalizedType = (v.vehicleType || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
-        return normalizedCategory.includes(normalizedLabel) || normalizedType.includes(normalizedLabel);
-      });
-      if (matchingVehicle?.color) {
-        effectiveVehicleColor = matchingVehicle.color;
+      // For individual types like "CCTV" or "Jet Vac", get color from vehicleTypes
+      const typeColor = getDefaultColorForType(ghostVehicleLabel);
+      if (typeColor) {
+        effectiveVehicleColor = typeColor;
+      } else {
+        // Fallback: try to find a vehicle with matching category/type and get color from vehicleTypes
+        const matchingVehicle = vehicles.find(v => {
+          const normalizedLabel = ghostVehicleLabel.toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
+          const normalizedCategory = (v.category || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
+          const normalizedType = (v.vehicleType || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
+          return (normalizedCategory.includes(normalizedLabel) || normalizedType.includes(normalizedLabel)) && v.vehicleType;
+        });
+        if (matchingVehicle?.vehicleType) {
+          const vehicleTypeColor = getDefaultColorForType(matchingVehicle.vehicleType);
+          if (vehicleTypeColor) {
+            effectiveVehicleColor = vehicleTypeColor;
+          }
+        }
       }
     }
   }
@@ -153,6 +330,16 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
   // Use vehicle color as base color if available, otherwise use item color, otherwise default to blue
   const baseColorKey = effectiveVehicleColor || item.color || 'blue';
   const baseColor = colorClasses[baseColorKey] || colorClasses.blue;
+  
+  // Debug: Log final color decision for CCTV/Jet Vac
+  if (ghostVehicleLabel === "CCTV/Jet Vac") {
+    console.warn('[SiteCard] Final color decision:', {
+      effectiveVehicleColor,
+      itemColor: item.color,
+      baseColorKey,
+      ghostVehicleLabel
+    });
+  }
   
   // Check if this is a past job (allow editing job status even in read-only mode)
   const isPastJob = item.date ? isBefore(startOfDay(new Date(item.date)), startOfDay(new Date())) : false;

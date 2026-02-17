@@ -186,7 +186,7 @@ export function TeamManagement({ currentUserRole, currentUserId }: TeamManagemen
                     value={inviteEmail}
                     onChange={(e) => setInviteEmail(e.target.value)}
                     data-testid="input-invite-email"
-                    className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-400"
+                    className="bg-white border-slate-300 text-slate-900 placeholder:text-slate-600"
                   />
                 </div>
                 <div className="space-y-2">
@@ -227,7 +227,7 @@ export function TeamManagement({ currentUserRole, currentUserId }: TeamManagemen
         </div>
         <div className="space-y-3">
           {members.length === 0 ? (
-            <div className="text-center py-8 text-slate-600">
+            <div className="text-center py-8 text-slate-800">
               <User className="h-12 w-12 mx-auto mb-2 opacity-50" />
               <p>No team members yet</p>
               {isAdmin && (
@@ -243,7 +243,7 @@ export function TeamManagement({ currentUserRole, currentUserId }: TeamManagemen
             >
               <div className="flex items-center gap-3">
                 <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200">
-                  <User className="h-5 w-5 text-slate-600" />
+                  <User className="h-5 w-5 text-slate-800" />
                 </div>
                 <div>
                   <div className="font-medium text-slate-900 flex items-center gap-2">
@@ -331,7 +331,7 @@ export function TeamManagement({ currentUserRole, currentUserId }: TeamManagemen
               >
                 <div className="flex items-center gap-3">
                   <div className="h-10 w-10 rounded-full bg-slate-100 flex items-center justify-center border border-slate-200">
-                    <Mail className="h-5 w-5 text-slate-600" />
+                    <Mail className="h-5 w-5 text-slate-800" />
                   </div>
                   <div>
                     <div className="font-medium text-slate-900">{invite.email}</div>

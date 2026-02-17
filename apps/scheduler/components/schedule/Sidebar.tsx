@@ -98,7 +98,7 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
         <div className={cn("space-y-1", isCollapsed ? "p-2" : "p-3")}>
           {!isCollapsed && (
             <div className="flex items-center justify-between px-2 py-1.5">
-                <div className="text-xs font-semibold text-slate-400 uppercase tracking-wider">
+                <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
                 Your Depots
                 </div>
                 <Button 
@@ -146,7 +146,7 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                         {isSelected && <Check className="w-3 h-3 text-green-600" />}
                       </div>
                       
-                      <div className="flex items-center gap-1.5 text-xs text-slate-500">
+                      <div className="flex items-center gap-1.5 text-xs text-slate-700">
                         <MapPin className="w-3 h-3" />
                         <span className="truncate">{depot.address}</span>
                       </div>
@@ -242,7 +242,7 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                             }
                           }}
                           autoFocus
-                          className="w-full text-xs px-2 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-900 placeholder:text-slate-400"
+                          className="w-full text-xs px-2 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-900 placeholder:text-slate-600"
                           placeholder="Depot name"
                         />
                       </div>
@@ -263,7 +263,7 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                               setEditingDepotId(null);
                             }
                           }}
-                          className="w-full text-xs px-2 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-900 placeholder:text-slate-400"
+                          className="w-full text-xs px-2 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-900 placeholder:text-slate-600"
                           placeholder="Unit, street, town, postcode"
                         />
                       </div>

@@ -28,6 +28,7 @@ import { EmailPreviewModal } from "./EmailPreviewModal";
 import { useUISettings } from "@/hooks/useUISettings";
 import { EmployeeTimeOffDialog, EmployeeTimeOffDialogPayload } from "./EmployeeTimeOffDialog";
 import { GroupingDialog } from "./GroupingDialog";
+import { VehiclePairingDialog } from "./VehiclePairingDialog";
 import { calculateJobEndTime, calculateNextJobStartTime, calculateTravelTime, extractPostcode } from "@/lib/travelTime";
 
 export interface Crew {
@@ -166,6 +167,33 @@ function getGhostVehicleLabelForCell(
 
   const first = cellVehicles[0];
   return first.vehicleType || first.category || undefined;
+}
+
+// Helper function to get color for vehicle pairing based on ghostVehicleLabel
+function getColorForVehiclePairing(
+  peopleItems: ScheduleItem[],
+  vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; vehicleType: string; category?: string; color?: string }[],
+  vehicleTypes?: string[] | Array<{ type: string; defaultColor?: string }>
+): string | undefined {
+  // Get the ghost vehicle label for this cell
+  const ghostVehicleLabel = getGhostVehicleLabelForCell(peopleItems, vehicles);
+  if (!ghostVehicleLabel) return undefined;
+
+  // Helper to get default color for a vehicle type from vehicleTypes config
+  const getDefaultColorForType = (type: string): string | undefined => {
+    if (!vehicleTypes || vehicleTypes.length === 0) return undefined;
+    const typeObj = vehicleTypes.find(t => {
+      const typeName = typeof t === 'string' ? t : t.type;
+      // Exact match (case-sensitive)
+      if (typeName === type) return true;
+      // Also try case-insensitive match
+      return typeName?.toLowerCase() === type?.toLowerCase();
+    });
+    return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : undefined;
+  };
+
+  // Look up color from vehicleTypes based on the ghostVehicleLabel
+  return getDefaultColorForType(ghostVehicleLabel);
 }
 
 interface CalendarGridProps {
@@ -356,6 +384,91 @@ export function CalendarGrid({
     groupedItems?: ScheduleItem[];
     onConfirm: (applyToGroup: boolean) => void;
   } | null>(null);
+
+  // Vehicle pairing dialog state
+  const [vehiclePairingDialog, setVehiclePairingDialog] = useState<{
+    open: boolean;
+    cellKey: string; // e.g., "2024-01-15-crew-123"
+    vehiclePairing: string; // e.g., "CCTV/Jet Vac"
+    crewId: string;
+    date: Date;
+  } | null>(null);
+
+  // Track which cells have already shown the pairing dialog (to avoid showing multiple times)
+  const [shownPairingDialogs, setShownPairingDialogs] = useState<Set<string>>(new Set());
+
+  // Detect vehicle pairings and show dialog
+  useEffect(() => {
+    if (isReadOnly || !vehicleTypes || vehicleTypes.length === 0) return;
+    
+    // Check all cells for vehicle pairings
+    const cellsToCheck: Array<{ date: Date; crewId: string; cellKey: string }> = [];
+    
+    // Get unique date/crew combinations from items
+    const cellMap = new Map<string, { date: Date; crewId: string }>();
+    items.forEach(item => {
+      if (item.type === 'job' || item.type === 'operative' || item.type === 'assistant') {
+        const date = item.date instanceof Date ? item.date : new Date(item.date);
+        const cellKey = `${format(date, 'yyyy-MM-dd')}-${item.crewId}`;
+        if (!cellMap.has(cellKey)) {
+          cellMap.set(cellKey, { date, crewId: item.crewId });
+        }
+      }
+    });
+    
+    // Check each cell for pairings
+    cellMap.forEach(({ date, crewId }, cellKey) => {
+      // Skip if dialog already shown for this cell
+      if (shownPairingDialogs.has(cellKey)) return;
+      
+      // Get all people items in this cell
+      const cellPeopleItems = items.filter((item: ScheduleItem) => 
+        (item.type === 'operative' || item.type === 'assistant') &&
+        item.crewId === crewId &&
+        isSameDay(new Date(item.date), date) &&
+        item.vehicleId
+      );
+      
+      // Check if there are jobs in this cell (only show dialog if jobs exist)
+      const cellJobs = items.filter((item: ScheduleItem) => 
+        item.type === 'job' &&
+        item.crewId === crewId &&
+        isSameDay(new Date(item.date), date)
+      );
+      
+      if (cellPeopleItems.length > 0 && cellJobs.length > 0) {
+        // Get the vehicle pairing label
+        const ghostVehicleLabel = getGhostVehicleLabelForCell(cellPeopleItems, vehicles);
+        
+        // Check if it's a pairing that should trigger the dialog (CCTV/Jet Vac or CCTV/Van Pack)
+        if (ghostVehicleLabel === "CCTV/Jet Vac" || ghostVehicleLabel === "CCTV/Van Pack") {
+          cellsToCheck.push({ date, crewId, cellKey });
+        }
+      }
+    });
+    
+    // Show dialog for the first cell with a pairing (if not already shown)
+    if (cellsToCheck.length > 0 && !vehiclePairingDialog?.open) {
+      const firstCell = cellsToCheck[0];
+      const cellPeopleItems = items.filter((item: ScheduleItem) => 
+        (item.type === 'operative' || item.type === 'assistant') &&
+        item.crewId === firstCell.crewId &&
+        isSameDay(new Date(item.date), firstCell.date) &&
+        item.vehicleId
+      );
+      const ghostVehicleLabel = getGhostVehicleLabelForCell(cellPeopleItems, vehicles);
+      
+      if (ghostVehicleLabel) {
+        setVehiclePairingDialog({
+          open: true,
+          cellKey: firstCell.cellKey,
+          vehiclePairing: ghostVehicleLabel,
+          crewId: firstCell.crewId,
+          date: firstCell.date,
+        });
+      }
+    }
+  }, [items, vehicles, vehicleTypes, shownPairingDialogs, vehiclePairingDialog, isReadOnly]);
 
   const [crewDeleteDialog, setCrewDeleteDialog] = useState<{
     open: boolean;
@@ -979,6 +1092,53 @@ export function CalendarGrid({
     });
   };
 
+  // Handle vehicle pairing dialog confirm
+  const handleVehiclePairingConfirm = () => {
+    if (!vehiclePairingDialog) return;
+    
+    const { cellKey, vehiclePairing, crewId, date } = vehiclePairingDialog;
+    
+    // Get all people items in this cell
+    const cellPeopleItems = items.filter((item: ScheduleItem) => 
+      (item.type === 'operative' || item.type === 'assistant') &&
+      item.crewId === crewId &&
+      isSameDay(new Date(item.date), date) &&
+      item.vehicleId
+    );
+    
+    // Get the color for the vehicle pairing
+    const pairingColor = getColorForVehiclePairing(cellPeopleItems, vehicles, vehicleTypes);
+    
+    if (pairingColor) {
+      // Find all jobs in this cell
+      const cellJobs = items.filter((item: ScheduleItem) => 
+        item.type === 'job' &&
+        item.crewId === crewId &&
+        isSameDay(new Date(item.date), date)
+      );
+      
+      // Update all jobs in this cell with the paired color
+      cellJobs.forEach(job => {
+        if (job.color !== pairingColor) {
+          onItemUpdate({ ...job, color: pairingColor });
+        }
+      });
+    }
+    
+    // Mark this cell as having shown the dialog
+    setShownPairingDialogs(prev => new Set([...prev, cellKey]));
+    setVehiclePairingDialog(null);
+  };
+  
+  // Handle vehicle pairing dialog cancel
+  const handleVehiclePairingCancel = () => {
+    if (!vehiclePairingDialog) return;
+    
+    // Mark this cell as having shown the dialog (so it doesn't show again)
+    setShownPairingDialogs(prev => new Set([...prev, vehiclePairingDialog.cellKey]));
+    setVehiclePairingDialog(null);
+  };
+
   const handleEmployeeTimeOffApplied = (payload: EmployeeTimeOffDialogPayload) => {
     if (!employeeTimeOffModal.employeeId) return;
 
@@ -1496,6 +1656,61 @@ export function CalendarGrid({
         
         onItemUpdate(updatedItem);
         
+        // If an operative's vehicleId changed, update job colors in the same cell based on vehicle pairing
+        if (updatedItem.type === 'operative' || updatedItem.type === 'assistant') {
+          const vehicleIdChanged = data.vehicleId !== undefined && data.vehicleId !== modalState.data.vehicleId;
+          if (vehicleIdChanged) {
+            // Find all people items (operatives/assistants) in the same cell
+            const cellPeopleItems = items.filter((item: ScheduleItem) => 
+              (item.type === 'operative' || item.type === 'assistant') &&
+              item.crewId === updatedItem.crewId &&
+              isSameDay(new Date(item.date), new Date(updatedItem.date))
+            );
+            
+            // Get the color for the vehicle pairing in this cell
+            const pairingColor = getColorForVehiclePairing(cellPeopleItems, vehicles, vehicleTypes);
+            
+            // Find all jobs in the same cell
+            const cellJobs = items.filter((item: ScheduleItem) => 
+              item.type === 'job' &&
+              item.crewId === updatedItem.crewId &&
+              isSameDay(new Date(item.date), new Date(updatedItem.date))
+            );
+            
+            if (pairingColor) {
+              // Update all jobs in this cell with the paired color
+              cellJobs.forEach(job => {
+                if (job.color !== pairingColor) {
+                  onItemUpdate({ ...job, color: pairingColor });
+                }
+              });
+            } else {
+              // No pairing detected - if jobs have a paired color, revert to individual vehicle colors
+              // Find the operative's vehicle to get its color
+              const operativeItem = cellPeopleItems.find((item: ScheduleItem) => item.type === 'operative');
+              if (operativeItem?.vehicleId) {
+                const vehicle = vehicles.find((v: any) => v.id === operativeItem.vehicleId);
+                if (vehicle?.vehicleType) {
+                  const getDefaultColorForType = (type: string): string | undefined => {
+                    if (!vehicleTypes || vehicleTypes.length === 0) return undefined;
+                    const typeObj = vehicleTypes.find(t => (typeof t === 'string' ? t : t.type) === type);
+                    return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : undefined;
+                  };
+                  const vehicleColor = getDefaultColorForType(vehicle.vehicleType) || vehicle.color || 'blue';
+                  
+                  // Only revert if job has a known paired color (pink for CCTV/Jet Vac, etc.)
+                  const pairedColors = ['pink']; // Add other paired colors as needed
+                  cellJobs.forEach(job => {
+                    if (pairedColors.includes(job.color || '')) {
+                      onItemUpdate({ ...job, color: vehicleColor });
+                    }
+                  });
+                }
+              }
+            }
+          }
+        }
+        
         if (applyPeriod !== 'none') {
             // Calculate end date based on period
             const startDate = new Date(updatedItem.date);
@@ -1575,28 +1790,38 @@ export function CalendarGrid({
 
         let jobColor = data.color || 'blue';
         if (modalState.type === 'job') {
-            // Find operative assigned to this crew on this day
-            const operativeItem = items.find((item: ScheduleItem) => 
-                item.type === 'operative' &&
+            // Find all people items (operatives/assistants) in the same cell to check for vehicle pairings
+            const cellPeopleItems = items.filter((item: ScheduleItem) => 
+                (item.type === 'operative' || item.type === 'assistant') &&
                 item.crewId === createCrewId &&
                 isSameDay(new Date(item.date), new Date(createDate)) &&
                 item.vehicleId
             );
             
-            if (operativeItem?.vehicleId) {
-                const vehicle = vehicles.find((v: any) => v.id === operativeItem.vehicleId);
-                // ALWAYS get color from vehicleTypes based on vehicle's vehicleType
-                if (vehicle?.vehicleType) {
-                  const typeColor = getDefaultColorForType(vehicle.vehicleType);
-                  if (typeColor) {
-                    jobColor = typeColor;
-                  } else if (vehicle?.color) {
-                    // Fallback to vehicle.color only if vehicleTypes doesn't have a color
-                    jobColor = vehicle.color;
-                  }
-                } else if (vehicle?.color) {
-                  // Fallback if vehicle has no vehicleType
-                  jobColor = vehicle.color;
+            // First, check for vehicle pairings (e.g., CCTV + Jet Vac/Recycler)
+            const pairingColor = getColorForVehiclePairing(cellPeopleItems, vehicles, vehicleTypes);
+            if (pairingColor) {
+                jobColor = pairingColor;
+            } else if (cellPeopleItems.length > 0) {
+                // Fallback: use the first operative's vehicle color if no pairing detected
+                const operativeItem = cellPeopleItems.find((item: ScheduleItem) => item.type === 'operative');
+                const itemToUse = operativeItem || cellPeopleItems[0];
+                
+                if (itemToUse?.vehicleId) {
+                    const vehicle = vehicles.find((v: any) => v.id === itemToUse.vehicleId);
+                    // ALWAYS get color from vehicleTypes based on vehicle's vehicleType
+                    if (vehicle?.vehicleType) {
+                      const typeColor = getDefaultColorForType(vehicle.vehicleType);
+                      if (typeColor) {
+                        jobColor = typeColor;
+                      } else if (vehicle?.color) {
+                        // Fallback to vehicle.color only if vehicleTypes doesn't have a color
+                        jobColor = vehicle.color;
+                      }
+                    } else if (vehicle?.color) {
+                      // Fallback if vehicle has no vehicleType
+                      jobColor = vehicle.color;
+                    }
                 }
             }
         }
@@ -1630,9 +1855,27 @@ export function CalendarGrid({
             data.vehicleId;
         
         if (isOperativeWithVehicle) {
-            // Find the vehicle to get its color
-            const vehicle = vehicles.find((v: any) => v.id === data.vehicleId);
-            const vehicleColor = vehicle?.color || 'blue';
+            // Find all people items in the same cell to check for vehicle pairings
+            const cellPeopleItems = items.filter((item: ScheduleItem) => 
+                (item.type === 'operative' || item.type === 'assistant') &&
+                item.crewId === createCrewId &&
+                isSameDay(new Date(item.date), new Date(createDate)) &&
+                item.vehicleId
+            );
+            
+            // Check for vehicle pairings first (e.g., CCTV + Jet Vac/Recycler)
+            let freeJobColor = getColorForVehiclePairing(cellPeopleItems, vehicles, vehicleTypes);
+            
+            if (!freeJobColor) {
+                // Fallback: use the vehicle's color from vehicleTypes or vehicle.color
+                const vehicle = vehicles.find((v: any) => v.id === data.vehicleId);
+                if (vehicle?.vehicleType) {
+                    const typeColor = getDefaultColorForType(vehicle.vehicleType);
+                    freeJobColor = typeColor || vehicle?.color || 'blue';
+                } else {
+                    freeJobColor = vehicle?.color || 'blue';
+                }
+            }
             
             const startDate = new Date(createDate);
             
@@ -1648,7 +1891,7 @@ export function CalendarGrid({
                 address: 'Free',
                 startTime: '08:00',
                 duration: 8,
-                color: vehicleColor,
+                color: freeJobColor,
                 employeeId: data.employeeId,
                 vehicleId: data.vehicleId,
             });
@@ -3004,6 +3247,20 @@ export function CalendarGrid({
           groupedItems={groupingDialog.groupedItems}
           crews={crews}
           currentItemId={groupingDialog.itemId}
+        />
+      )}
+      
+      {vehiclePairingDialog && (
+        <VehiclePairingDialog
+          open={vehiclePairingDialog.open}
+          onOpenChange={(open) => {
+            if (!open) {
+              handleVehiclePairingCancel();
+            }
+          }}
+          onConfirm={handleVehiclePairingConfirm}
+          onCancel={handleVehiclePairingCancel}
+          vehiclePairing={vehiclePairingDialog.vehiclePairing}
         />
       )}
 

@@ -26,6 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScheduleItem } from "./CalendarGrid";
 import { useUISettings } from "@/hooks/useUISettings";
+import { getVehicleTypeDisplayName, normalizeVehicleTypeName } from "@/lib/vehicleTypes";
 
 interface SiteCardProps {
   item: ScheduleItem;
@@ -41,22 +42,16 @@ interface SiteCardProps {
   vehicles?: { id: string; name: string; vehicleType?: string; category?: string; color?: string }[];
   /** Optional override for the label shown in the ghost (free) address bar. */
   ghostVehicleLabel?: string;
+  /** Color label mapping (used to keep Free-card labels stable even when people/vehicles change). */
+  colorLabels?: Record<string, string>;
   /** Vehicle types configuration to look up colors for categories like "CCTV/Jet Vac" */
   vehicleTypes?: string[] | Array<{ type: string; defaultColor?: string }>;
   /** People items from the same cell (to find actual vehicles for color lookup) */
   peopleItems?: ScheduleItem[];
 }
 
-export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [], ghostVehicleLabel, vehicleTypes, peopleItems = [] }: SiteCardProps) {
-  // Debug: Log props on every render when ghostVehicleLabel is "CCTV/Jet Vac"
-  if (ghostVehicleLabel === "CCTV/Jet Vac") {
-    console.warn('[SiteCard] CCTV/Jet Vac detected!', {
-      vehicleTypes,
-      vehicleTypesType: typeof vehicleTypes,
-      vehicleTypesIsArray: Array.isArray(vehicleTypes),
-      vehicleTypesLength: vehicleTypes?.length
-    });
-  }
+export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [], ghostVehicleLabel, colorLabels, vehicleTypes, peopleItems = [] }: SiteCardProps) {
+  // (debug logs removed)
   const hasMultipleSelected = selectedItemIds && selectedItemIds.size > 1 && selectedItemIds.has(item.id);
   const { settings } = useUISettings();
   const {
@@ -145,39 +140,50 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
   const isFreeJob = item.jobStatus === 'free' || item.customer === 'Free';
   // Check if this is a virtual remaining free time ghost item (not in database)
   const isRemainingFreeTimeGhost = item.id?.startsWith('free-remaining-');
-  const freeJobVehicleLabel = ghostVehicleLabel || vehicle?.vehicleType || vehicle?.category || "No Vehicle Type";
+  // Free/ghost text should come from Vehicle Types dropdown names (never from job color labels like "Urgent").
+  // - If this cell is paired (CCTV + Jet Vac/Recycler), show CCTV/Jet Vac (as named in Vehicle Types config)
+  // - Otherwise show the vehicle's own type (as named in Vehicle Types config), falling back to ghostVehicleLabel
+  const isPairedLabel =
+    normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac");
+
+  const deriveVehicleTypeLabel = (): string | undefined => {
+    if (!vehicle) return undefined;
+    const name = normalizeVehicleTypeName(vehicle.name);
+    const cat = normalizeVehicleTypeName(vehicle.category);
+    const type = normalizeVehicleTypeName(vehicle.vehicleType);
+
+    // Treat BJJ and CCTV/Van Pack as CCTV/Van Pack regardless of what vehicleType string currently says.
+    if (name.includes("bjj") || cat.includes("cctvvan") || type.includes("cctvvan")) return "CCTV/Van Pack";
+    if (cat.includes("cctv") || type.includes("cctv") || name.includes("cctv")) return "CCTV";
+    if (cat.includes("recycl") || type.includes("recycl") || name.includes("recycl")) return "Recycler";
+    if (cat.includes("jet") || type.includes("jet") || name.includes("jet")) return "Jet Vac";
+    return vehicle.vehicleType || vehicle.category;
+  };
+
+  const freeJobVehicleLabel =
+    (isFreeJob && !isRemainingFreeTimeGhost && isPairedLabel
+      ? getVehicleTypeDisplayName("CCTV/Jet Vac", vehicleTypes)
+      : undefined) ||
+    (isFreeJob && !isRemainingFreeTimeGhost && vehicle
+      ? getVehicleTypeDisplayName(deriveVehicleTypeLabel(), vehicleTypes)
+      : undefined) ||
+    getVehicleTypeDisplayName(ghostVehicleLabel, vehicleTypes) ||
+    vehicle?.vehicleType ||
+    vehicle?.category ||
+    "No Vehicle Type";
+
+  // (debug logs removed)
 
   // Look up color from vehicleTypes config based on ghostVehicleLabel (for both free and booked jobs)
   let effectiveVehicleColor = vehicleColor;
-  
-  // Debug: Always log when we have a ghostVehicleLabel
-  if (ghostVehicleLabel) {
-    console.log('[SiteCard] Color lookup started:', {
-      ghostVehicleLabel,
-      vehicleTypesLength: vehicleTypes?.length,
-      vehicleTypes: vehicleTypes,
-      vehicleColor,
-      isFreeJob
-    });
-  }
   
   if (ghostVehicleLabel) {
     // PRIORITY: For "CCTV/Jet Vac", always check vehicleTypes for "CCTV/Jet Vac" type first
     if (ghostVehicleLabel === "CCTV/Jet Vac") {
       // 1. First check for "CCTV/Jet Vac" type in vehicleTypes (this is where the pink color is set)
       const cctvJetVacTypeColor = getDefaultColorForType("CCTV/Jet Vac");
-      // Debug: Log what we're finding
-      console.log('[SiteCard] CCTV/Jet Vac lookup:', {
-        ghostVehicleLabel,
-        vehicleTypesLength: vehicleTypes?.length,
-        vehicleTypes: vehicleTypes,
-        cctvJetVacTypeColor,
-        currentEffectiveColor: effectiveVehicleColor,
-        getDefaultColorForTypeResult: getDefaultColorForType("CCTV/Jet Vac")
-      });
       if (cctvJetVacTypeColor) {
         effectiveVehicleColor = cctvJetVacTypeColor;
-        console.log('[SiteCard] ✅ Using CCTV/Jet Vac color:', cctvJetVacTypeColor);
       } else {
         // 2. Check for "Recycler" type (since Recycler triggers "CCTV/Jet Vac")
         const recyclerTypeColor = getDefaultColorForType("Recycler");
@@ -331,15 +337,7 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
   const baseColorKey = effectiveVehicleColor || item.color || 'blue';
   const baseColor = colorClasses[baseColorKey] || colorClasses.blue;
   
-  // Debug: Log final color decision for CCTV/Jet Vac
-  if (ghostVehicleLabel === "CCTV/Jet Vac") {
-    console.warn('[SiteCard] Final color decision:', {
-      effectiveVehicleColor,
-      itemColor: item.color,
-      baseColorKey,
-      ghostVehicleLabel
-    });
-  }
+  // (debug logs removed)
   
   // Check if this is a past job (allow editing job status even in read-only mode)
   const isPastJob = item.date ? isBefore(startOfDay(new Date(item.date)), startOfDay(new Date())) : false;
@@ -621,11 +619,12 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
             {/* Bottom Row: Job Number | Address */}
             <div className="p-2 space-y-1 bg-white flex items-center gap-2">
                 {isFreeJob ? (
-                    // For free jobs, show derived vehicle / category label in the address field
+                    // For free jobs, show derived vehicle / category label in the address field.
+                    // For the virtual remaining-free-time ghost, show its availability text instead (it's not tied to a vehicle).
                     <div className="flex items-center gap-1 min-w-0 flex-1">
                         <MapPin className="w-3 h-3 text-slate-400 shrink-0 mt-0.5" />
                         <span className="break-words whitespace-normal leading-tight text-[10px] text-slate-600 line-clamp-2">
-                            {freeJobVehicleLabel}
+                            {isRemainingFreeTimeGhost ? (item.address || "Available") : freeJobVehicleLabel}
                         </span>
                     </div>
                 ) : (

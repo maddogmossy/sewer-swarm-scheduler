@@ -80,14 +80,19 @@ class API {
       });
     }
     
-    const response = await fetch(url, {
-      ...options,
-      credentials: "include", // Required for cookies to work
-      headers: {
-        "Content-Type": "application/json",
-        ...options?.headers,
-      },
-    });
+    let response: Response;
+    try {
+      response = await fetch(url, {
+        ...options,
+        credentials: "include", // Required for cookies to work
+        headers: {
+          "Content-Type": "application/json",
+          ...options?.headers,
+        },
+      });
+    } catch (err: any) {
+      throw err;
+    }
 
     if (!response.ok) {
       let errorText = '';

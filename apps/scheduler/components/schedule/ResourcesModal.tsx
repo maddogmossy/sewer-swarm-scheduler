@@ -10,6 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Badge } from "@/components/ui/badge";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { mergeAndSortVehicleTypes } from "@/lib/vehicleTypes";
 
 interface ResourcesModalProps {
     open: boolean;
@@ -89,14 +90,16 @@ export function ResourcesModal({
     // Helper to get vehicle type names (handles both string[] and object[] formats)
     const getVehicleTypeNames = () => {
         if (!vehicleTypes || vehicleTypes.length === 0) return ['Van'];
-        return vehicleTypes.map(t => typeof t === 'string' ? t : t.type);
+        const merged = mergeAndSortVehicleTypes(vehicleTypes);
+        return merged.map(t => t.type);
     };
 
-    // Helper to get default color for a vehicle type
+    // Helper to get default color for a vehicle type (tolerant matching handled by mergeAndSortVehicleTypes)
     const getDefaultColorForType = (type: string): string => {
         if (!vehicleTypes || vehicleTypes.length === 0) return 'blue';
-        const typeObj = vehicleTypes.find(t => (typeof t === 'string' ? t : t.type) === type);
-        return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : 'blue';
+        const merged = mergeAndSortVehicleTypes(vehicleTypes);
+        const typeObj = merged.find(t => t.type === type);
+        return typeObj?.defaultColor || 'blue';
     };
 
     const getColorHex = (color: string): string => {
@@ -610,7 +613,7 @@ export function ResourcesModal({
                                             </div>
                                         </Button>
                                     </PopoverTrigger>
-                                    <PopoverContent className="w-80 p-2 bg-white" align="start">
+                                    <PopoverContent className="w-80 p-2 bg-white border border-slate-200 shadow-lg rounded-lg" align="start">
                                         <div className="space-y-1">
                                             {typeNames.map(type => {
                                                 const typeDefaultColor = getDefaultColorForType(type);
@@ -624,8 +627,8 @@ export function ResourcesModal({
                                                     <div
                                                         key={type}
                                                         className={cn(
-                                                            "flex items-center justify-between p-2 rounded-md hover:bg-slate-50 group/item",
-                                                            isSelected && "bg-blue-50"
+                                                            "flex items-center justify-between p-2 rounded-md border border-transparent hover:bg-slate-50 group/item",
+                                                            isSelected && "bg-slate-900 text-white border-slate-900"
                                                         )}
                                                     >
                                                         <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -639,13 +642,16 @@ export function ResourcesModal({
                                                                 className="flex items-center gap-2 flex-1 min-w-0 text-left"
                                                             >
                                                                 <div 
-                                                                    className="w-4 h-4 rounded border shrink-0" 
+                                                                    className={cn(
+                                                                      "w-4 h-4 rounded border shrink-0",
+                                                                      isSelected ? "border-white/70" : "border-slate-300"
+                                                                    )}
                                                                     style={{ 
                                                                         backgroundColor: `${currentColorHex}40`,
-                                                                        borderColor: currentColorHex
+                                                                        borderColor: isSelected ? "rgba(255,255,255,0.7)" : currentColorHex
                                                                     }}
                                                                 />
-                                                                <span className="truncate font-medium">{type}</span>
+                                                                <span className={cn("truncate font-semibold", isSelected ? "text-white" : "text-slate-900")}>{type}</span>
                                                             </button>
                                                             {isSelected && (
                                                                 <Popover open={isColorPickerOpen} onOpenChange={(open) => {
@@ -656,7 +662,10 @@ export function ResourcesModal({
                                                                             type="button"
                                                                             variant="ghost"
                                                                             size="icon"
-                                                                            className="h-7 w-7 p-0.5 border shrink-0"
+                                                                            className={cn(
+                                                                              "h-7 w-7 p-0.5 border shrink-0",
+                                                                              isSelected ? "border-white/40 hover:bg-white/10" : "border-slate-200 hover:bg-slate-50"
+                                                                            )}
                                                                             style={{
                                                                                 backgroundColor: `${currentColorHex}20`,
                                                                                 borderColor: currentColorHex

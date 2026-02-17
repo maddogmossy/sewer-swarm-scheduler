@@ -9,6 +9,7 @@ import { Trash2, Edit, Plus, Users, Truck, Mail, Settings, X, Check, Calendar as
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { cn } from "@/lib/utils";
+import { CANONICAL_VEHICLE_TYPES, mergeAndSortVehicleTypes } from "@/lib/vehicleTypes";
 
 interface DepotCrewModalProps {
   open: boolean;
@@ -80,7 +81,7 @@ export function DepotCrewModal({
   onVehicleDelete = () => {},
   onEmployeeMoveDepot,
   onVehicleMoveDepot,
-  vehicleTypes = ['Van', 'CCTV', 'Jetting', 'Recycler', 'Other'],
+  vehicleTypes = CANONICAL_VEHICLE_TYPES.map((t) => ({ type: t.type, defaultColor: t.defaultColor })),
   onVehicleTypeCreate = () => {},
   onVehicleTypeUpdate = () => {},
   onVehicleTypeDelete = () => {},
@@ -109,14 +110,15 @@ export function DepotCrewModal({
   // Helper to get vehicle type names (handles both string[] and object[] formats)
   const getVehicleTypeNames = () => {
     if (!vehicleTypes || vehicleTypes.length === 0) return ['Van'];
-    return vehicleTypes.map(t => typeof t === 'string' ? t : t.type);
+    return mergeAndSortVehicleTypes(vehicleTypes).map(t => t.type);
   };
 
   // Helper to get default color for a vehicle type
   const getDefaultColorForType = (type: string): string => {
     if (!vehicleTypes || vehicleTypes.length === 0) return 'blue';
-    const typeObj = vehicleTypes.find(t => (typeof t === 'string' ? t : t.type) === type);
-    return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : 'blue';
+    const merged = mergeAndSortVehicleTypes(vehicleTypes);
+    const typeObj = merged.find(t => t.type === type);
+    return typeObj?.defaultColor || 'blue';
   };
 
   const typeNames = getVehicleTypeNames();
@@ -213,14 +215,6 @@ export function DepotCrewModal({
     return color?.hex || "#3B82F6";
   };
 
-  // Helper to get color value from hex
-  const getColorValue = (hex?: string): string => {
-    if (!hex) return "blue";
-    if (!hex.startsWith('#')) return hex; // Already a color name
-    const color = AVAILABLE_COLORS.find(c => c.hex.toLowerCase() === hex.toLowerCase());
-    return color?.value || hex; // Return hex if not found in list
-  };
-
   const handleAddVehicleType = () => {
     if (!newTypeName.trim()) return;
     onVehicleTypeCreate(newTypeName.trim(), newTypeColor);
@@ -297,7 +291,7 @@ export function DepotCrewModal({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[600px] bg-white text-slate-900 max-h-[80vh] flex flex-col">
         <DialogHeader>
-          <DialogTitle>Manage Depot - {depotName}</DialogTitle>
+          <DialogTitle className="text-slate-900">Manage Depot - {depotName}</DialogTitle>
         </DialogHeader>
 
         {/* Style 2 (Replit-style) segmented tabs */}
@@ -335,10 +329,10 @@ export function DepotCrewModal({
                     className="flex-1"
                     />
                     <Select value={newEmployeeRole} onValueChange={(val) => setNewEmployeeRole(val as 'operative' | 'assistant')}>
-                    <SelectTrigger className="w-32">
+                    <SelectTrigger className="w-32 bg-white border-slate-300 text-slate-900">
                         <SelectValue />
                     </SelectTrigger>
-                    <SelectContent className="bg-white">
+                    <SelectContent className="bg-white text-slate-900 border-slate-200">
                         <SelectItem value="operative">👷 Operative</SelectItem>
                         <SelectItem value="assistant">🤝 Assistant</SelectItem>
                     </SelectContent>
@@ -453,7 +447,7 @@ export function DepotCrewModal({
                               <Users className="w-4 h-4" />
                             </div>
                             <div className="min-w-0">
-                              <div className="font-medium text-slate-700">{emp.name}</div>
+                              <div className="font-medium text-slate-900">{emp.name}</div>
                               <div className="text-xs text-slate-500 flex items-center gap-2">
                                 <span>{emp.status} • {emp.jobRole === 'operative' ? '👷 Operative' : '🤝 Assistant'}</span>
                                 {emp.email && (
@@ -603,7 +597,7 @@ export function DepotCrewModal({
                         </div>
                       </Button>
                     </PopoverTrigger>
-                    <PopoverContent className="w-80 p-2 bg-white" align="start">
+                    <PopoverContent className="w-80 p-2 bg-white border border-slate-200 shadow-lg rounded-lg" align="start">
                       <div className="space-y-1">
                         {typeNames.map(type => {
                           const typeDefaultColor = getDefaultColorForType(type);
@@ -617,8 +611,8 @@ export function DepotCrewModal({
                             <div
                               key={type}
                               className={cn(
-                                "flex items-center justify-between p-2 rounded-md hover:bg-slate-50 group/item",
-                                isSelected && "bg-blue-50"
+                                "flex items-center justify-between p-2 rounded-md border border-transparent hover:bg-slate-50 group/item",
+                                isSelected && "bg-slate-900 text-white border-slate-900"
                               )}
                             >
                               <div className="flex items-center gap-2 flex-1 min-w-0">
@@ -633,13 +627,16 @@ export function DepotCrewModal({
                                   className="flex items-center gap-2 flex-1 min-w-0 text-left"
                                 >
                                   <div 
-                                    className="w-4 h-4 rounded border shrink-0" 
+                                    className={cn(
+                                      "w-4 h-4 rounded border shrink-0",
+                                      isSelected ? "border-white/70" : "border-slate-300"
+                                    )}
                                     style={{ 
                                       backgroundColor: `${currentColorHex}40`,
-                                      borderColor: currentColorHex
+                                      borderColor: isSelected ? "rgba(255,255,255,0.7)" : currentColorHex
                                     }}
                                   />
-                                  <span className="truncate font-medium">{type}</span>
+                                  <span className={cn("truncate font-semibold", isSelected ? "text-white" : "text-slate-900")}>{type}</span>
                                 </button>
                                 {isSelected && (
                                   <Popover open={isColorPickerOpen} onOpenChange={(open) => {
@@ -650,7 +647,10 @@ export function DepotCrewModal({
                                         type="button"
                                         variant="ghost"
                                         size="icon"
-                                        className="h-7 w-7 p-0.5 border shrink-0"
+                                        className={cn(
+                                          "h-7 w-7 p-0.5 border shrink-0",
+                                          isSelected ? "border-white/40 hover:bg-white/10" : "border-slate-200 hover:bg-slate-50"
+                                        )}
                                         style={{
                                           backgroundColor: `${currentColorHex}20`,
                                           borderColor: currentColorHex
@@ -922,63 +922,26 @@ export function DepotCrewModal({
                                       <SelectItem value="maintenance">Maintenance</SelectItem>
                                     </SelectContent>
                                   </Select>
-                                  <Popover>
-                                    <PopoverTrigger asChild>
-                                      <Button
-                                        type="button"
-                                        variant="outline"
-                                        className="w-20 h-9 p-1 border-2"
-                                        style={{
-                                          backgroundColor: `${getColorHex(editingVehicle?.color)}20`,
-                                          borderColor: getColorHex(editingVehicle?.color)
-                                        }}
-                                      >
-                                        <div 
-                                          className="w-full h-full rounded"
-                                          style={{ backgroundColor: getColorHex(editingVehicle?.color) }}
-                                        />
-                                      </Button>
-                                    </PopoverTrigger>
-                                    <PopoverContent className="w-64 p-2 bg-white" align="start">
-                                      <div className="text-xs font-semibold mb-2 text-slate-500 uppercase tracking-wider">Select Color</div>
-                                      <div className="grid grid-cols-4 gap-2">
-                                        {AVAILABLE_COLORS.map(c => {
-                                          const isSelected = getColorValue(editingVehicle?.color) === c.value;
-                                          return (
-                                            <button
-                                              key={c.value}
-                                              type="button"
-                                              onClick={() => {
-                                                setEditingVehicle({ ...editingVehicle!, color: c.hex });
-                                              }}
-                                              className={cn(
-                                                "w-8 h-8 rounded-md border-2 hover:scale-110 transition-transform relative",
-                                                c.class,
-                                                isSelected && "ring-2 ring-offset-2 ring-slate-400"
-                                              )}
-                                              title={c.value}
-                                            >
-                                              {isSelected && <Check className="w-4 h-4 text-slate-800 absolute inset-0 m-auto" />}
-                                            </button>
-                                          );
-                                        })}
-                                      </div>
-                                    </PopoverContent>
-                                  </Popover>
                                   <Button size="sm" onClick={handleSaveVehicle}>Save</Button>
                                   <Button size="sm" variant="ghost" onClick={() => setEditingVehicle(null)}>Cancel</Button>
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-3 flex-1">
+                                  {(() => {
+                                    const typeColor = getDefaultColorForType(veh.vehicleType);
+                                    const hex = getColorHex(typeColor);
+                                    return (
                                   <div 
                                     className="w-8 h-8 rounded-full flex items-center justify-center text-slate-600 border-2 shrink-0"
                                     style={{ 
-                                      backgroundColor: veh.color ? `${getColorHex(veh.color)}20` : '#f1f5f9',
-                                      borderColor: getColorHex(veh.color)
+                                      backgroundColor: `${hex}20`,
+                                      borderColor: hex
                                     }}
                                   >
-                                    <Truck className="w-4 h-4" style={{ color: getColorHex(veh.color) }} />
+                                    <Truck className="w-4 h-4" style={{ color: hex }} />
                                   </div>
+                                    );
+                                  })()}
                                   <div className="flex flex-col">
                                     <span className="font-medium">{veh.name}</span>
                                     <div className="flex items-center gap-2">

@@ -210,9 +210,14 @@ export function useScheduleData() {
         queryClient.setQueryData(["scheduleItems"], context.previousItems);
       }
     },
-    // Always refetch after error or success to ensure consistency
-    onSettled: () => {
-      queryClient.invalidateQueries({ queryKey: ["scheduleItems"] });
+    // Important: group operations (like applying a color across many job-days) can fire a burst of PATCHes.
+    // Invalidating after *every* PATCH can create a burst of GET /api/schedule-items refetches, which
+    // increases load and can contribute to intermittent "Failed to fetch" in dev. We already do an
+    // optimistic update, so only refetch on error.
+    onSettled: (_data, error) => {
+      if (error) {
+        queryClient.invalidateQueries({ queryKey: ["scheduleItems"] });
+      }
     },
   });
 

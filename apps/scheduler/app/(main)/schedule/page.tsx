@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarGrid, type Crew, type ScheduleItem } from "@/components/schedule/CalendarGrid";
 import { Sidebar, type Depot } from "@/components/schedule/Sidebar";
@@ -14,6 +14,7 @@ import { useScheduleData } from "@/hooks/useScheduleData";
 import { useOrganization, canManageResources, canManageTeam } from "@/hooks/useOrganization";
 import { api } from "@/lib/api";
 import { startOfWeek, startOfDay, isBefore, isAfter, isSameDay, addDays } from "date-fns";
+import { CANONICAL_VEHICLE_TYPES, mergeAndSortVehicleTypes } from "@/lib/vehicleTypes";
 
 const INITIAL_COLOR_LABELS: Record<string, string> = {
   blue: "Standard Job",
@@ -27,7 +28,7 @@ const INITIAL_COLOR_LABELS: Record<string, string> = {
   gray: "On Hold",
 };
 
-const INITIAL_VEHICLE_TYPES = ["Van", "CCTV", "Jetting", "Recycler", "Other"];
+const INITIAL_VEHICLE_TYPES = CANONICAL_VEHICLE_TYPES.map((t) => t.type);
 
 // Available colors matching vehicle type colors
 const AVAILABLE_COLORS = [
@@ -51,23 +52,24 @@ export default function SchedulePage() {
   const [isDepotCrewModalOpen, setIsDepotCrewModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("");
+  // Serialize item updates to avoid bursts of PATCH requests (group updates can trigger many),
+  // which can lead to intermittent "Failed to fetch" and unhandled promise rejections.
+  const updateQueueRef = useRef<Promise<void>>(Promise.resolve());
+  // Serialize deletes as well (some flows can delete multiple items at once).
+  const deleteQueueRef = useRef<Promise<void>>(Promise.resolve());
   // Vehicle types can be stored as string[] (legacy) or Array<{type: string, defaultColor?: string}>
   const [vehicleTypes, setVehicleTypes] = useState<string[] | Array<{type: string; defaultColor?: string}>>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("scheduler_vehicle_types");
       if (saved) {
         const parsed = JSON.parse(saved);
-        // Check if it's the new format (array of objects) or legacy (array of strings)
-        if (Array.isArray(parsed) && parsed.length > 0 && typeof parsed[0] === 'object') {
-          return parsed;
-        }
-        // Legacy format - convert to new format
-        return parsed.map((t: string) => ({ type: t, defaultColor: 'blue' }));
+        // Merge/sort to canonical order while preserving any custom types/colors
+        return mergeAndSortVehicleTypes(parsed);
       }
-      // Default types with default colors
-      return INITIAL_VEHICLE_TYPES.map(t => ({ type: t, defaultColor: 'blue' }));
+      // Default types with default colors (canonical)
+      return mergeAndSortVehicleTypes(INITIAL_VEHICLE_TYPES.map((t) => ({ type: t })));
     }
-    return INITIAL_VEHICLE_TYPES.map(t => ({ type: t, defaultColor: 'blue' }));
+    return mergeAndSortVehicleTypes(INITIAL_VEHICLE_TYPES.map((t) => ({ type: t })));
   });
   const [colorLabels, setColorLabels] = useState<Record<string, string>>(() => {
     if (typeof window !== "undefined") {
@@ -230,19 +232,37 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   // Handlers
   const handleItemUpdate = useCallback(
     async (item: ScheduleItem) => {
-      // Find previous state for undo
-      const previousItem = transformedItems.find(i => i.id === item.id);
-      if (previousItem) {
-        saveOperationToHistory({ type: 'update', item, previousItem });
-      }
-      
-      // Match Replit's approach: send the item data directly, let the server handle date conversion
-      const { id, ...itemData } = item;
-      
-      await mutations.updateScheduleItem.mutateAsync({
-        id: item.id,
-        data: itemData,
-      });
+      const run = async () => {
+        // Find previous state for undo
+        const previousItem = transformedItems.find(i => i.id === item.id);
+        if (previousItem) {
+          saveOperationToHistory({ type: 'update', item, previousItem });
+        }
+
+        // Match Replit's approach: send the item data directly, let the server handle date conversion
+        const { id, ...itemData } = item;
+
+        try {
+          await mutations.updateScheduleItem.mutateAsync({
+            id: item.id,
+            data: itemData,
+          });
+        } catch (error) {
+          // Important: many call-sites don't await `onItemUpdate`, so a thrown error becomes an
+          // unhandled rejection and can crash dev runtime. Log and swallow so the UI stays usable.
+          console.error("[handleItemUpdate] Failed to update schedule item:", {
+            id: item.id,
+            type: item.type,
+            crewId: item.crewId,
+            date: item.date,
+            error,
+          });
+        }
+      };
+
+      // Ensure the queue continues even if the previous update failed.
+      updateQueueRef.current = updateQueueRef.current.then(run, run);
+      return updateQueueRef.current;
     },
     [mutations, transformedItems, saveOperationToHistory]
   );
@@ -410,13 +430,26 @@ const transformedDepots: Depot[] = depots.map((d) => ({
 
   const handleItemDelete = useCallback(
     async (id: string) => {
-      // Find item to save for undo
-      const item = transformedItems.find(i => i.id === id);
-      if (item) {
-        saveOperationToHistory({ type: 'delete', item });
-      }
-      
-      await mutations.deleteScheduleItem.mutateAsync(id);
+      const run = async () => {
+        // Find item to save for undo
+        const item = transformedItems.find(i => i.id === id);
+        if (item) {
+          saveOperationToHistory({ type: 'delete', item });
+        }
+
+        try {
+          await mutations.deleteScheduleItem.mutateAsync(id);
+        } catch (error) {
+          // Many call-sites don't await `onItemDelete`, so don't throw (prevents runtime overlay).
+          console.error("[handleItemDelete] Failed to delete schedule item:", {
+            id,
+            error,
+          });
+        }
+      };
+
+      deleteQueueRef.current = deleteQueueRef.current.then(run, run);
+      return deleteQueueRef.current;
     },
     [mutations, transformedItems, saveOperationToHistory]
   );

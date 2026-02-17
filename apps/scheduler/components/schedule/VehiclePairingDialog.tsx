@@ -18,13 +18,13 @@ export function VehiclePairingDialog({
   vehiclePairing,
 }: VehiclePairingDialogProps) {
   const handleConfirm = () => {
+    // Parent controls closing; avoid double-calling cancel via onOpenChange(false)
     onConfirm();
-    onOpenChange(false);
   };
 
   const handleCancel = () => {
+    // Parent controls closing; avoid double-calling cancel via onOpenChange(false)
     onCancel();
-    onOpenChange(false);
   };
 
   return (

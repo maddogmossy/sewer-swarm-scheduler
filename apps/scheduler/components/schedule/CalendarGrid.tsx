@@ -418,10 +418,83 @@ export function CalendarGrid({
     vehiclePairing: string; // e.g., "CCTV/Jet Vac"
     crewId: string;
     date: Date;
+    vehicleSignature: string;
   } | null>(null);
 
-  // Track which cells have already shown the pairing dialog (to avoid showing multiple times)
-  const [shownPairingDialogs, setShownPairingDialogs] = useState<Set<string>>(new Set());
+  type PairingDecision = "combined" | "separate";
+  type PairingDecisionEntry = {
+    decision: PairingDecision;
+    vehicleSignature: string;
+    crewId: string;
+    date: Date;
+  };
+
+  // Remember per-cell decision so we don’t prompt again unless vehicles change
+  const [pairingDecisionByCell, setPairingDecisionByCell] = useState<Record<string, PairingDecisionEntry>>({});
+
+  const getVehicleSignatureForPeople = (people: ScheduleItem[]) => {
+    const ids = Array.from(
+      new Set(
+        people
+          .map((p) => p.vehicleId)
+          .filter((id): id is string => Boolean(id))
+      )
+    );
+    ids.sort();
+    return ids.join(",");
+  };
+
+  const getEffectivePairingDecision = (cellKey: string, signature: string): PairingDecision | undefined => {
+    const entry = pairingDecisionByCell[cellKey];
+    if (!entry) return undefined;
+    if (entry.vehicleSignature !== signature) return undefined;
+    return entry.decision;
+  };
+
+  // Clear decisions if vehicles change or pairing is no longer actionable
+  useEffect(() => {
+    const keys = Object.keys(pairingDecisionByCell);
+    if (keys.length === 0) return;
+
+    let didChange = false;
+    const next: Record<string, PairingDecisionEntry> = { ...pairingDecisionByCell };
+
+    keys.forEach((cellKey) => {
+      const entry = pairingDecisionByCell[cellKey];
+      if (!entry) return;
+
+      const cellPeopleItems = items.filter(
+        (i) =>
+          (i.type === "operative" || i.type === "assistant") &&
+          i.crewId === entry.crewId &&
+          isSameDay(new Date(i.date), entry.date) &&
+          i.vehicleId
+      ) as ScheduleItem[];
+
+      const signatureNow = getVehicleSignatureForPeople(cellPeopleItems);
+
+      // If vehicles changed, re-prompt next time
+      if (signatureNow !== entry.vehicleSignature) {
+        delete next[cellKey];
+        didChange = true;
+        return;
+      }
+
+      const ghostVehicleLabel = getGhostVehicleLabelForCell(cellPeopleItems, vehicles, vehicleTypes);
+      const pairingColor = getColorForVehiclePairing(cellPeopleItems, vehicles, vehicleTypes);
+      const isActionablePairing =
+        normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColor;
+
+      if (!isActionablePairing) {
+        delete next[cellKey];
+        didChange = true;
+      }
+    });
+
+    if (didChange) {
+      setPairingDecisionByCell(next);
+    }
+  }, [pairingDecisionByCell, items, vehicles, vehicleTypes]);
 
   const [crewDeleteDialog, setCrewDeleteDialog] = useState<{
     open: boolean;
@@ -540,6 +613,8 @@ export function CalendarGrid({
                const bookedCount = targetCellJobs.filter((j) => !isFreeJobItem(j)).length;
                const hasAnyJobsInCell = targetCellJobs.length > 0; // Free counts as a job here
                const cellKey = `${targetDateStr}-${targetCrewId}`;
+               const signature = getVehicleSignatureForPeople(simulatedPeopleItems);
+               const decision = getEffectivePairingDecision(cellKey, signature);
 
                // (debug logs removed)
 
@@ -547,7 +622,7 @@ export function CalendarGrid({
                  normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") &&
                  pairingColor &&
                  hasAnyJobsInCell &&
-                 !shownPairingDialogs.has(cellKey)
+                 !decision
                ) {
                  setVehiclePairingDialog({
                    open: true,
@@ -555,6 +630,7 @@ export function CalendarGrid({
                    vehiclePairing: ghostVehicleLabel,
                    crewId: targetCrewId,
                    date: newDate,
+                   vehicleSignature: signature,
                  });
                }
              }
@@ -620,6 +696,8 @@ export function CalendarGrid({
                    const bookedCount = targetCellJobs.filter((j) => !isFreeJobItem(j)).length;
                    const hasAnyJobsInCell = targetCellJobs.length > 0; // Free counts as a job here
                    const cellKey = `${targetDateStr}-${targetCrewId}`;
+                   const signature = getVehicleSignatureForPeople(simulatedPeopleItems);
+                   const decision = getEffectivePairingDecision(cellKey, signature);
 
                    // (debug logs removed)
 
@@ -627,7 +705,7 @@ export function CalendarGrid({
                      normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") &&
                      pairingColor &&
                      hasAnyJobsInCell &&
-                     !shownPairingDialogs.has(cellKey)
+                     !decision
                    ) {
                      setVehiclePairingDialog({
                        open: true,
@@ -635,6 +713,7 @@ export function CalendarGrid({
                        vehiclePairing: ghostVehicleLabel,
                        crewId: targetCrewId,
                        date: newDate,
+                       vehicleSignature: signature,
                      });
                    }
                  }
@@ -1143,7 +1222,17 @@ export function CalendarGrid({
   const handleVehiclePairingConfirm = () => {
     if (!vehiclePairingDialog) return;
     
-    const { cellKey, vehiclePairing, crewId, date } = vehiclePairingDialog;
+    const { cellKey, vehiclePairing, crewId, date, vehicleSignature } = vehiclePairingDialog;
+
+    setPairingDecisionByCell((prev) => ({
+      ...prev,
+      [cellKey]: {
+        decision: "combined",
+        vehicleSignature,
+        crewId,
+        date,
+      },
+    }));
     
     // Get all people items in this cell
     const cellPeopleItems = items.filter((item: ScheduleItem) => 
@@ -1186,17 +1275,24 @@ export function CalendarGrid({
       });
     }
     
-    // Mark this cell as having shown the dialog
-    setShownPairingDialogs(prev => new Set([...prev, cellKey]));
     setVehiclePairingDialog(null);
   };
   
   // Handle vehicle pairing dialog cancel
   const handleVehiclePairingCancel = () => {
     if (!vehiclePairingDialog) return;
+    const { cellKey, crewId, date, vehicleSignature } = vehiclePairingDialog;
     
-    // Mark this cell as having shown the dialog (so it doesn't show again)
-    setShownPairingDialogs(prev => new Set([...prev, vehiclePairingDialog.cellKey]));
+    // Remember “Keep Separate” so it won’t prompt again for this cell unless vehicles change
+    setPairingDecisionByCell((prev) => ({
+      ...prev,
+      [cellKey]: {
+        decision: "separate",
+        vehicleSignature,
+        crewId,
+        date,
+      },
+    }));
     setVehiclePairingDialog(null);
   };
 
@@ -1743,13 +1839,17 @@ export function CalendarGrid({
             const cellKey = `${format(cellDate, 'yyyy-MM-dd')}-${updatedItem.crewId}`;
             const hasAnyJobsInCell = cellJobs.length > 0; // Free counts as a job here
 
-            if (normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && pairingColor && hasAnyJobsInCell && !shownPairingDialogs.has(cellKey)) {
+            const signature = getVehicleSignatureForPeople(cellPeopleItems);
+            const decision = getEffectivePairingDecision(cellKey, signature);
+
+            if (normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && pairingColor && hasAnyJobsInCell && !decision) {
               setVehiclePairingDialog({
                 open: true,
                 cellKey,
                 vehiclePairing: ghostVehicleLabel,
                 crewId: updatedItem.crewId,
                 date: cellDate,
+                vehicleSignature: signature,
               });
             } else {
               // No pairing detected - if jobs have a paired color, revert to individual vehicle colors
@@ -1855,19 +1955,27 @@ export function CalendarGrid({
           return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : undefined;
         };
 
+        const createDateObj = createDate ? new Date(createDate) : null;
+        const createCellKey =
+          createDateObj && createCrewId ? `${format(createDateObj, "yyyy-MM-dd")}-${createCrewId}` : "";
+
         let jobColor = data.color || 'blue';
         if (modalState.type === 'job') {
             // Find all people items (operatives/assistants) in the same cell to check for vehicle pairings
             const cellPeopleItems = items.filter((item: ScheduleItem) => 
                 (item.type === 'operative' || item.type === 'assistant') &&
                 item.crewId === createCrewId &&
-                isSameDay(new Date(item.date), new Date(createDate)) &&
+                (createDateObj ? isSameDay(new Date(item.date), createDateObj) : false) &&
                 item.vehicleId
             );
             
             // First, check for vehicle pairings (e.g., CCTV + Jet Vac/Recycler)
             const pairingColor = getColorForVehiclePairing(cellPeopleItems, vehicles, vehicleTypes);
-            if (pairingColor) {
+            const signature = getVehicleSignatureForPeople(cellPeopleItems);
+            const decision = createCellKey ? getEffectivePairingDecision(createCellKey, signature) : undefined;
+
+            // Only apply pairingColor automatically if the user has chosen “Combine Them” for this cell
+            if (pairingColor && decision === "combined") {
                 jobColor = pairingColor;
             } else if (cellPeopleItems.length > 0) {
                 // Fallback: use the first operative's vehicle color if no pairing detected
@@ -1949,13 +2057,15 @@ export function CalendarGrid({
 
             const ghostVehicleLabel = getGhostVehicleLabelForCell(simulatedPeopleItems, vehicles, vehicleTypes);
             const pairingColor = getColorForVehiclePairing(simulatedPeopleItems, vehicles, vehicleTypes);
+            const signature = getVehicleSignatureForPeople(simulatedPeopleItems);
+            const decision = getEffectivePairingDecision(cellKey, signature);
 
             // Open pairing dialog immediately on initial create when actionable pairing is formed
             if (
               normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") &&
               pairingColor &&
               !vehiclePairingDialog?.open &&
-              !shownPairingDialogs.has(cellKey)
+              !decision
             ) {
               setVehiclePairingDialog({
                 open: true,
@@ -1963,11 +2073,13 @@ export function CalendarGrid({
                 vehiclePairing: ghostVehicleLabel,
                 crewId: createCrewId,
                 date: createDateObj,
+                vehicleSignature: signature,
               });
             }
             
             // Check for vehicle pairings first (e.g., CCTV + Jet Vac/Recycler)
-            let freeJobColor = pairingColor;
+            // Only apply paired color automatically if decision is “combined”
+            let freeJobColor = decision === "combined" ? pairingColor : undefined;
             
             if (!freeJobColor) {
                 // Fallback: use the vehicle's color from vehicleTypes or vehicle.color
@@ -3360,6 +3472,7 @@ export function CalendarGrid({
         <VehiclePairingDialog
           open={vehiclePairingDialog.open}
           onOpenChange={(open) => {
+            // Closing via ESC/backdrop counts as “Keep Separate”
             if (!open) {
               handleVehiclePairingCancel();
             }

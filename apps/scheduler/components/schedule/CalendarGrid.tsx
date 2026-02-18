@@ -428,6 +428,7 @@ export function CalendarGrid({
     crewId: string;
     date: Date;
     vehicleSignature: string;
+    applyPeriod: 'none' | 'week' | 'month' | '6months' | '12months';
   } | null>(null);
 
   // Drag-move scope dialog for operatives/assistants (day vs remainder of week)
@@ -598,6 +599,10 @@ export function CalendarGrid({
     cellPeopleWithVehicles.forEach((p) => {
       if (p.employeeId) peopleByEmployeeId.set(p.employeeId, p);
     });
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'CalendarGrid.tsx:syncAutoLinkedFreeJobsForCell:enter',message:'Sync auto-linked Free jobs for cell',data:{crewId,dateKey:format(day,'yyyy-MM-dd'),peopleWithVehicles:cellPeopleWithVehicles.length,autoFreeJobs:cellAutoFreeJobs.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // 1) Remove stale auto-Free jobs if the person is no longer in the cell
     cellAutoFreeJobs.forEach((job) => {
@@ -792,6 +797,10 @@ export function CalendarGrid({
             setActiveId(null);
             return;
         }
+
+        // #region agent log
+        fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'CalendarGrid.tsx:handleDragEnd:resolvedTarget',message:'DragEnd resolved target',data:{activeId:String(active.id),overId:String(overId),isDroppingOnItem,overItemType:overItem?.type||null,activeType:activeItem.type,source:{crewId:activeItem.crewId,dateKey:format(startOfDay(new Date(activeItem.date)),'yyyy-MM-dd')},target:{crewId:targetCrewId,dateKey:targetDateStr},isSameCell:activeItem.crewId===targetCrewId&&isSameDay(activeItem.date,newDate),ctrlDup:isCtrlPressed,promptMove:settings.promptOperativeMoveScope},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
         
         if (isCtrlPressed) {
              // Duplicate
@@ -842,6 +851,7 @@ export function CalendarGrid({
                      crewId: targetCrewId,
                      date: newDate,
                      vehicleSignature: signature,
+                     applyPeriod: "none",
                    });
                  } else {
                    autoCombineVehiclePairing({
@@ -850,6 +860,7 @@ export function CalendarGrid({
                      crewId: targetCrewId,
                      date: newDate,
                      vehicleSignature: signature,
+                    applyPeriod: "none",
                    });
                  }
                }
@@ -886,8 +897,18 @@ export function CalendarGrid({
                    const nextOrder = [...baseOrder];
                    nextOrder.splice(fromIndex, 1);
                    nextOrder.splice(toIndex, 0, fromId);
+
+                   // #region agent log
+                   fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'CalendarGrid.tsx:handleDragEnd:reorder',message:'Reorder applied',data:{cellKey,fromId,toId,fromIndex,toIndex,baseOrderLen:baseOrder.length,nextOrderHead:nextOrder.slice(0,8)},timestamp:Date.now()})}).catch(()=>{});
+                   // #endregion
+
                    return { ...prev, [cellKey]: nextOrder };
                  });
+             } else if (isSameCell && !isDroppingOnItem) {
+                 // Dropped back onto the same cell whitespace; no reordering occurs (current behavior).
+                 // #region agent log
+                 fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'CalendarGrid.tsx:handleDragEnd:sameCellWhitespace',message:'Dropped on same-cell whitespace (no reorder branch)',data:{activeId:String(active.id),cellKey:`${targetCrewId}|${targetDateStr}`},timestamp:Date.now()})}).catch(()=>{});
+                 // #endregion
              } else if (!isSameCell) {
                  // For people items, optionally prompt for scope (day vs remainder of week) and move linked Free jobs too.
                  if (isPersonItem(activeItem)) {
@@ -898,12 +919,18 @@ export function CalendarGrid({
                        targetCrewId,
                        targetDate: newDate,
                      });
+                     // #region agent log
+                     fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'CalendarGrid.tsx:handleDragEnd:promptMove',message:'Opened move-scope dialog (move not applied yet)',data:{activeId:String(active.id),activeType:activeItem.type,from:{crewId:activeItem.crewId,dateKey:format(startOfDay(new Date(activeItem.date)),'yyyy-MM-dd')},to:{crewId:targetCrewId,dateKey:targetDateStr}},timestamp:Date.now()})}).catch(()=>{});
+                     // #endregion
                      setActiveId(null);
                      return;
                    }
 
                    // If prompt is disabled, default to day-only move.
                    performPersonMove(activeItem, targetCrewId, newDate, "day");
+                   // #region agent log
+                   fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'CalendarGrid.tsx:handleDragEnd:personMoveNoPrompt',message:'Performed person move with prompt disabled',data:{activeId:String(active.id),scope:'day',to:{crewId:targetCrewId,dateKey:targetDateStr}},timestamp:Date.now()})}).catch(()=>{});
+                   // #endregion
                    setActiveId(null);
                    return;
                  }
@@ -954,6 +981,7 @@ export function CalendarGrid({
                          crewId: targetCrewId,
                          date: newDate,
                          vehicleSignature: signature,
+                         applyPeriod: "none",
                        });
                      } else {
                        autoCombineVehiclePairing({
@@ -962,6 +990,7 @@ export function CalendarGrid({
                          crewId: targetCrewId,
                          date: newDate,
                          vehicleSignature: signature,
+                        applyPeriod: "none",
                        });
                      }
                    }
@@ -1034,6 +1063,10 @@ export function CalendarGrid({
 
     // Never allow creating items in the past
     if (isBefore(startOfDay(selectionMenu.date), startOfDay(new Date()))) return;
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'CalendarGrid.tsx:handleSelection',message:'Opening create modal from selection menu',data:{type,crewId:selectionMenu.crewId,dateKey:format(selectionMenu.date,'yyyy-MM-dd')},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     // For jobs we ONLY want to drop a "ghost" / free box on the diary.
     // The full site UI (Convert Free Job to Booking) is used later when editing that box.
@@ -1471,58 +1504,86 @@ export function CalendarGrid({
   const handleVehiclePairingConfirm = () => {
     if (!vehiclePairingDialog) return;
     
-    const { cellKey, vehiclePairing, crewId, date, vehicleSignature } = vehiclePairingDialog;
+    const { crewId, date, vehicleSignature, applyPeriod } = vehiclePairingDialog;
 
-    setPairingDecisionByCell((prev) => ({
-      ...prev,
-      [cellKey]: {
-        decision: "combined",
-        vehicleSignature,
-        crewId,
-        date,
-      },
-    }));
-    
-    // Get all people items in this cell
-    const cellPeopleItems = items.filter((item: ScheduleItem) => 
-      (item.type === 'operative' || item.type === 'assistant') &&
-      item.crewId === crewId &&
-      isSameDay(new Date(item.date), date) &&
-      item.vehicleId
-    );
-    
-    // Get the color for the vehicle pairing
-    const pairingColor = getColorForVehiclePairing(cellPeopleItems, vehicles, vehicleTypes);
-    
-    if (pairingColor) {
-      // Find all jobs in this cell
-      const cellJobs = items.filter((item: ScheduleItem) => 
-        item.type === 'job' &&
-        item.crewId === crewId &&
-        isSameDay(new Date(item.date), date)
-      );
+    const applyAcrossPeriod = () => {
+      const startDate = startOfDay(new Date(date));
 
-      // Apply to group(s): prefer booked jobs; if the cell only has Free jobs, apply to those
-      const bookedJobs = cellJobs.filter(j => j.customer !== 'Free' && j.jobStatus !== 'free');
-      const seedJobs = bookedJobs.length > 0 ? bookedJobs : cellJobs;
-      const idsToUpdate = new Set<string>();
-      seedJobs.forEach(job => {
-        const groupItems = findItemsWithSameJobNumber(job);
-        groupItems.forEach(g => idsToUpdate.add(g.id));
-      });
-
-      // Fallback: if no jobNumber groups found, update only the seed jobs in this cell
-      if (idsToUpdate.size === 0) {
-        seedJobs.forEach(j => idsToUpdate.add(j.id));
+      let endDate: Date = startDate;
+      if (applyPeriod === "week") {
+        endDate = addDays(weekStart, viewDays - 1);
+      } else if (applyPeriod === "month" || applyPeriod === "6months" || applyPeriod === "12months") {
+        endDate = calculateWeekdayEndDate(startDate, applyPeriod);
       }
 
-      idsToUpdate.forEach(id => {
-        const item = items.find(i => i.id === id);
-        if (item && item.type === 'job' && item.color !== pairingColor) {
-          onItemUpdate({ ...item, color: pairingColor });
+      const skipWeekends = applyPeriod === "month" || applyPeriod === "6months" || applyPeriod === "12months";
+
+      const touchedDates: Date[] = [];
+      let d = new Date(startDate);
+      let safety = 0;
+      while ((isBefore(d, endDate) || isSameDay(d, endDate)) && safety < 5000) {
+        if (!skipWeekends || isWeekday(d)) {
+          touchedDates.push(new Date(d));
         }
+        d = addDays(d, 1);
+        safety++;
+      }
+
+      // Persist decision per-date cellKey so the UI stays combined across the period
+      setPairingDecisionByCell((prev) => {
+        const next = { ...prev };
+        touchedDates.forEach((dt) => {
+          const dateKey = format(dt, "yyyy-MM-dd");
+          const ck = `${dateKey}-${crewId}`;
+          // Recompute signature per day in case the cell differs; fall back to triggering signature
+          const dayPeople = items.filter(
+            (i: ScheduleItem) =>
+              (i.type === "operative" || i.type === "assistant") &&
+              i.crewId === crewId &&
+              isSameDay(new Date(i.date), dt) &&
+              i.vehicleId
+          ) as ScheduleItem[];
+          const daySig = dayPeople.length ? getVehicleSignatureForPeople(dayPeople) : vehicleSignature;
+          next[ck] = { decision: "combined", vehicleSignature: daySig, crewId, date: dt };
+        });
+        return next;
       });
-    }
+
+      // Apply pairing color across the same dates (only where a pairing color exists)
+      touchedDates.forEach((dt) => {
+        const dayPeople = items.filter(
+          (i: ScheduleItem) =>
+            (i.type === "operative" || i.type === "assistant") &&
+            i.crewId === crewId &&
+            isSameDay(new Date(i.date), dt) &&
+            i.vehicleId
+        ) as ScheduleItem[];
+        const pairingColor = getColorForVehiclePairing(dayPeople, vehicles, vehicleTypes);
+        if (!pairingColor) return;
+
+        const cellJobs = items.filter(
+          (i: ScheduleItem) => i.type === "job" && i.crewId === crewId && isSameDay(new Date(i.date), dt)
+        );
+        const bookedJobs = cellJobs.filter((j) => j.customer !== "Free" && j.jobStatus !== "free");
+        const seedJobs = bookedJobs.length > 0 ? bookedJobs : cellJobs;
+        const idsToUpdate = new Set<string>();
+        seedJobs.forEach((job) => {
+          const groupItems = findItemsWithSameJobNumber(job);
+          groupItems.forEach((g) => idsToUpdate.add(g.id));
+        });
+        if (idsToUpdate.size === 0) {
+          seedJobs.forEach((j) => idsToUpdate.add(j.id));
+        }
+        idsToUpdate.forEach((id) => {
+          const item = items.find((i) => i.id === id);
+          if (item && item.type === "job" && item.color !== pairingColor) {
+            onItemUpdate({ ...item, color: pairingColor });
+          }
+        });
+      });
+    };
+
+    applyAcrossPeriod();
     
     setVehiclePairingDialog(null);
   };
@@ -1533,59 +1594,79 @@ export function CalendarGrid({
     date: Date;
     vehicleSignature: string;
     vehiclePairing: string;
+    applyPeriod?: 'none' | 'week' | 'month' | '6months' | '12months';
   }) => {
-    const { cellKey, crewId, date, vehicleSignature, vehiclePairing } = payload;
+    const { crewId, date, vehicleSignature } = payload;
+    const applyPeriod = payload.applyPeriod ?? "none";
 
-    setPairingDecisionByCell((prev) => ({
-      ...prev,
-      [cellKey]: {
-        decision: "combined",
-        vehicleSignature,
-        crewId,
-        date,
-      },
-    }));
+    const startDate = startOfDay(new Date(date));
+    let endDate: Date = startDate;
+    if (applyPeriod === "week") {
+      endDate = addDays(weekStart, viewDays - 1);
+    } else if (applyPeriod === "month" || applyPeriod === "6months" || applyPeriod === "12months") {
+      endDate = calculateWeekdayEndDate(startDate, applyPeriod);
+    }
+    const skipWeekends = applyPeriod === "month" || applyPeriod === "6months" || applyPeriod === "12months";
 
-    // Apply pairing color to jobs in this cell (same behavior as confirm)
-    const cellJobs = items.filter((item: ScheduleItem) =>
-      item.type === 'job' &&
-      item.crewId === crewId &&
-      isSameDay(new Date(item.date), date)
-    );
-
-    const pairingColor = getColorForVehiclePairing(
-      items.filter(
-        (i) =>
-          (i.type === "operative" || i.type === "assistant") &&
-          i.crewId === crewId &&
-          isSameDay(new Date(i.date), date) &&
-          i.vehicleId
-      ) as ScheduleItem[],
-      vehicles,
-      vehicleTypes
-    );
-
-    if (!pairingColor) return;
-
-    // Apply to group(s): prefer booked jobs; if the cell only has Free jobs, apply to those
-    const bookedJobs = cellJobs.filter(j => j.customer !== 'Free' && j.jobStatus !== 'free');
-    const seedJobs = bookedJobs.length > 0 ? bookedJobs : cellJobs;
-    const idsToUpdate = new Set<string>();
-    seedJobs.forEach(job => {
-      const groupItems = findItemsWithSameJobNumber(job);
-      groupItems.forEach(g => idsToUpdate.add(g.id));
-    });
-
-    // Fallback: if no jobNumber groups found, update only the seed jobs in this cell
-    if (idsToUpdate.size === 0) {
-      seedJobs.forEach(j => idsToUpdate.add(j.id));
+    const touchedDates: Date[] = [];
+    let d = new Date(startDate);
+    let safety = 0;
+    while ((isBefore(d, endDate) || isSameDay(d, endDate)) && safety < 5000) {
+      if (!skipWeekends || isWeekday(d)) {
+        touchedDates.push(new Date(d));
+      }
+      d = addDays(d, 1);
+      safety++;
     }
 
-    idsToUpdate.forEach(id => {
-      const item = items.find(i => i.id === id);
-      if (item && item.type === 'job' && item.color !== pairingColor) {
-        onItemUpdate({ ...item, color: pairingColor });
+    setPairingDecisionByCell((prev) => {
+      const next = { ...prev };
+      touchedDates.forEach((dt) => {
+        const dateKey = format(dt, "yyyy-MM-dd");
+        const ck = `${dateKey}-${crewId}`;
+        const dayPeople = items.filter(
+          (i: ScheduleItem) =>
+            (i.type === "operative" || i.type === "assistant") &&
+            i.crewId === crewId &&
+            isSameDay(new Date(i.date), dt) &&
+            i.vehicleId
+        ) as ScheduleItem[];
+        const daySig = dayPeople.length ? getVehicleSignatureForPeople(dayPeople) : vehicleSignature;
+        next[ck] = { decision: "combined", vehicleSignature: daySig, crewId, date: dt };
+      });
+      return next;
+    });
+
+    touchedDates.forEach((dt) => {
+      const dayPeople = items.filter(
+        (i: ScheduleItem) =>
+          (i.type === "operative" || i.type === "assistant") &&
+          i.crewId === crewId &&
+          isSameDay(new Date(i.date), dt) &&
+          i.vehicleId
+      ) as ScheduleItem[];
+      const pairingColor = getColorForVehiclePairing(dayPeople, vehicles, vehicleTypes);
+      if (!pairingColor) return;
+
+      const cellJobs = items.filter(
+        (i: ScheduleItem) => i.type === "job" && i.crewId === crewId && isSameDay(new Date(i.date), dt)
+      );
+      const bookedJobs = cellJobs.filter((j) => j.customer !== "Free" && j.jobStatus !== "free");
+      const seedJobs = bookedJobs.length > 0 ? bookedJobs : cellJobs;
+      const idsToUpdate = new Set<string>();
+      seedJobs.forEach((job) => {
+        const groupItems = findItemsWithSameJobNumber(job);
+        groupItems.forEach((g) => idsToUpdate.add(g.id));
+      });
+      if (idsToUpdate.size === 0) {
+        seedJobs.forEach((j) => idsToUpdate.add(j.id));
       }
+      idsToUpdate.forEach((id) => {
+        const item = items.find((i) => i.id === id);
+        if (item && item.type === "job" && item.color !== pairingColor) {
+          onItemUpdate({ ...item, color: pairingColor });
+        }
+      });
     });
   };
   
@@ -1625,6 +1706,10 @@ export function CalendarGrid({
             const d = startOfDay(new Date(i.date));
             return (isSameDay(d, sourceDate) || isAfter(d, sourceDate)) && (isSameDay(d, viewEnd) || isBefore(d, viewEnd));
           });
+
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'CalendarGrid.tsx:performPersonMove:enter',message:'Performing person move',data:{activeId:activeItem.id,activeType:activeItem.type,scope,from:{crewId:activeItem.crewId,dateKey:format(sourceDate,'yyyy-MM-dd')},to:{crewId:targetCrewId,dateKey:format(targetDateStart,'yyyy-MM-dd')},peopleToMoveCount:peopleToMove.length},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
 
     let itemsAfter = [...items];
     const touchedCells = new Map<string, { crewId: string; date: Date }>();
@@ -1702,6 +1787,7 @@ export function CalendarGrid({
         crewId: targetCrewId,
         date: targetDateStart,
         vehicleSignature: signature,
+        applyPeriod: "none",
       });
     }
   };
@@ -1807,6 +1893,10 @@ export function CalendarGrid({
   const handleDuplicateItem = (item: ScheduleItem, mode: 'single' | 'week' | 'following_week' | 'custom' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year' = 'single', days = 1, skipSelectedCheck = false) => {
     if (isReadOnly) return;
 
+    // #region agent log
+    {const srcDateKey=format(startOfDay(new Date(item.date)),'yyyy-MM-dd');const srcPeople=items.filter((i)=>isPersonItem(i)&&i.crewId===item.crewId&&isSameDay(new Date(i.date),startOfDay(new Date(item.date))));const srcGhost=getGhostVehicleLabelForCellDisplay(srcPeople,item.crewId,startOfDay(new Date(item.date)));fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'CalendarGrid.tsx:handleDuplicateItem',message:'Duplicate requested',data:{mode,days,skipSelectedCheck,item:{id:item.id,type:item.type,jobStatus:(item as any).jobStatus,customer:(item as any).customer,color:(item as any).color,crewId:item.crewId,dateKey:srcDateKey,vehicleId:(item as any).vehicleId,vehicleType:(item as any).vehicleType,employeeId:(item as any).employeeId},srcCell:{peopleCount:srcPeople.length,srcGhostLabel:srcGhost}},timestamp:Date.now()})}).catch(()=>{});}
+    // #endregion
+
     // Determine which items to process
     // If skipSelectedCheck is true (called from handleDuplicateSelected), only process this one item
     // Otherwise, if item is selected, process all selected items
@@ -1881,6 +1971,10 @@ export function CalendarGrid({
             }
         }
     });
+
+    // #region agent log
+    {const sample=itemsToCreate[0];if(sample){const tDate=startOfDay(new Date(sample.date));const tPeople=items.filter((i)=>isPersonItem(i)&&i.crewId===sample.crewId&&isSameDay(new Date(i.date),tDate));const tGhost=getGhostVehicleLabelForCellDisplay(tPeople,sample.crewId,tDate);fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H4',location:'CalendarGrid.tsx:handleDuplicateItem:afterBuild',message:'Duplicate build complete',data:{createCount:itemsToCreate.length,sample:{id:sample.id,type:sample.type,jobStatus:(sample as any).jobStatus,customer:(sample as any).customer,color:(sample as any).color,crewId:sample.crewId,dateKey:format(tDate,'yyyy-MM-dd'),vehicleId:(sample as any).vehicleId,vehicleType:(sample as any).vehicleType,employeeId:(sample as any).employeeId},targetCell:{peopleCount:tPeople.length,targetGhostLabel:tGhost}},timestamp:Date.now()})}).catch(()=>{});}}
+    // #endregion
 
     itemsToCreate.forEach(newItem => onItemCreate(newItem));
   };
@@ -2316,6 +2410,7 @@ export function CalendarGrid({
                   crewId: updatedItem.crewId,
                   date: cellDate,
                   vehicleSignature: signature,
+                  applyPeriod: "none",
                 });
               } else {
                 autoCombineVehiclePairing({
@@ -2324,6 +2419,7 @@ export function CalendarGrid({
                   crewId: updatedItem.crewId,
                   date: cellDate,
                   vehicleSignature: signature,
+                  applyPeriod: "none",
                 });
               }
             }
@@ -2507,6 +2603,25 @@ export function CalendarGrid({
         };
         
         onItemCreate(baseItem);
+
+        // If this is a person create, initialize a stable per-cell order so the newly added person
+        // defaults AFTER existing people in this cell (until the user manually reorders).
+        if (modalState.type === "operative" || modalState.type === "assistant") {
+          const cellOrderKey = `${createCrewId}|${format(startOfDay(new Date(createDate)), "yyyy-MM-dd")}`;
+          setCellItemOrder((prev) => {
+            if (prev[cellOrderKey] && prev[cellOrderKey].length) return prev;
+            const existingPeopleIds = items
+              .filter(
+                (i: ScheduleItem) =>
+                  (i.type === "operative" || i.type === "assistant") &&
+                  i.crewId === createCrewId &&
+                  isSameDay(new Date(i.date), new Date(createDate))
+              )
+              .map((i) => i.id);
+            const next = Array.from(new Set([...existingPeopleIds, baseItem.id]));
+            return { ...prev, [cellOrderKey]: next };
+          });
+        }
         
         // Auto-generate free jobs and add operative when operative + vehicle
         const isOperativeWithVehicle = 
@@ -2540,6 +2655,10 @@ export function CalendarGrid({
               } as ScheduleItem,
             ];
 
+            // #region agent log
+            {const v=vehicles.find((vv:any)=>vv.id===data.vehicleId);const vType=(v?.vehicleType||'');const isJetVac=normalizeVehicleTypeName(vType)===normalizeVehicleTypeName('Jet Vac');if(isJetVac){const ops=simulatedPeopleItems.filter((p)=>p.type==='operative');const assts=simulatedPeopleItems.filter((p)=>p.type==='assistant');const newOpIndex=(()=>{const inter:ScheduleItem[]=[];const maxLen=Math.max(ops.length,assts.length);for(let idx=0;idx<maxLen;idx++){if(ops[idx]) inter.push(ops[idx]);if(assts[idx]) inter.push(assts[idx]);}return inter.findIndex((p)=>p.id===baseItem.id);})();fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'CalendarGrid.tsx:handleModalSubmit:create:jetVac',message:'Creating Jet Vac operative; predicted grid placement',data:{cellKey,crewId:createCrewId,dateKey:format(createDateObj,'yyyy-MM-dd'),vehicleType:vType,existingPeopleWithVehiclesCount:cellPeopleItems.length,simPeopleCount:simulatedPeopleItems.length,predictedIndex:newOpIndex,predictedRow:newOpIndex>=0?Math.floor(newOpIndex/2):null,predictedCol:newOpIndex>=0?(newOpIndex%2):null,manualOrderCount:(cellItemOrder[cellKey]?.length||0)},timestamp:Date.now()})}).catch(()=>{});}}
+            // #endregion
+
             const ghostVehicleLabel = getGhostVehicleLabelForCell(simulatedPeopleItems, vehicles, vehicleTypes);
             const pairingColor = getColorForVehiclePairing(simulatedPeopleItems, vehicles, vehicleTypes);
             const signature = getVehicleSignatureForPeople(simulatedPeopleItems);
@@ -2560,6 +2679,7 @@ export function CalendarGrid({
                   crewId: createCrewId,
                   date: createDateObj,
                   vehicleSignature: signature,
+                  applyPeriod,
                 });
               } else {
                 autoCombineVehiclePairing({
@@ -2568,6 +2688,7 @@ export function CalendarGrid({
                   crewId: createCrewId,
                   date: createDateObj,
                   vehicleSignature: signature,
+                  applyPeriod,
                 });
               }
             }
@@ -2641,13 +2762,30 @@ export function CalendarGrid({
                     }
                     
                     // Create operative for this day
+                    const createdPersonId = generateUniqueId();
                     onItemCreate({
-                        id: generateUniqueId(),
+                        id: createdPersonId,
                         type: modalState.type,
                         date: new Date(nextDate),
                         crewId: createCrewId,
                         depotId: modalState.target?.depotId || modalState.data?.depotId || "",
                         ...data
+                    });
+
+                    // Initialize stable order for that day/cell if no manual order exists yet
+                    const loopCellOrderKey = `${createCrewId}|${format(startOfDay(new Date(nextDate)), "yyyy-MM-dd")}`;
+                    setCellItemOrder((prev) => {
+                      if (prev[loopCellOrderKey] && prev[loopCellOrderKey].length) return prev;
+                      const existingPeopleIds = items
+                        .filter(
+                          (i: ScheduleItem) =>
+                            (i.type === "operative" || i.type === "assistant") &&
+                            i.crewId === createCrewId &&
+                            isSameDay(new Date(i.date), new Date(nextDate))
+                        )
+                        .map((i) => i.id);
+                      const nextOrder = Array.from(new Set([...existingPeopleIds, createdPersonId]));
+                      return { ...prev, [loopCellOrderKey]: nextOrder };
                     });
                     
                     // Create free job for this day
@@ -3339,59 +3477,81 @@ export function CalendarGrid({
                                                     />
                                                 ))}
                                                 {/* Crew names (operatives/assistants) appear after notes */}
-                                                {peopleItems.length > 0 && (
-                                                  isCombinedMode ? (
-                                                    <div className={cn(
-                                                      "w-full grid gap-1",
-                                                      peopleItems.filter(i => i.id && typeof i.id === 'string').length === 1 ? "grid-cols-1" : "grid-cols-2"
-                                                    )}>
-                                                      {peopleItems
-                                                        .filter((i) => i.id && typeof i.id === "string")
-                                                        .map((item) => (
-                                                          <OperativeCard 
-                                                            key={item.id} 
-                                                            item={item}
-                                                            onEdit={handleEditItem} 
-                                                            onDelete={(id, mode) => handleDeleteItem(id, mode)} 
-                                                            onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
-                                                            employees={employees}
-                                                            vehicles={vehicles}
-                                                            isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
-                                                            isSelected={selectedItemIds.has(item.id)}
-                                                            onToggleSelection={handleToggleSelection}
-                                                            selectedItemIds={selectedItemIds}
-                                                            onDuplicateSelected={handleDuplicateSelected}
-                                                            onDeleteSelected={handleDeleteSelected}
-                                                            onBookTimeOff={handleOpenEmployeeTimeOff}
-                                                          />
-                                                        ))}
-                                                    </div>
-                                                  ) : (
-                                                    <div className={cn(
-                                                      "w-full grid gap-1",
-                                                      peopleItems.length === 1 ? "grid-cols-1" : "grid-cols-2"
-                                                    )}>
-                                                      {peopleItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
-                                                        <OperativeCard 
-                                                          key={item.id} 
-                                                          item={item}
-                                                          onEdit={handleEditItem} 
-                                                          onDelete={(id, mode) => handleDeleteItem(id, mode)} 
-                                                          onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
-                                                          employees={employees}
-                                                          vehicles={vehicles}
-                                                          isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
-                                                          isSelected={selectedItemIds.has(item.id)}
-                                                          onToggleSelection={handleToggleSelection}
-                                                          selectedItemIds={selectedItemIds}
-                                                          onDuplicateSelected={handleDuplicateSelected}
-                                                          onDeleteSelected={handleDeleteSelected}
-                                                          onBookTimeOff={handleOpenEmployeeTimeOff}
-                                                        />
+                                                {peopleItems.length > 0 && (() => {
+                                                  const validPeople = peopleItems.filter((i) => i.id && typeof i.id === "string");
+                                                  const operatives = validPeople.filter((p) => p.type === "operative");
+                                                  const assistants = validPeople.filter((p) => p.type === "assistant");
+
+                                                  // Pair assistants to operatives by matching vehicleId when possible.
+                                                  const unusedAssistants = [...assistants];
+                                                  const takeAssistantForOperative = (op: ScheduleItem) => {
+                                                    if (op.vehicleId) {
+                                                      const idx = unusedAssistants.findIndex((a) => a.vehicleId && a.vehicleId === op.vehicleId);
+                                                      if (idx >= 0) return unusedAssistants.splice(idx, 1)[0];
+                                                    }
+                                                    if (unusedAssistants.length > 0) return unusedAssistants.shift();
+                                                    return undefined;
+                                                  };
+
+                                                  const rows: Array<{ operative?: ScheduleItem; assistant?: ScheduleItem }> = operatives.map((op) => ({
+                                                    operative: op,
+                                                    assistant: takeAssistantForOperative(op),
+                                                  }));
+
+                                                  // Any remaining assistants become their own row (assistant on the right)
+                                                  unusedAssistants.forEach((a) => rows.push({ assistant: a }));
+
+                                                  return (
+                                                    <div className="w-full flex flex-col gap-1">
+                                                      {rows.map((row, idx) => (
+                                                        <div key={`${row.operative?.id || "none"}-${row.assistant?.id || "none"}-${idx}`} className="w-full grid grid-cols-2 gap-1">
+                                                          <div className="min-w-0">
+                                                            {row.operative ? (
+                                                              <OperativeCard
+                                                                item={row.operative}
+                                                                onEdit={handleEditItem}
+                                                                onDelete={(id, mode) => handleDeleteItem(id, mode)}
+                                                                onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
+                                                                employees={employees}
+                                                                vehicles={vehicles}
+                                                                isReadOnly={isReadOnly || isBefore(startOfDay(new Date(row.operative.date)), startOfDay(new Date()))}
+                                                                isSelected={selectedItemIds.has(row.operative.id)}
+                                                                onToggleSelection={handleToggleSelection}
+                                                                selectedItemIds={selectedItemIds}
+                                                                onDuplicateSelected={handleDuplicateSelected}
+                                                                onDeleteSelected={handleDeleteSelected}
+                                                                onBookTimeOff={handleOpenEmployeeTimeOff}
+                                                              />
+                                                            ) : (
+                                                              <div />
+                                                            )}
+                                                          </div>
+                                                          <div className="min-w-0">
+                                                            {row.assistant ? (
+                                                              <OperativeCard
+                                                                item={row.assistant}
+                                                                onEdit={handleEditItem}
+                                                                onDelete={(id, mode) => handleDeleteItem(id, mode)}
+                                                                onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
+                                                                employees={employees}
+                                                                vehicles={vehicles}
+                                                                isReadOnly={isReadOnly || isBefore(startOfDay(new Date(row.assistant.date)), startOfDay(new Date()))}
+                                                                isSelected={selectedItemIds.has(row.assistant.id)}
+                                                                onToggleSelection={handleToggleSelection}
+                                                                selectedItemIds={selectedItemIds}
+                                                                onDuplicateSelected={handleDuplicateSelected}
+                                                                onDeleteSelected={handleDeleteSelected}
+                                                                onBookTimeOff={handleOpenEmployeeTimeOff}
+                                                              />
+                                                            ) : (
+                                                              <div />
+                                                            )}
+                                                          </div>
+                                                        </div>
                                                       ))}
                                                     </div>
-                                                  )
-                                                )}
+                                                  );
+                                                })()}
                                                 {/* Jobs appear last */}
                                                 {visibleJobItems.map((item) => (
                                                     <SiteCard 
@@ -3821,59 +3981,81 @@ export function CalendarGrid({
                                                     />
                                                 ))}
                                                 {/* Crew names (operatives/assistants) appear after notes */}
-                                                {peopleItems.filter(i => i.id && typeof i.id === 'string').length > 0 && (
-                                                  isCombinedMode ? (
-                                                    <div className={cn(
-                                                      "w-full grid gap-1",
-                                                      peopleItems.filter(i => i.id && typeof i.id === 'string').length === 1 ? "grid-cols-1" : "grid-cols-2"
-                                                    )}>
-                                                      {peopleItems
-                                                        .filter((i) => i.id && typeof i.id === "string")
-                                                        .map((item) => (
-                                                          <OperativeCard 
-                                                            key={item.id} 
-                                                            item={item}
-                                                            onEdit={handleEditItem} 
-                                                            onDelete={(id, mode) => handleDeleteItem(id, mode)} 
-                                                            onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
-                                                            employees={employees}
-                                                            vehicles={vehicles}
-                                                            isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
-                                                            isSelected={selectedItemIds.has(item.id)}
-                                                            onToggleSelection={handleToggleSelection}
-                                                            selectedItemIds={selectedItemIds}
-                                                            onDuplicateSelected={handleDuplicateSelected}
-                                                            onDeleteSelected={handleDeleteSelected}
-                                                            onBookTimeOff={handleOpenEmployeeTimeOff}
-                                                          />
-                                                        ))}
-                                                    </div>
-                                                  ) : (
-                                                    <div className={cn(
-                                                      "w-full grid gap-1",
-                                                      peopleItems.filter(i => i.id && typeof i.id === 'string').length === 1 ? "grid-cols-1" : "grid-cols-2"
-                                                    )}>
-                                                      {peopleItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
-                                                        <OperativeCard 
-                                                          key={item.id} 
-                                                          item={item}
-                                                          onEdit={handleEditItem} 
-                                                          onDelete={(id, mode) => handleDeleteItem(id, mode)} 
-                                                          onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
-                                                          employees={employees}
-                                                          vehicles={vehicles}
-                                                          isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
-                                                          isSelected={selectedItemIds.has(item.id)}
-                                                          onToggleSelection={handleToggleSelection}
-                                                          selectedItemIds={selectedItemIds}
-                                                          onDuplicateSelected={handleDuplicateSelected}
-                                                          onDeleteSelected={handleDeleteSelected}
-                                                          onBookTimeOff={handleOpenEmployeeTimeOff}
-                                                        />
+                                                {peopleItems.filter(i => i.id && typeof i.id === 'string').length > 0 && (() => {
+                                                  const validPeople = peopleItems.filter((i) => i.id && typeof i.id === "string");
+                                                  const operatives = validPeople.filter((p) => p.type === "operative");
+                                                  const assistants = validPeople.filter((p) => p.type === "assistant");
+
+                                                  // Pair assistants to operatives by matching vehicleId when possible.
+                                                  const unusedAssistants = [...assistants];
+                                                  const takeAssistantForOperative = (op: ScheduleItem) => {
+                                                    if (op.vehicleId) {
+                                                      const idx = unusedAssistants.findIndex((a) => a.vehicleId && a.vehicleId === op.vehicleId);
+                                                      if (idx >= 0) return unusedAssistants.splice(idx, 1)[0];
+                                                    }
+                                                    if (unusedAssistants.length > 0) return unusedAssistants.shift();
+                                                    return undefined;
+                                                  };
+
+                                                  const rows: Array<{ operative?: ScheduleItem; assistant?: ScheduleItem }> = operatives.map((op) => ({
+                                                    operative: op,
+                                                    assistant: takeAssistantForOperative(op),
+                                                  }));
+
+                                                  // Any remaining assistants become their own row (assistant on the right)
+                                                  unusedAssistants.forEach((a) => rows.push({ assistant: a }));
+
+                                                  return (
+                                                    <div className="w-full flex flex-col gap-1">
+                                                      {rows.map((row, idx) => (
+                                                        <div key={`${row.operative?.id || "none"}-${row.assistant?.id || "none"}-${idx}`} className="w-full grid grid-cols-2 gap-1">
+                                                          <div className="min-w-0">
+                                                            {row.operative ? (
+                                                              <OperativeCard
+                                                                item={row.operative}
+                                                                onEdit={handleEditItem}
+                                                                onDelete={(id, mode) => handleDeleteItem(id, mode)}
+                                                                onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
+                                                                employees={employees}
+                                                                vehicles={vehicles}
+                                                                isReadOnly={isReadOnly || isBefore(startOfDay(new Date(row.operative.date)), startOfDay(new Date()))}
+                                                                isSelected={selectedItemIds.has(row.operative.id)}
+                                                                onToggleSelection={handleToggleSelection}
+                                                                selectedItemIds={selectedItemIds}
+                                                                onDuplicateSelected={handleDuplicateSelected}
+                                                                onDeleteSelected={handleDeleteSelected}
+                                                                onBookTimeOff={handleOpenEmployeeTimeOff}
+                                                              />
+                                                            ) : (
+                                                              <div />
+                                                            )}
+                                                          </div>
+                                                          <div className="min-w-0">
+                                                            {row.assistant ? (
+                                                              <OperativeCard
+                                                                item={row.assistant}
+                                                                onEdit={handleEditItem}
+                                                                onDelete={(id, mode) => handleDeleteItem(id, mode)}
+                                                                onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
+                                                                employees={employees}
+                                                                vehicles={vehicles}
+                                                                isReadOnly={isReadOnly || isBefore(startOfDay(new Date(row.assistant.date)), startOfDay(new Date()))}
+                                                                isSelected={selectedItemIds.has(row.assistant.id)}
+                                                                onToggleSelection={handleToggleSelection}
+                                                                selectedItemIds={selectedItemIds}
+                                                                onDuplicateSelected={handleDuplicateSelected}
+                                                                onDeleteSelected={handleDeleteSelected}
+                                                                onBookTimeOff={handleOpenEmployeeTimeOff}
+                                                              />
+                                                            ) : (
+                                                              <div />
+                                                            )}
+                                                          </div>
+                                                        </div>
                                                       ))}
                                                     </div>
-                                                  )
-                                                )}
+                                                  );
+                                                })()}
                                                 {/* Jobs appear last */}
                                                 {visibleJobItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
                                                     <SiteCard 
@@ -4056,6 +4238,10 @@ export function CalendarGrid({
           onConfirm={handleVehiclePairingConfirm}
           onCancel={handleVehiclePairingCancel}
           vehiclePairing={vehiclePairingDialog.vehiclePairing}
+          applyPeriod={vehiclePairingDialog.applyPeriod}
+          onApplyPeriodChange={(value) => {
+            setVehiclePairingDialog((prev) => (prev ? { ...prev, applyPeriod: value } : prev));
+          }}
         />
       )}
 

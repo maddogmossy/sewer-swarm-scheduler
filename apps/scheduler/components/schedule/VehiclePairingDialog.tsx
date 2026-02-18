@@ -8,6 +8,8 @@ interface VehiclePairingDialogProps {
   onConfirm: () => void;
   onCancel: () => void;
   vehiclePairing: string; // e.g., "CCTV/Jet Vac" or "CCTV/Van Pack"
+  applyPeriod: "none" | "week" | "month" | "6months" | "12months";
+  onApplyPeriodChange: (value: "none" | "week" | "month" | "6months" | "12months") => void;
 }
 
 export function VehiclePairingDialog({
@@ -16,6 +18,8 @@ export function VehiclePairingDialog({
   onConfirm,
   onCancel,
   vehiclePairing,
+  applyPeriod,
+  onApplyPeriodChange,
 }: VehiclePairingDialogProps) {
   const handleConfirm = () => {
     // Parent controls closing; avoid double-calling cancel via onOpenChange(false)
@@ -48,6 +52,52 @@ export function VehiclePairingDialog({
           <p className="text-sm text-slate-700 mb-4">
             Would you like to combine these vehicles into a single job, or keep them as separate jobs?
           </p>
+
+          <div className="mb-4">
+            <p className="text-sm font-medium text-slate-700 mb-2">Apply combine across:</p>
+            <div className="flex flex-wrap gap-2">
+              <Button
+                type="button"
+                variant={applyPeriod === "none" ? "default" : "outline"}
+                onClick={() => onApplyPeriodChange("none")}
+                className={applyPeriod === "none" ? "bg-blue-600 hover:bg-blue-700 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-50"}
+              >
+                This Day Only
+              </Button>
+              <Button
+                type="button"
+                variant={applyPeriod === "week" ? "default" : "outline"}
+                onClick={() => onApplyPeriodChange("week")}
+                className={applyPeriod === "week" ? "bg-blue-600 hover:bg-blue-700 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-50"}
+              >
+                Remainder of Week
+              </Button>
+              <Button
+                type="button"
+                variant={applyPeriod === "month" ? "default" : "outline"}
+                onClick={() => onApplyPeriodChange("month")}
+                className={applyPeriod === "month" ? "bg-blue-600 hover:bg-blue-700 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-50"}
+              >
+                Month
+              </Button>
+              <Button
+                type="button"
+                variant={applyPeriod === "6months" ? "default" : "outline"}
+                onClick={() => onApplyPeriodChange("6months")}
+                className={applyPeriod === "6months" ? "bg-blue-600 hover:bg-blue-700 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-50"}
+              >
+                6 Months
+              </Button>
+              <Button
+                type="button"
+                variant={applyPeriod === "12months" ? "default" : "outline"}
+                onClick={() => onApplyPeriodChange("12months")}
+                className={applyPeriod === "12months" ? "bg-blue-600 hover:bg-blue-700 text-white" : "border-slate-300 text-slate-700 hover:bg-slate-50"}
+              >
+                12 Months
+              </Button>
+            </div>
+          </div>
           <div className="bg-slate-50 rounded-lg p-3 border border-slate-200">
             <div className="flex items-center gap-2 text-sm text-slate-600">
               <Truck className="w-4 h-4" />

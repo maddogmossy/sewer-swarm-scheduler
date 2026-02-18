@@ -174,6 +174,27 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
     vehicle?.category ||
     "No Vehicle Type";
 
+  const handleDuplicateClick = (
+    mode:
+      | "single"
+      | "week"
+      | "following_week"
+      | "custom"
+      | "remainder_month"
+      | "remainder_year"
+      | "next_2_months"
+      | "next_3_months"
+      | "next_4_months"
+      | "next_5_months"
+      | "next_6_months",
+    days?: number
+  ) => {
+    // #region agent log
+    fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'SiteCard.tsx:handleDuplicateClick',message:'Duplicate menu clicked',data:{mode,days,item:{id:item.id,type:item.type,jobStatus:(item as any).jobStatus,customer:(item as any).customer,color:(item as any).color,crewId:(item as any).crewId,dateKey:item.date?format(startOfDay(new Date(item.date)),'yyyy-MM-dd'):null,vehicleId:(item as any).vehicleId,vehicleType:(item as any).vehicleType},ui:{isFreeJob,isRemainingFreeTimeGhost,ghostVehicleLabel,freeJobVehicleLabel}},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+    onDuplicate(item, mode, days);
+  };
+
   // (debug logs removed)
 
   // Look up color from vehicleTypes config based on ghostVehicleLabel (for both free and booked jobs)
@@ -527,38 +548,38 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                                                 <Copy className="w-3 h-3 mr-2" /> Duplicate
                                             </DropdownMenuSubTrigger>
                                             <DropdownMenuSubContent className="w-48 bg-white">
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'single')} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('single')} className={softMenuItemClass}>
                                                     Duplicate Single
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'custom', 5)} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('custom', 5)} className={softMenuItemClass}>
                                                     <CalendarDays className="w-3 h-3 mr-2" /> Next 5 Days
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'week')} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('week')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'following_week')} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('following_week')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Following Week
                                                 </DropdownMenuItem>
                                                 <DropdownMenuSeparator />
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'remainder_month')} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('remainder_month')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'remainder_year')} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('remainder_year')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_2_months')} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('next_2_months')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_3_months')} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('next_3_months')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_4_months')} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('next_4_months')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_5_months')} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('next_5_months')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
                                                 </DropdownMenuItem>
-                                                <DropdownMenuItem onClick={() => onDuplicate(item, 'next_6_months')} className={softMenuItemClass}>
+                                                <DropdownMenuItem onClick={() => handleDuplicateClick('next_6_months')} className={softMenuItemClass}>
                                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
                                                 </DropdownMenuItem>
                                             </DropdownMenuSubContent>
@@ -667,38 +688,38 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                                 <Copy className="w-3 h-3 mr-2" /> Duplicate
                             </ContextMenuSubTrigger>
                     <ContextMenuSubContent className="w-48 bg-white">
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'single')} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('single')} className={softMenuItemClass}>
                                     Duplicate Single
                                 </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'custom', 5)} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('custom', 5)} className={softMenuItemClass}>
                                     <CalendarDays className="w-3 h-3 mr-2" /> Next 5 Days
                                 </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'week')} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('week')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Week
                                 </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'following_week')} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('following_week')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Following Week
                                 </ContextMenuItem>
                                 <ContextMenuSeparator />
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'remainder_month')} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('remainder_month')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Month
                                 </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'remainder_year')} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('remainder_year')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Remainder of Year
                                 </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_2_months')} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('next_2_months')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 2 Months
                                 </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_3_months')} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('next_3_months')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 3 Months
                                 </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_4_months')} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('next_4_months')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 4 Months
                                 </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_5_months')} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('next_5_months')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 5 Months
                                 </ContextMenuItem>
-                        <ContextMenuItem onClick={() => onDuplicate(item, 'next_6_months')} className={softMenuItemClass}>
+                        <ContextMenuItem onClick={() => handleDuplicateClick('next_6_months')} className={softMenuItemClass}>
                                     <CalendarRange className="w-3 h-3 mr-2" /> Next 6 Months
                                 </ContextMenuItem>
                             </ContextMenuSubContent>

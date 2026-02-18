@@ -3099,6 +3099,16 @@ export function CalendarGrid({
                                 // Separate free and booked jobs
                                 const freeJobs = jobItems.filter(isFreeJobItem);
                                 const bookedJobs = jobItems.filter(j => !isFreeJobItem(j));
+
+                                // Auto-linked Free jobs (created/maintained from operative+vehicle assignments)
+                                const autoLinkedFreeJobs = freeJobs.filter(isAutoLinkedFreeJob);
+                                const autoFreeByEmployeeId = new Map<string, ScheduleItem>();
+                                autoLinkedFreeJobs.forEach((j) => {
+                                  if (j.employeeId && !autoFreeByEmployeeId.has(j.employeeId)) {
+                                    autoFreeByEmployeeId.set(j.employeeId, j);
+                                  }
+                                });
+                                const unlinkedFreeJobs = freeJobs.filter((j) => !isAutoLinkedFreeJob(j));
                                 
                                 // Calculate remaining free time ONLY if there are booked jobs and total < 8 hours
                                 const totalBookedDuration = bookedJobs.reduce((sum, job) => {
@@ -3185,9 +3195,9 @@ export function CalendarGrid({
                                 // IMPORTANT: if a real Free job already exists, don't also render the virtual remaining-free-time ghost
                                 // (it looks like an undeletable duplicate Free card).
                                 const visibleJobItems = [
-                                  ...(freeJobs[0] ? [freeJobs[0]] : []),
+                                  ...unlinkedFreeJobs,
                                   ...bookedJobs,
-                                  ...(!freeJobs[0] && remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
+                                  ...(freeJobs.length === 0 && remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
                                 ];
 
                                 const ghostVehicleLabel = getGhostVehicleLabelForCellDisplay(peopleItems, crew.id, day);
@@ -3235,29 +3245,78 @@ export function CalendarGrid({
                                                 ))}
                                                 {/* Crew names (operatives/assistants) appear after notes */}
                                                 {peopleItems.length > 0 && (
-                                                    <div className={cn(
-                                                        "w-full grid gap-1",
-                                                        peopleItems.length === 1 ? "grid-cols-1" : "grid-cols-2"
-                                                    )}>
-                                                        {peopleItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
-                                                        <OperativeCard 
-                                                                key={item.id} 
-                                                                item={item}
-                                                                onEdit={handleEditItem} 
-                                                                onDelete={(id, mode) => handleDeleteItem(id, mode)} 
-                                                                onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
+                                                  autoLinkedFreeJobs.length > 0 ? (
+                                                    <div className="w-full flex flex-col gap-1">
+                                                      {peopleItems
+                                                        .filter((i) => i.id && typeof i.id === "string")
+                                                        .map((person) => {
+                                                          const linked = person.employeeId ? autoFreeByEmployeeId.get(person.employeeId) : undefined;
+                                                          return (
+                                                            <div key={person.id} className="w-full flex flex-col gap-1">
+                                                              <OperativeCard
+                                                                item={person}
+                                                                onEdit={handleEditItem}
+                                                                onDelete={(id, mode) => handleDeleteItem(id, mode)}
+                                                                onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
                                                                 employees={employees}
                                                                 vehicles={vehicles}
-                                                                isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
-                                                                isSelected={selectedItemIds.has(item.id)}
+                                                                isReadOnly={isReadOnly || isBefore(startOfDay(new Date(person.date)), startOfDay(new Date()))}
+                                                                isSelected={selectedItemIds.has(person.id)}
                                                                 onToggleSelection={handleToggleSelection}
                                                                 selectedItemIds={selectedItemIds}
                                                                 onDuplicateSelected={handleDuplicateSelected}
                                                                 onDeleteSelected={handleDeleteSelected}
                                                                 onBookTimeOff={handleOpenEmployeeTimeOff}
-                                                            />
-                                                        ))}
+                                                              />
+                                                              {linked && (
+                                                                <SiteCard
+                                                                  item={linked}
+                                                                  vehicles={vehicles}
+                                                                  onEdit={handleEditItem}
+                                                                  onDelete={(id, mode) => handleDeleteItem(id, mode)}
+                                                                  onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
+                                                                  isReadOnly={isReadOnly || isBefore(startOfDay(new Date(linked.date)), startOfDay(new Date()))}
+                                                                  isSelected={selectedItemIds.has(linked.id)}
+                                                                  onToggleSelection={handleToggleSelection}
+                                                                  selectedItemIds={selectedItemIds}
+                                                                  onDuplicateSelected={handleDuplicateSelected}
+                                                                  onDeleteSelected={handleDeleteSelected}
+                                                                  ghostVehicleLabel={ghostVehicleLabel}
+                                                                  colorLabels={colorLabels}
+                                                                  vehicleTypes={vehicleTypes}
+                                                                  peopleItems={peopleItems}
+                                                                  disableDrag
+                                                                />
+                                                              )}
+                                                            </div>
+                                                          );
+                                                        })}
                                                     </div>
+                                                  ) : (
+                                                    <div className={cn(
+                                                      "w-full grid gap-1",
+                                                      peopleItems.length === 1 ? "grid-cols-1" : "grid-cols-2"
+                                                    )}>
+                                                      {peopleItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
+                                                        <OperativeCard 
+                                                          key={item.id} 
+                                                          item={item}
+                                                          onEdit={handleEditItem} 
+                                                          onDelete={(id, mode) => handleDeleteItem(id, mode)} 
+                                                          onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
+                                                          employees={employees}
+                                                          vehicles={vehicles}
+                                                          isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
+                                                          isSelected={selectedItemIds.has(item.id)}
+                                                          onToggleSelection={handleToggleSelection}
+                                                          selectedItemIds={selectedItemIds}
+                                                          onDuplicateSelected={handleDuplicateSelected}
+                                                          onDeleteSelected={handleDeleteSelected}
+                                                          onBookTimeOff={handleOpenEmployeeTimeOff}
+                                                        />
+                                                      ))}
+                                                    </div>
+                                                  )
                                                 )}
                                                 {/* Jobs appear last */}
                                                 {visibleJobItems.map((item) => (
@@ -3550,6 +3609,16 @@ export function CalendarGrid({
                                 // Separate free and booked jobs
                                 const freeJobs = jobItems.filter(isFreeJobItem);
                                 const bookedJobs = jobItems.filter(j => !isFreeJobItem(j));
+
+                                // Auto-linked Free jobs (created/maintained from operative+vehicle assignments)
+                                const autoLinkedFreeJobs = freeJobs.filter(isAutoLinkedFreeJob);
+                                const autoFreeByEmployeeId = new Map<string, ScheduleItem>();
+                                autoLinkedFreeJobs.forEach((j) => {
+                                  if (j.employeeId && !autoFreeByEmployeeId.has(j.employeeId)) {
+                                    autoFreeByEmployeeId.set(j.employeeId, j);
+                                  }
+                                });
+                                const unlinkedFreeJobs = freeJobs.filter((j) => !isAutoLinkedFreeJob(j));
                                 
                                 // Calculate remaining free time ONLY if there are booked jobs and total < 8 hours
                                 const totalBookedDuration = bookedJobs.reduce((sum, job) => {
@@ -3636,9 +3705,9 @@ export function CalendarGrid({
                                 // IMPORTANT: if a real Free job already exists, don't also render the virtual remaining-free-time ghost
                                 // (it looks like an undeletable duplicate Free card).
                                 const visibleJobItems = [
-                                  ...(freeJobs[0] ? [freeJobs[0]] : []),
+                                  ...unlinkedFreeJobs,
                                   ...bookedJobs,
-                                  ...(!freeJobs[0] && remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
+                                  ...(freeJobs.length === 0 && remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
                                 ];
 
                                 const ghostVehicleLabel = getGhostVehicleLabelForCellDisplay(peopleItems, crew.id, day);
@@ -3695,29 +3764,78 @@ export function CalendarGrid({
                                                 ))}
                                                 {/* Crew names (operatives/assistants) appear after notes */}
                                                 {peopleItems.filter(i => i.id && typeof i.id === 'string').length > 0 && (
-                                                    <div className={cn(
-                                                        "w-full grid gap-1",
-                                                        peopleItems.filter(i => i.id && typeof i.id === 'string').length === 1 ? "grid-cols-1" : "grid-cols-2"
-                                                    )}>
-                                                        {peopleItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
-                                                        <OperativeCard 
-                                                                key={item.id} 
-                                                                item={item}
-                                                                onEdit={handleEditItem} 
-                                                                onDelete={(id, mode) => handleDeleteItem(id, mode)} 
-                                                                onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
+                                                  autoLinkedFreeJobs.length > 0 ? (
+                                                    <div className="w-full flex flex-col gap-1">
+                                                      {peopleItems
+                                                        .filter((i) => i.id && typeof i.id === "string")
+                                                        .map((person) => {
+                                                          const linked = person.employeeId ? autoFreeByEmployeeId.get(person.employeeId) : undefined;
+                                                          return (
+                                                            <div key={person.id} className="w-full flex flex-col gap-1">
+                                                              <OperativeCard
+                                                                item={person}
+                                                                onEdit={handleEditItem}
+                                                                onDelete={(id, mode) => handleDeleteItem(id, mode)}
+                                                                onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
                                                                 employees={employees}
                                                                 vehicles={vehicles}
-                                                                isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
-                                                                isSelected={selectedItemIds.has(item.id)}
+                                                                isReadOnly={isReadOnly || isBefore(startOfDay(new Date(person.date)), startOfDay(new Date()))}
+                                                                isSelected={selectedItemIds.has(person.id)}
                                                                 onToggleSelection={handleToggleSelection}
                                                                 selectedItemIds={selectedItemIds}
                                                                 onDuplicateSelected={handleDuplicateSelected}
                                                                 onDeleteSelected={handleDeleteSelected}
                                                                 onBookTimeOff={handleOpenEmployeeTimeOff}
-                                                            />
-                                                        ))}
+                                                              />
+                                                              {linked && (
+                                                                <SiteCard
+                                                                  item={linked}
+                                                                  vehicles={vehicles}
+                                                                  onEdit={handleEditItem}
+                                                                  onDelete={(id, mode) => handleDeleteItem(id, mode)}
+                                                                  onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
+                                                                  isReadOnly={isReadOnly || isBefore(startOfDay(new Date(linked.date)), startOfDay(new Date()))}
+                                                                  isSelected={selectedItemIds.has(linked.id)}
+                                                                  onToggleSelection={handleToggleSelection}
+                                                                  selectedItemIds={selectedItemIds}
+                                                                  onDuplicateSelected={handleDuplicateSelected}
+                                                                  onDeleteSelected={handleDeleteSelected}
+                                                                  ghostVehicleLabel={ghostVehicleLabel}
+                                                                  colorLabels={colorLabels}
+                                                                  vehicleTypes={vehicleTypes}
+                                                                  peopleItems={peopleItems}
+                                                                  disableDrag
+                                                                />
+                                                              )}
+                                                            </div>
+                                                          );
+                                                        })}
                                                     </div>
+                                                  ) : (
+                                                    <div className={cn(
+                                                      "w-full grid gap-1",
+                                                      peopleItems.filter(i => i.id && typeof i.id === 'string').length === 1 ? "grid-cols-1" : "grid-cols-2"
+                                                    )}>
+                                                      {peopleItems.filter(i => i.id && typeof i.id === 'string').map((item) => (
+                                                        <OperativeCard 
+                                                          key={item.id} 
+                                                          item={item}
+                                                          onEdit={handleEditItem} 
+                                                          onDelete={(id, mode) => handleDeleteItem(id, mode)} 
+                                                          onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
+                                                          employees={employees}
+                                                          vehicles={vehicles}
+                                                          isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
+                                                          isSelected={selectedItemIds.has(item.id)}
+                                                          onToggleSelection={handleToggleSelection}
+                                                          selectedItemIds={selectedItemIds}
+                                                          onDuplicateSelected={handleDuplicateSelected}
+                                                          onDeleteSelected={handleDeleteSelected}
+                                                          onBookTimeOff={handleOpenEmployeeTimeOff}
+                                                        />
+                                                      ))}
+                                                    </div>
+                                                  )
                                                 )}
                                                 {/* Jobs appear last */}
                                                 {visibleJobItems.filter(i => i.id && typeof i.id === 'string').map((item) => (

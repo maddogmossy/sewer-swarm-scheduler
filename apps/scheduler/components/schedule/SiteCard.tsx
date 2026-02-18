@@ -34,6 +34,8 @@ interface SiteCardProps {
   onDelete: (id: string, mode: 'single' | 'week' | 'remainder_month' | 'remainder_year' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months') => void;
   onDuplicate: (item: ScheduleItem, mode: 'single' | 'week' | 'following_week' | 'custom' | 'remainder_month' | 'remainder_year' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months', days?: number) => void;
   isReadOnly?: boolean;
+  /** If true, this card cannot be dragged/reordered (used for linked ghost/free cards under an operative). */
+  disableDrag?: boolean;
   isSelected?: boolean;
   onToggleSelection?: (id: string, multi: boolean) => void;
   selectedItemIds?: Set<string>;
@@ -50,7 +52,7 @@ interface SiteCardProps {
   peopleItems?: ScheduleItem[];
 }
 
-export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [], ghostVehicleLabel, colorLabels, vehicleTypes, peopleItems = [] }: SiteCardProps) {
+export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, disableDrag = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [], ghostVehicleLabel, colorLabels, vehicleTypes, peopleItems = [] }: SiteCardProps) {
   // (debug logs removed)
   const hasMultipleSelected = selectedItemIds && selectedItemIds.size > 1 && selectedItemIds.has(item.id);
   const { settings } = useUISettings();
@@ -61,7 +63,7 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
     transform,
     transition,
     isDragging,
-  } = useSortable({ id: item.id, data: item, disabled: isReadOnly });
+  } = useSortable({ id: item.id, data: item, disabled: isReadOnly || disableDrag });
 
   const style = {
     transform: CSS.Transform.toString(transform),

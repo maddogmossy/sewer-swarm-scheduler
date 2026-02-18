@@ -3233,12 +3233,6 @@ export function CalendarGrid({
                                   normalizeVehicleTypeName(rawGhostLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColorForDecision;
                                 const pairingDecision = getEffectivePairingDecision(decisionCellKey, signatureForDecision);
                                 const isCombinedMode = isActionablePairing && pairingDecision === "combined";
-
-                                // #region agent log
-                                if (isActionablePairing) {
-                                  fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'CalendarGrid.tsx:nightCellCombinedMode',message:'Computed combined-mode for night cell',data:{decisionCellKey,pairingDecision,isCombinedMode,signatureForDecision,autoLinkedFreeJobsCount:autoLinkedFreeJobs.length,promptVehiclePairingDetected:settings.promptVehiclePairingDetected},timestamp:Date.now()})}).catch(()=>{});
-                                }
-                                // #endregion
                                 
                                 // Calculate remaining free time ONLY if there are booked jobs and total < 8 hours
                                 const totalBookedDuration = bookedJobs.reduce((sum, job) => {
@@ -3789,12 +3783,6 @@ export function CalendarGrid({
                                   normalizeVehicleTypeName(rawGhostLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColorForDecision;
                                 const pairingDecision = getEffectivePairingDecision(decisionCellKey, signatureForDecision);
                                 const isCombinedMode = isActionablePairing && pairingDecision === "combined";
-
-                                // #region agent log
-                                if (isActionablePairing) {
-                                  fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'CalendarGrid.tsx:dayCellCombinedMode',message:'Computed combined-mode for day cell',data:{decisionCellKey,pairingDecision,isCombinedMode,signatureForDecision,autoLinkedFreeJobsCount:autoLinkedFreeJobs.length,promptVehiclePairingDetected:settings.promptVehiclePairingDetected},timestamp:Date.now()})}).catch(()=>{});
-                                }
-                                // #endregion
                                 
                                 // Calculate remaining free time ONLY if there are booked jobs and total < 8 hours
                                 const totalBookedDuration = bookedJobs.reduce((sum, job) => {

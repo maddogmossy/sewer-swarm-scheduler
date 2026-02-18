@@ -130,6 +130,8 @@ function getGhostVehicleLabelForCell(
   };
 
   const isJetVac = (v: (typeof cellVehicles)[number]) => {
+    // Treat BJJ as Van Pack only (never as Jet Vac, even if the saved string is inconsistent)
+    if (isBjj(v)) return false;
     const cat = normalize(v.category);
     const type = normalize(v.vehicleType);
     const name = normalize(v.name);
@@ -137,6 +139,8 @@ function getGhostVehicleLabelForCell(
   };
 
   const isRecycler = (v: (typeof cellVehicles)[number]) => {
+    // Treat BJJ as Van Pack only (never as Recycler, even if the saved string is inconsistent)
+    if (isBjj(v)) return false;
     const cat = normalize(v.category);
     const type = normalize(v.vehicleType);
     const name = normalize(v.name);
@@ -337,6 +341,11 @@ export function CalendarGrid({
   const generateUniqueId = () => {
     return `item-${Date.now()}-${Math.random().toString(36).substr(2, 9)}-${Math.random().toString(36).substr(2, 9)}`;
   };
+
+  const isPersonItem = (item: ScheduleItem) => item.type === "operative" || item.type === "assistant";
+
+  const isAutoLinkedFreeJob = (item: ScheduleItem) =>
+    isFreeJobItem(item) && item.type === "job" && !!item.employeeId;
   
   // Mock Email Status State
   const [emailStatus, setEmailStatus] = useState<Record<string, { sent: boolean, timestamp?: string }>>({});
@@ -421,6 +430,14 @@ export function CalendarGrid({
     vehicleSignature: string;
   } | null>(null);
 
+  // Drag-move scope dialog for operatives/assistants (day vs remainder of week)
+  const [personMoveDialog, setPersonMoveDialog] = useState<{
+    open: boolean;
+    activeItem: ScheduleItem;
+    targetCrewId: string;
+    targetDate: Date;
+  } | null>(null);
+
   type PairingDecision = "combined" | "separate";
   type PairingDecisionEntry = {
     decision: PairingDecision;
@@ -449,6 +466,199 @@ export function CalendarGrid({
     if (!entry) return undefined;
     if (entry.vehicleSignature !== signature) return undefined;
     return entry.decision;
+  };
+
+  const getDefaultColorForType = (type: string): string | undefined => {
+    if (!vehicleTypes || vehicleTypes.length === 0) return undefined;
+    const merged = mergeAndSortVehicleTypes(vehicleTypes);
+    const targetNorm = normalizeVehicleTypeName(type);
+    const found = merged.find((t) => normalizeVehicleTypeName(t.type) === targetNorm);
+    return found?.defaultColor;
+  };
+
+  const getVehicleTypeColorForVehicleId = (vehicleId?: string): string | undefined => {
+    if (!vehicleId) return undefined;
+    const v = vehicles.find((vv) => vv.id === vehicleId);
+    if (!v) return undefined;
+    const normalize = (value?: string) =>
+      (value || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
+    const name = normalize(v.name);
+    const cat = normalize(v.category);
+    const type = normalize(v.vehicleType);
+
+    // BJJ is always treated as CCTV/Van Pack for color
+    if (name.includes("bjj") || cat.includes("cctvvanpack") || cat.includes("cctvvan") || type.includes("cctvvanpack") || type.includes("cctvvan")) {
+      return getDefaultColorForType("CCTV/Van Pack") || v.color || undefined;
+    }
+
+    return (v.vehicleType ? getDefaultColorForType(v.vehicleType) : undefined) || v.color || undefined;
+  };
+
+  const getVehicleTypeDisplayNameFromConfig = (label: string) => {
+    if (!vehicleTypes || vehicleTypes.length === 0) return label;
+    const merged = mergeAndSortVehicleTypes(vehicleTypes);
+    const targetNorm = normalizeVehicleTypeName(label);
+    const found = merged.find((t) => normalizeVehicleTypeName(t.type) === targetNorm);
+    return found?.type || label;
+  };
+
+  const getPrimaryCctvLabelForCell = (peopleItems: ScheduleItem[]) => {
+    const vehicleIds = Array.from(
+      new Set(peopleItems.map((p) => p.vehicleId).filter((id): id is string => Boolean(id)))
+    );
+    if (vehicleIds.length === 0) return undefined;
+    const cellVehicles = vehicles.filter((v) => vehicleIds.includes(v.id));
+    if (cellVehicles.length === 0) return undefined;
+
+    const normalize = (value?: string) =>
+      (value || "").toLowerCase().replace(/\s+/g, "").replace(/-/g, "").replace(/\//g, "");
+
+    const isBjj = (v: (typeof cellVehicles)[number]) => {
+      const name = normalize(v.name);
+      const cat = normalize(v.category);
+      const type = normalize(v.vehicleType);
+      return name.includes("bjj") || cat.includes("bjj") || type.includes("bjj");
+    };
+
+    const hasCctvVanPack = cellVehicles.some((v) => {
+      const cat = normalize(v.category);
+      const type = normalize(v.vehicleType);
+      const name = normalize(v.name);
+      const originalCat = (v.category || "").toLowerCase();
+      const originalType = (v.vehicleType || "").toLowerCase();
+      return (
+        cat.includes("cctvvanpack") ||
+        cat.includes("cctvvan") ||
+        type.includes("cctvvanpack") ||
+        type.includes("cctvvan") ||
+        name.includes("cctvvanpack") ||
+        name.includes("cctvvan") ||
+        originalCat.includes("cctv/van pack") ||
+        originalCat.includes("cctv/vanpack") ||
+        originalType.includes("cctv/van pack") ||
+        originalType.includes("cctv/vanpack") ||
+        isBjj(v)
+      );
+    });
+
+    const hasCctv = cellVehicles.some((v) => {
+      const cat = normalize(v.category);
+      const type = normalize(v.vehicleType);
+      const name = normalize(v.name);
+      return cat.includes("cctv") || type.includes("cctv") || name.includes("cctv") || isBjj(v);
+    });
+
+    if (hasCctvVanPack) return getVehicleTypeDisplayNameFromConfig("CCTV/Van Pack");
+    if (hasCctv) return getVehicleTypeDisplayNameFromConfig("CCTV");
+    return undefined;
+  };
+
+  const getGhostVehicleLabelForCellDisplay = (peopleItems: ScheduleItem[], crewId: string, date: Date) => {
+    const baseLabel = getGhostVehicleLabelForCell(peopleItems, vehicles, vehicleTypes);
+    if (!baseLabel) return undefined;
+
+    const pairingColor = getColorForVehiclePairing(peopleItems, vehicles, vehicleTypes);
+    const cellKey = `${format(startOfDay(date), "yyyy-MM-dd")}-${crewId}`;
+    const signature = getVehicleSignatureForPeople(
+      peopleItems.filter((p) => isPersonItem(p) && p.vehicleId)
+    );
+    const decision = getEffectivePairingDecision(cellKey, signature);
+
+    const isActionablePairing =
+      normalizeVehicleTypeName(baseLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColor;
+
+    // Only show the combined label if the user explicitly chose “Combine”
+    if (isActionablePairing && decision !== "combined") {
+      return getPrimaryCctvLabelForCell(peopleItems) || baseLabel;
+    }
+
+    return baseLabel;
+  };
+
+  const syncAutoLinkedFreeJobsForCell = (itemsSnapshot: ScheduleItem[], crewId: string, date: Date) => {
+    const day = startOfDay(date);
+
+    const cellPeopleWithVehicles = itemsSnapshot.filter(
+      (i) =>
+        isPersonItem(i) &&
+        i.crewId === crewId &&
+        isSameDay(new Date(i.date), day) &&
+        !!i.employeeId &&
+        !!i.vehicleId
+    );
+
+    const cellAutoFreeJobs = itemsSnapshot.filter(
+      (i) =>
+        isAutoLinkedFreeJob(i) &&
+        i.crewId === crewId &&
+        isSameDay(new Date(i.date), day)
+    );
+
+    const peopleByEmployeeId = new Map<string, ScheduleItem>();
+    cellPeopleWithVehicles.forEach((p) => {
+      if (p.employeeId) peopleByEmployeeId.set(p.employeeId, p);
+    });
+
+    // 1) Remove stale auto-Free jobs if the person is no longer in the cell
+    cellAutoFreeJobs.forEach((job) => {
+      const empId = job.employeeId;
+      if (!empId) return;
+      if (!peopleByEmployeeId.has(empId)) {
+        onItemDelete(job.id);
+      }
+    });
+
+    // 2) Ensure exactly one auto-Free job per person-with-vehicle, and keep it aligned (vehicleId + color)
+    cellPeopleWithVehicles.forEach((person) => {
+      const empId = person.employeeId!;
+      const jobsForPerson = cellAutoFreeJobs.filter((j) => j.employeeId === empId);
+      const primary = jobsForPerson[0];
+
+      const cellKey = `${format(day, "yyyy-MM-dd")}-${crewId}`;
+      const signature = getVehicleSignatureForPeople(cellPeopleWithVehicles);
+      const decision = getEffectivePairingDecision(cellKey, signature);
+      const ghostVehicleLabel = getGhostVehicleLabelForCell(cellPeopleWithVehicles, vehicles, vehicleTypes);
+      const pairingColor = getColorForVehiclePairing(cellPeopleWithVehicles, vehicles, vehicleTypes);
+      const isActionablePairing =
+        normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColor;
+
+      const desiredColor =
+        isActionablePairing && decision === "combined"
+          ? pairingColor
+          : getVehicleTypeColorForVehicleId(person.vehicleId) || "blue";
+
+      if (!primary) {
+        onItemCreate({
+          id: generateUniqueId(),
+          type: "job",
+          date: new Date(day),
+          crewId,
+          depotId: person.depotId || "",
+          jobStatus: "free",
+          customer: "Free",
+          address: "Free",
+          startTime: "08:00",
+          duration: 8,
+          color: desiredColor,
+          employeeId: empId,
+          vehicleId: person.vehicleId,
+        });
+      } else {
+        const needsVehicleUpdate = person.vehicleId && primary.vehicleId !== person.vehicleId;
+        const needsColorUpdate = desiredColor && primary.color !== desiredColor;
+
+        if (needsVehicleUpdate || needsColorUpdate) {
+          onItemUpdate({
+            ...primary,
+            vehicleId: person.vehicleId,
+            color: desiredColor,
+          });
+        }
+
+        // Remove duplicates (keep the first)
+        jobsForPerson.slice(1).forEach((dup) => onItemDelete(dup.id));
+      }
+    });
   };
 
   // Clear decisions if vehicles change or pairing is no longer actionable
@@ -669,6 +879,18 @@ export function CalendarGrid({
                    return { ...prev, [cellKey]: nextOrder };
                  });
              } else if (!isSameCell) {
+                 // For people items, prompt for scope (day vs remainder of week) and move linked Free jobs too.
+                 if (isPersonItem(activeItem)) {
+                   setPersonMoveDialog({
+                     open: true,
+                     activeItem,
+                     targetCrewId,
+                     targetDate: newDate,
+                   });
+                   setActiveId(null);
+                   return;
+                 }
+
                  // Detect if this move action would create an actionable pairing in the TARGET cell.
                  if (!vehiclePairingDialog?.open) {
                    const simulatedPeopleItems = [
@@ -1296,6 +1518,110 @@ export function CalendarGrid({
     setVehiclePairingDialog(null);
   };
 
+  const applyPersonMove = (scope: "day" | "week") => {
+    if (!personMoveDialog) return;
+    const { activeItem, targetCrewId, targetDate } = personMoveDialog;
+
+    const sourceDate = startOfDay(new Date(activeItem.date));
+    const targetDateStart = startOfDay(new Date(targetDate));
+    const dayMs = 1000 * 60 * 60 * 24;
+    const dateDiff = Math.round((targetDateStart.getTime() - sourceDate.getTime()) / dayMs);
+
+    const viewEnd = addDays(weekStart, viewDays - 1);
+
+    const peopleToMove =
+      scope === "day"
+        ? [activeItem]
+        : items.filter((i) => {
+            if (!isPersonItem(i)) return false;
+            if (!activeItem.employeeId || i.employeeId !== activeItem.employeeId) return false;
+            if (i.crewId !== activeItem.crewId) return false;
+            const d = startOfDay(new Date(i.date));
+            return (isSameDay(d, sourceDate) || isAfter(d, sourceDate)) && (isSameDay(d, viewEnd) || isBefore(d, viewEnd));
+          });
+
+    let itemsAfter = [...items];
+    const touchedCells = new Map<string, { crewId: string; date: Date }>();
+    const touch = (crewId: string, date: Date) => {
+      const d = startOfDay(date);
+      touchedCells.set(`${crewId}|${format(d, "yyyy-MM-dd")}`, { crewId, date: d });
+    };
+
+    peopleToMove.forEach((person) => {
+      const personSourceDate = startOfDay(new Date(person.date));
+      const personTargetDate = scope === "day" ? targetDateStart : addDays(personSourceDate, dateDiff);
+
+      // Touch both source and destination cells for sync
+      touch(person.crewId, personSourceDate);
+      touch(targetCrewId, personTargetDate);
+
+      // Move the person
+      const movedPerson = { ...person, crewId: targetCrewId, date: personTargetDate };
+      onItemUpdate(movedPerson);
+      itemsAfter = itemsAfter.map((i) => (i.id === movedPerson.id ? movedPerson : i));
+
+      // Move linked auto-Free jobs for that person/day
+      if (person.employeeId) {
+        const linkedFreeJobs = itemsAfter.filter(
+          (i) =>
+            isAutoLinkedFreeJob(i) &&
+            i.crewId === person.crewId &&
+            isSameDay(new Date(i.date), personSourceDate) &&
+            i.employeeId === person.employeeId
+        );
+
+        linkedFreeJobs.forEach((job) => {
+          const movedJob = { ...job, crewId: targetCrewId, date: personTargetDate };
+          onItemUpdate(movedJob);
+          itemsAfter = itemsAfter.map((i) => (i.id === movedJob.id ? movedJob : i));
+        });
+      }
+    });
+
+    // Re-sync touched cells so the ghost/free jobs reflect the final operative+vehicle state
+    touchedCells.forEach(({ crewId, date }) => {
+      syncAutoLinkedFreeJobsForCell(itemsAfter, crewId, date);
+    });
+
+    // After move, re-check the destination for actionable pairing and prompt if needed (single-day target)
+    const destPeople = itemsAfter.filter(
+      (i) =>
+        isPersonItem(i) &&
+        i.crewId === targetCrewId &&
+        isSameDay(new Date(i.date), targetDateStart) &&
+        i.vehicleId
+    ) as ScheduleItem[];
+
+    const ghostVehicleLabel = getGhostVehicleLabelForCell(destPeople, vehicles, vehicleTypes);
+    const pairingColor = getColorForVehiclePairing(destPeople, vehicles, vehicleTypes);
+    const destJobs = itemsAfter.filter(
+      (i) => i.type === "job" && i.crewId === targetCrewId && isSameDay(new Date(i.date), targetDateStart)
+    );
+    const hasAnyJobsInCell = destJobs.length > 0;
+    const destCellKey = `${format(targetDateStart, "yyyy-MM-dd")}-${targetCrewId}`;
+    const signature = getVehicleSignatureForPeople(destPeople);
+    const decision = getEffectivePairingDecision(destCellKey, signature);
+
+    if (
+      normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") &&
+      pairingColor &&
+      hasAnyJobsInCell &&
+      !vehiclePairingDialog?.open &&
+      !decision
+    ) {
+      setVehiclePairingDialog({
+        open: true,
+        cellKey: destCellKey,
+        vehiclePairing: ghostVehicleLabel!,
+        crewId: targetCrewId,
+        date: targetDateStart,
+        vehicleSignature: signature,
+      });
+    }
+
+    setPersonMoveDialog(null);
+  };
+
   const handleEmployeeTimeOffApplied = (payload: EmployeeTimeOffDialogPayload) => {
     if (!employeeTimeOffModal.employeeId) return;
 
@@ -1318,6 +1644,19 @@ export function CalendarGrid({
         (isSameDay(itemDate, end) || isBefore(itemDate, end));
 
       if (inRange) {
+        // Deleting a person should also delete any auto-linked Free jobs for that person on that day
+        if (isPersonItem(item) && item.employeeId) {
+          const cellDate = startOfDay(new Date(item.date));
+          const linkedFreeJobs = items.filter(
+            (i) =>
+              isAutoLinkedFreeJob(i) &&
+              i.crewId === item.crewId &&
+              isSameDay(new Date(i.date), cellDate) &&
+              i.employeeId === item.employeeId
+          );
+          linkedFreeJobs.forEach((j) => onItemDelete(j.id));
+        }
+
         onItemDelete(item.id);
       }
     });
@@ -1335,15 +1674,14 @@ export function CalendarGrid({
     // Check if this is a virtual remaining free time ghost item (not in database)
     const isRemainingFreeTimeGhost = item.id?.startsWith('free-remaining-');
     
-    // For ghost items, create a new job instead of trying to edit
+    // For remaining-free ghosts (virtual, not DB-backed), open the Job modal in CREATE mode,
+    // prefilled with the time window so the user can convert it into a real booking.
     if (isRemainingFreeTimeGhost) {
-      // Create a new free job payload WITHOUT an id so it goes through the CREATE path
-      const { id, ...rest } = item as any;
+      // Create a new job payload WITHOUT an id so it goes through the CREATE path
+      // IMPORTANT: don't force customer/address/jobStatus/color to Free/gray here; the user is booking time.
+      const { id, customer, address, jobStatus, color, ...rest } = item as any;
       const newJobData: Partial<ScheduleItem> = {
         ...rest,
-        customer: 'Free',
-        address: 'Free',
-        jobStatus: 'free',
       };
 
       // Open the modal to create this new job; handleModalSubmit will treat data-without-id as CREATE
@@ -1557,6 +1895,24 @@ export function CalendarGrid({
       // Normal delete flow (no grouping or bulk delete)
       validTargetIds.forEach(targetId => {
           if (mode === 'single') {
+              const itemToDelete = items.find((i) => i.id === targetId);
+              if (itemToDelete && isPersonItem(itemToDelete) && itemToDelete.employeeId) {
+                // Delete the person
+                onItemDelete(targetId);
+
+                // Delete any auto-linked Free jobs for this person in the same cell/day
+                const cellDate = startOfDay(new Date(itemToDelete.date));
+                const linkedFreeJobs = items.filter(
+                  (i) =>
+                    isAutoLinkedFreeJob(i) &&
+                    i.crewId === itemToDelete.crewId &&
+                    isSameDay(new Date(i.date), cellDate) &&
+                    i.employeeId === itemToDelete.employeeId
+                );
+                linkedFreeJobs.forEach((j) => onItemDelete(j.id));
+                return;
+              }
+
               onItemDelete(targetId);
           } else {
               // Bulk Delete Modes
@@ -1594,7 +1950,21 @@ export function CalendarGrid({
                   }
               }).map(i => i.id);
               
-              idsToDelete.forEach(delId => onItemDelete(delId));
+              idsToDelete.forEach((delId) => {
+                const delItem = items.find((i) => i.id === delId);
+                if (delItem && isPersonItem(delItem) && delItem.employeeId) {
+                  const cellDate = startOfDay(new Date(delItem.date));
+                  const linkedFreeJobs = items.filter(
+                    (i) =>
+                      isAutoLinkedFreeJob(i) &&
+                      i.crewId === delItem.crewId &&
+                      isSameDay(new Date(i.date), cellDate) &&
+                      i.employeeId === delItem.employeeId
+                  );
+                  linkedFreeJobs.forEach((j) => onItemDelete(j.id));
+                }
+                onItemDelete(delId);
+              });
           }
       });
       
@@ -1812,37 +2182,41 @@ export function CalendarGrid({
         }
         
         onItemUpdate(updatedItem);
-        
-        // If an operative's vehicleId changed, update job colors in the same cell based on vehicle pairing
-        if (updatedItem.type === 'operative' || updatedItem.type === 'assistant') {
+
+        // Maintain Free/ghost jobs as a function of people+vehicles (single source of truth)
+        let itemsAfterUpdate = items.map((i) => (i.id === updatedItem.id ? updatedItem : i));
+
+        if (isPersonItem(updatedItem)) {
+          const cellDate = startOfDay(new Date(updatedItem.date));
+
+          // If vehicle composition becomes actionable, prompt unless the user already chose for this exact signature
           const vehicleIdChanged = data.vehicleId !== undefined && data.vehicleId !== modalState.data.vehicleId;
           if (vehicleIdChanged) {
-            // Find all people items (operatives/assistants) in the same cell
-            const cellPeopleItems = items.filter((item: ScheduleItem) => 
-              (item.type === 'operative' || item.type === 'assistant') &&
-              item.crewId === updatedItem.crewId &&
-              isSameDay(new Date(item.date), new Date(updatedItem.date))
-            );
-            
-            // Determine if this cell has an actionable pairing (CCTV or CCTV/Van Pack + Jet Vac/Recycler)
+            const cellPeopleItems = itemsAfterUpdate.filter(
+              (i) =>
+                isPersonItem(i) &&
+                i.crewId === updatedItem.crewId &&
+                isSameDay(new Date(i.date), cellDate) &&
+                i.vehicleId
+            ) as ScheduleItem[];
+
             const ghostVehicleLabel = getGhostVehicleLabelForCell(cellPeopleItems, vehicles, vehicleTypes);
             const pairingColor = getColorForVehiclePairing(cellPeopleItems, vehicles, vehicleTypes);
-            
-            // Find all jobs in the same cell
-            const cellJobs = items.filter((item: ScheduleItem) => 
-              item.type === 'job' &&
-              item.crewId === updatedItem.crewId &&
-              isSameDay(new Date(item.date), new Date(updatedItem.date))
+            const cellJobs = itemsAfterUpdate.filter(
+              (i) => i.type === "job" && i.crewId === updatedItem.crewId && isSameDay(new Date(i.date), cellDate)
             );
+            const hasAnyJobsInCell = cellJobs.length > 0;
 
-            const cellDate = new Date(updatedItem.date);
-            const cellKey = `${format(cellDate, 'yyyy-MM-dd')}-${updatedItem.crewId}`;
-            const hasAnyJobsInCell = cellJobs.length > 0; // Free counts as a job here
-
+            const cellKey = `${format(cellDate, "yyyy-MM-dd")}-${updatedItem.crewId}`;
             const signature = getVehicleSignatureForPeople(cellPeopleItems);
             const decision = getEffectivePairingDecision(cellKey, signature);
 
-            if (normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && pairingColor && hasAnyJobsInCell && !decision) {
+            if (
+              normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") &&
+              pairingColor &&
+              hasAnyJobsInCell &&
+              !decision
+            ) {
               setVehiclePairingDialog({
                 open: true,
                 cellKey,
@@ -1851,30 +2225,17 @@ export function CalendarGrid({
                 date: cellDate,
                 vehicleSignature: signature,
               });
-            } else {
-              // No pairing detected - if jobs have a paired color, revert to individual vehicle colors
-              // Find the operative's vehicle to get its color
-              const operativeItem = cellPeopleItems.find((item: ScheduleItem) => item.type === 'operative');
-              if (operativeItem?.vehicleId) {
-                const vehicle = vehicles.find((v: any) => v.id === operativeItem.vehicleId);
-                if (vehicle?.vehicleType) {
-                  const getDefaultColorForType = (type: string): string | undefined => {
-                    if (!vehicleTypes || vehicleTypes.length === 0) return undefined;
-                    const typeObj = vehicleTypes.find(t => (typeof t === 'string' ? t : t.type) === type);
-                    return (typeof typeObj === 'object' && typeObj?.defaultColor) ? typeObj.defaultColor : undefined;
-                  };
-                  const vehicleColor = getDefaultColorForType(vehicle.vehicleType) || vehicle.color || 'blue';
-                  
-                  // Only revert if job has a known paired color (pink for CCTV/Jet Vac, etc.)
-                  const pairedColors = ['pink']; // Add other paired colors as needed
-                  cellJobs.forEach(job => {
-                    if (pairedColors.includes(job.color || '')) {
-                      onItemUpdate({ ...job, color: vehicleColor });
-                    }
-                  });
-                }
-              }
             }
+          }
+
+          // Sync the destination cell
+          syncAutoLinkedFreeJobsForCell(itemsAfterUpdate, updatedItem.crewId, cellDate);
+
+          // If the item moved cells (rare via edit), also sync the source cell to clean up stale Free jobs
+          const oldCrewId = modalState.data.crewId;
+          const oldDate = startOfDay(new Date(modalState.data.date));
+          if (oldCrewId !== updatedItem.crewId || !isSameDay(oldDate, cellDate)) {
+            syncAutoLinkedFreeJobsForCell(itemsAfterUpdate, oldCrewId, oldDate);
           }
         }
         
@@ -1900,6 +2261,16 @@ export function CalendarGrid({
                     endDate = addDays(weekStart, viewDays - 1);
             }
             
+            const cellsNeedingSync = new Set<string>();
+            const addCellToSync = (crewId: string, date: Date) => {
+              cellsNeedingSync.add(`${crewId}|${format(startOfDay(date), "yyyy-MM-dd")}`);
+            };
+
+            // Always re-sync the edited item’s own cell if it’s a person item
+            if (isPersonItem(updatedItem)) {
+              addCellToSync(updatedItem.crewId, new Date(updatedItem.date));
+            }
+
             items.forEach(i => {
                 if (i.id === updatedItem.id) return;
                 
@@ -1919,10 +2290,23 @@ export function CalendarGrid({
                     }
                     
                     if (isMatch) {
-                        onItemUpdate({ ...i, ...data });
+                        const nextItem = { ...i, ...data };
+                        onItemUpdate(nextItem);
+                        if (isPersonItem(nextItem)) {
+                          addCellToSync(nextItem.crewId, new Date(nextItem.date));
+                        }
                     }
                 }
             });
+
+            // Best-effort: re-sync impacted cells so their auto-Free jobs don’t drift
+            if (cellsNeedingSync.size > 0) {
+              cellsNeedingSync.forEach((key) => {
+                const [crewId, dStr] = key.split("|");
+                if (!crewId || !dStr) return;
+                syncAutoLinkedFreeJobsForCell(itemsAfterUpdate, crewId, new Date(dStr));
+              });
+            }
         }
         
     } else if (modalState.target || (modalState.data && !modalState.data.id)) {
@@ -2806,7 +3190,7 @@ export function CalendarGrid({
                                   ...(!freeJobs[0] && remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
                                 ];
 
-                                const ghostVehicleLabel = getGhostVehicleLabelForCell(peopleItems, vehicles, vehicleTypes);
+                                const ghostVehicleLabel = getGhostVehicleLabelForCellDisplay(peopleItems, crew.id, day);
 
                                 const isToday = isSameDay(day, new Date());
 
@@ -3257,7 +3641,7 @@ export function CalendarGrid({
                                   ...(!freeJobs[0] && remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
                                 ];
 
-                                const ghostVehicleLabel = getGhostVehicleLabelForCell(peopleItems, vehicles, vehicleTypes);
+                                const ghostVehicleLabel = getGhostVehicleLabelForCellDisplay(peopleItems, crew.id, day);
 
                                 const isToday = isSameDay(day, new Date());
 
@@ -3466,6 +3850,43 @@ export function CalendarGrid({
           crews={crews}
           currentItemId={groupingDialog.itemId}
         />
+      )}
+
+      {personMoveDialog && (
+        <Dialog
+          open={personMoveDialog.open}
+          onOpenChange={(open) => {
+            if (!open) setPersonMoveDialog(null);
+          }}
+        >
+          <DialogContent className="sm:max-w-[420px] bg-white text-slate-900">
+            <DialogHeader>
+              <DialogTitle className="text-lg font-bold">Move operative assignment</DialogTitle>
+              <DialogDescription className="text-slate-600">
+                Apply this move to just this day, or to the remainder of the displayed week?
+              </DialogDescription>
+            </DialogHeader>
+            <DialogFooter className="flex-col sm:flex-row gap-2">
+              <Button
+                variant="outline"
+                onClick={() => setPersonMoveDialog(null)}
+                className="border-slate-200 text-slate-700 hover:bg-slate-50"
+              >
+                Cancel
+              </Button>
+              <Button
+                variant="outline"
+                onClick={() => applyPersonMove("day")}
+                className="border-blue-200 text-blue-700 hover:bg-blue-50"
+              >
+                This Day Only
+              </Button>
+              <Button onClick={() => applyPersonMove("week")} className="bg-blue-600 text-white hover:bg-blue-700">
+                Remainder of Week
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
       
       {vehiclePairingDialog && (

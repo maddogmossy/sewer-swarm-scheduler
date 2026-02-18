@@ -95,6 +95,9 @@ class API {
     }
 
     if (!response.ok) {
+      const method = options?.method || "GET";
+      const isScheduleItemIdUrl = typeof url === "string" && url.startsWith("/api/schedule-items/");
+
       let errorText = '';
       let errorJson: any = {};
       
@@ -151,39 +154,50 @@ class API {
       const logStatus = typeof response.status === 'number' ? response.status : Number(response.status);
       const logStatusText = typeof response.statusText === 'string' ? response.statusText : `${response.statusText}`;
       
-      // Log error in a structured way that's easy to read
-      console.group('❌ API Request Failed');
-      console.error('URL:', logUrl);
-      console.error('Method:', options?.method || 'GET');
-      console.error('Status:', logStatus, logStatusText);
-      console.error('Error Message:', finalErrorMessage);
+      const shouldSuppressLog =
+        isScheduleItemIdUrl &&
+        response.status === 404 &&
+        (method === "PATCH" || method === "DELETE");
+
+      // Log error in a structured way that's easy to read (except expected 404s on optimistic PATCH/DELETE)
+      if (!shouldSuppressLog) {
+        console.group('❌ API Request Failed');
+        console.error('URL:', logUrl);
+        console.error('Method:', method);
+        console.error('Status:', logStatus, logStatusText);
+        console.error('Error Message:', finalErrorMessage);
       
-      if (errorText && typeof errorText === 'string' && errorText.length > 0) {
-        console.error('Response Text:', errorText.substring(0, 1000));
-      }
-      
-      if (errorJson && typeof errorJson === 'object') {
-        try {
-          console.error('Response JSON:', JSON.stringify(errorJson, null, 2));
-        } catch (e) {
-          console.error('Response JSON (parse failed):', errorJson);
+        if (errorText && typeof errorText === 'string' && errorText.length > 0) {
+          console.error('Response Text:', errorText.substring(0, 1000));
         }
-      }
       
-      // Log request body if available (for debugging)
-      if (options?.body && process.env.NODE_ENV === 'development') {
-        try {
-          const bodyStr = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
-          console.error('Request Body:', bodyStr.substring(0, 500));
-        } catch (e) {
-          console.error('Request Body: (could not serialize)');
+        if (errorJson && typeof errorJson === 'object') {
+          try {
+            console.error('Response JSON:', JSON.stringify(errorJson, null, 2));
+          } catch (e) {
+            console.error('Response JSON (parse failed):', errorJson);
+          }
         }
+      
+        // Log request body if available (for debugging)
+        if (options?.body && process.env.NODE_ENV === 'development') {
+          try {
+            const bodyStr = typeof options.body === 'string' ? options.body : JSON.stringify(options.body);
+            console.error('Request Body:', bodyStr.substring(0, 500));
+          } catch (e) {
+            console.error('Request Body: (could not serialize)');
+          }
+        }
+      
+        console.groupEnd();
       }
       
-      console.groupEnd();
-      
-      // Throw error with guaranteed string message - use template literal to ensure it's a string
-      throw new Error(finalErrorMessage);
+      // Throw error with guaranteed string message + status metadata for callers to handle expected cases
+      const err: any = new Error(finalErrorMessage);
+      err.status = response.status;
+      err.url = logUrl;
+      err.method = method;
+      throw err;
     }
 
     // Log successful requests in development
@@ -430,13 +444,25 @@ class API {
         body: JSON.stringify(sanitized),
       });
     } catch (error) {
+      const err: any = error;
+      // If the item was already deleted (optimistic UI / concurrent operations), treat as success.
+      if (err?.status === 404) {
+        return { id, ...(item as any) } as ScheduleItem;
+      }
       console.error('Error in updateScheduleItem:', error, item);
       throw error;
     }
   }
 
   async deleteScheduleItem(id: string): Promise<void> {
-    await this.request(`/api/schedule-items/${id}`, { method: "DELETE" });
+    try {
+      await this.request(`/api/schedule-items/${id}`, { method: "DELETE" });
+    } catch (error) {
+      const err: any = error;
+      // If the item is already gone (optimistic UI / concurrent operations), treat as success.
+      if (err?.status === 404) return;
+      throw error;
+    }
   }
 
   // Color Labels

@@ -3135,69 +3135,43 @@ export function CalendarGrid({
                                     return ia - ib;
                                   });
                                 } else {
-                                  // No manual order: Default to row-based pairing (Operative 1, Assistant 1, Operative 2, Assistant 2, etc.)
+                                  // No manual order: default 2-column layout should place Assistants on the right.
+                                  // We do this by interleaving Operatives + Assistants: op0, asst0, op1, asst1, ...
+                                  const getEmployeeName = (item: ScheduleItem) => {
+                                    const emp = employees.find((e) => e.id === item.employeeId);
+                                    return emp?.name || item.employeeId || item.id;
+                                  };
+
+                                  const operatives = displayItems
+                                    .filter((i) => i.type === "operative")
+                                    .slice()
+                                    .sort((a, b) => getEmployeeName(a).localeCompare(getEmployeeName(b)));
+                                  const assistants = displayItems
+                                    .filter((i) => i.type === "assistant")
+                                    .slice()
+                                    .sort((a, b) => getEmployeeName(a).localeCompare(getEmployeeName(b)));
+
+                                  const interleaved: ScheduleItem[] = [];
+                                  const maxLen = Math.max(operatives.length, assistants.length);
+                                  for (let idx = 0; idx < maxLen; idx++) {
+                                    if (operatives[idx]) interleaved.push(operatives[idx]);
+                                    if (assistants[idx]) interleaved.push(assistants[idx]);
+                                  }
+
+                                  const personRank = new Map<string, number>();
+                                  interleaved.forEach((p, idx) => personRank.set(p.id, idx));
+
                                   displayItems = [...displayItems].sort((a, b) => {
                                     const pa = getPriority(a.type);
                                     const pb = getPriority(b.type);
                                     if (pa !== pb) return pa - pb;
-                                    
-                                    const aIsPerson = a.type === 'operative' || a.type === 'assistant';
-                                    const bIsPerson = b.type === 'operative' || b.type === 'assistant';
-                                    
+
+                                    const aIsPerson = a.type === "operative" || a.type === "assistant";
+                                    const bIsPerson = b.type === "operative" || b.type === "assistant";
                                     if (aIsPerson && bIsPerson) {
-                                      const aIsOperative = a.type === 'operative';
-                                      const bIsOperative = b.type === 'operative';
-                                      
-                                      // Get employee names for consistent sorting
-                                      const getEmployeeName = (item: ScheduleItem) => {
-                                        const emp = employees.find(e => e.id === item.employeeId);
-                                        return emp?.name || item.employeeId || item.id;
-                                      };
-                                      
-                                      const aName = getEmployeeName(a);
-                                      const bName = getEmployeeName(b);
-                                      
-                                      if (aIsOperative && bIsOperative) {
-                                        // Both operatives - sort by name
-                                        return aName.localeCompare(bName);
-                                      } else if (!aIsOperative && !bIsOperative) {
-                                        // Both assistants - sort by name
-                                        return aName.localeCompare(bName);
-                                      } else {
-                                        // One operative, one assistant
-                                        // Pair assistants with their operatives (by employeeId or vehicleId)
-                                        const aEmployeeId = a.employeeId || '';
-                                        const bEmployeeId = b.employeeId || '';
-                                        const aVehicleId = a.vehicleId || '';
-                                        const bVehicleId = b.vehicleId || '';
-                                        
-                                        // If they share employee or vehicle, pair them (operative first)
-                                        if (aEmployeeId && aEmployeeId === bEmployeeId) {
-                                          return aIsOperative ? -1 : 1;
-                                        }
-                                        if (aVehicleId && aVehicleId === bVehicleId) {
-                                          return aIsOperative ? -1 : 1;
-                                        }
-                                        
-                                        // Not paired - find their operatives to determine order
-                                        const allOperatives = displayItems.filter(i => i.type === 'operative');
-                                        const aOperative = aIsOperative ? a : allOperatives.find(op => 
-                                          op.employeeId === aEmployeeId || op.vehicleId === aVehicleId
-                                        );
-                                        const bOperative = bIsOperative ? b : allOperatives.find(op => 
-                                          op.employeeId === bEmployeeId || op.vehicleId === bVehicleId
-                                        );
-                                        
-                                        const aOpName = aOperative ? getEmployeeName(aOperative) : aName;
-                                        const bOpName = bOperative ? getEmployeeName(bOperative) : bName;
-                                        
-                                        // Compare by their operative's name
-                                        const nameCompare = aOpName.localeCompare(bOpName);
-                                        if (nameCompare !== 0) return nameCompare;
-                                        
-                                        // Same operative - operative comes before assistant
-                                        return aIsOperative ? -1 : 1;
-                                      }
+                                      const ra = personRank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+                                      const rb = personRank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+                                      if (ra !== rb) return ra - rb;
                                     }
                                     return 0;
                                   });
@@ -3213,12 +3187,6 @@ export function CalendarGrid({
 
                                 // Auto-linked Free jobs (created/maintained from operative+vehicle assignments)
                                 const autoLinkedFreeJobs = freeJobs.filter(isAutoLinkedFreeJob);
-                                const autoFreeByEmployeeId = new Map<string, ScheduleItem>();
-                                autoLinkedFreeJobs.forEach((j) => {
-                                  if (j.employeeId && !autoFreeByEmployeeId.has(j.employeeId)) {
-                                    autoFreeByEmployeeId.set(j.employeeId, j);
-                                  }
-                                });
                                 const unlinkedFreeJobs = freeJobs.filter((j) => !isAutoLinkedFreeJob(j));
 
                                 // If the user chose "Combine Them" for an actionable pairing in this cell,
@@ -3319,7 +3287,9 @@ export function CalendarGrid({
                                 // IMPORTANT: if a real Free job already exists, don't also render the virtual remaining-free-time ghost
                                 // (it looks like an undeletable duplicate Free card).
                                 const visibleJobItems = [
-                                  ...(isCombinedMode && autoLinkedFreeJobs[0] ? [autoLinkedFreeJobs[0]] : []),
+                                  ...(isCombinedMode
+                                    ? (autoLinkedFreeJobs[0] ? [autoLinkedFreeJobs[0]] : [])
+                                    : autoLinkedFreeJobs),
                                   ...unlinkedFreeJobs,
                                   ...bookedJobs,
                                   ...(freeJobs.length === 0 && remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
@@ -3395,53 +3365,6 @@ export function CalendarGrid({
                                                             onBookTimeOff={handleOpenEmployeeTimeOff}
                                                           />
                                                         ))}
-                                                    </div>
-                                                  ) : autoLinkedFreeJobs.length > 0 ? (
-                                                    <div className="w-full flex flex-col gap-1">
-                                                      {peopleItems
-                                                        .filter((i) => i.id && typeof i.id === "string")
-                                                        .map((person) => {
-                                                          const linked = person.employeeId ? autoFreeByEmployeeId.get(person.employeeId) : undefined;
-                                                          return (
-                                                            <div key={person.id} className="w-full flex flex-col gap-1">
-                                                              <OperativeCard
-                                                                item={person}
-                                                                onEdit={handleEditItem}
-                                                                onDelete={(id, mode) => handleDeleteItem(id, mode)}
-                                                                onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
-                                                                employees={employees}
-                                                                vehicles={vehicles}
-                                                                isReadOnly={isReadOnly || isBefore(startOfDay(new Date(person.date)), startOfDay(new Date()))}
-                                                                isSelected={selectedItemIds.has(person.id)}
-                                                                onToggleSelection={handleToggleSelection}
-                                                                selectedItemIds={selectedItemIds}
-                                                                onDuplicateSelected={handleDuplicateSelected}
-                                                                onDeleteSelected={handleDeleteSelected}
-                                                                onBookTimeOff={handleOpenEmployeeTimeOff}
-                                                              />
-                                                              {linked && (
-                                                                <SiteCard
-                                                                  item={linked}
-                                                                  vehicles={vehicles}
-                                                                  onEdit={handleEditItem}
-                                                                  onDelete={(id, mode) => handleDeleteItem(id, mode)}
-                                                                  onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
-                                                                  isReadOnly={isReadOnly || isBefore(startOfDay(new Date(linked.date)), startOfDay(new Date()))}
-                                                                  isSelected={selectedItemIds.has(linked.id)}
-                                                                  onToggleSelection={handleToggleSelection}
-                                                                  selectedItemIds={selectedItemIds}
-                                                                  onDuplicateSelected={handleDuplicateSelected}
-                                                                  onDeleteSelected={handleDeleteSelected}
-                                                                  ghostVehicleLabel={ghostVehicleLabel}
-                                                                  colorLabels={colorLabels}
-                                                                  vehicleTypes={vehicleTypes}
-                                                                  peopleItems={peopleItems}
-                                                                  disableDrag
-                                                                />
-                                                              )}
-                                                            </div>
-                                                          );
-                                                        })}
                                                     </div>
                                                   ) : (
                                                     <div className={cn(
@@ -3685,69 +3608,43 @@ export function CalendarGrid({
                                     return ia - ib;
                                   });
                                 } else {
-                                  // No manual order: Default to row-based pairing (Operative 1, Assistant 1, Operative 2, Assistant 2, etc.)
+                                  // No manual order: default 2-column layout should place Assistants on the right.
+                                  // We do this by interleaving Operatives + Assistants: op0, asst0, op1, asst1, ...
+                                  const getEmployeeName = (item: ScheduleItem) => {
+                                    const emp = employees.find((e) => e.id === item.employeeId);
+                                    return emp?.name || item.employeeId || item.id;
+                                  };
+
+                                  const operatives = displayItems
+                                    .filter((i) => i.type === "operative")
+                                    .slice()
+                                    .sort((a, b) => getEmployeeName(a).localeCompare(getEmployeeName(b)));
+                                  const assistants = displayItems
+                                    .filter((i) => i.type === "assistant")
+                                    .slice()
+                                    .sort((a, b) => getEmployeeName(a).localeCompare(getEmployeeName(b)));
+
+                                  const interleaved: ScheduleItem[] = [];
+                                  const maxLen = Math.max(operatives.length, assistants.length);
+                                  for (let idx = 0; idx < maxLen; idx++) {
+                                    if (operatives[idx]) interleaved.push(operatives[idx]);
+                                    if (assistants[idx]) interleaved.push(assistants[idx]);
+                                  }
+
+                                  const personRank = new Map<string, number>();
+                                  interleaved.forEach((p, idx) => personRank.set(p.id, idx));
+
                                   displayItems = [...displayItems].sort((a, b) => {
                                     const pa = getPriority(a.type);
                                     const pb = getPriority(b.type);
                                     if (pa !== pb) return pa - pb;
-                                    
-                                    const aIsPerson = a.type === 'operative' || a.type === 'assistant';
-                                    const bIsPerson = b.type === 'operative' || b.type === 'assistant';
-                                    
+
+                                    const aIsPerson = a.type === "operative" || a.type === "assistant";
+                                    const bIsPerson = b.type === "operative" || b.type === "assistant";
                                     if (aIsPerson && bIsPerson) {
-                                      const aIsOperative = a.type === 'operative';
-                                      const bIsOperative = b.type === 'operative';
-                                      
-                                      // Get employee names for consistent sorting
-                                      const getEmployeeName = (item: ScheduleItem) => {
-                                        const emp = employees.find(e => e.id === item.employeeId);
-                                        return emp?.name || item.employeeId || item.id;
-                                      };
-                                      
-                                      const aName = getEmployeeName(a);
-                                      const bName = getEmployeeName(b);
-                                      
-                                      if (aIsOperative && bIsOperative) {
-                                        // Both operatives - sort by name
-                                        return aName.localeCompare(bName);
-                                      } else if (!aIsOperative && !bIsOperative) {
-                                        // Both assistants - sort by name
-                                        return aName.localeCompare(bName);
-                                      } else {
-                                        // One operative, one assistant
-                                        // Pair assistants with their operatives (by employeeId or vehicleId)
-                                        const aEmployeeId = a.employeeId || '';
-                                        const bEmployeeId = b.employeeId || '';
-                                        const aVehicleId = a.vehicleId || '';
-                                        const bVehicleId = b.vehicleId || '';
-                                        
-                                        // If they share employee or vehicle, pair them (operative first)
-                                        if (aEmployeeId && aEmployeeId === bEmployeeId) {
-                                          return aIsOperative ? -1 : 1;
-                                        }
-                                        if (aVehicleId && aVehicleId === bVehicleId) {
-                                          return aIsOperative ? -1 : 1;
-                                        }
-                                        
-                                        // Not paired - find their operatives to determine order
-                                        const allOperatives = displayItems.filter(i => i.type === 'operative');
-                                        const aOperative = aIsOperative ? a : allOperatives.find(op => 
-                                          op.employeeId === aEmployeeId || op.vehicleId === aVehicleId
-                                        );
-                                        const bOperative = bIsOperative ? b : allOperatives.find(op => 
-                                          op.employeeId === bEmployeeId || op.vehicleId === bVehicleId
-                                        );
-                                        
-                                        const aOpName = aOperative ? getEmployeeName(aOperative) : aName;
-                                        const bOpName = bOperative ? getEmployeeName(bOperative) : bName;
-                                        
-                                        // Compare by their operative's name
-                                        const nameCompare = aOpName.localeCompare(bOpName);
-                                        if (nameCompare !== 0) return nameCompare;
-                                        
-                                        // Same operative - operative comes before assistant
-                                        return aIsOperative ? -1 : 1;
-                                      }
+                                      const ra = personRank.get(a.id) ?? Number.MAX_SAFE_INTEGER;
+                                      const rb = personRank.get(b.id) ?? Number.MAX_SAFE_INTEGER;
+                                      if (ra !== rb) return ra - rb;
                                     }
                                     return 0;
                                   });
@@ -3763,12 +3660,6 @@ export function CalendarGrid({
 
                                 // Auto-linked Free jobs (created/maintained from operative+vehicle assignments)
                                 const autoLinkedFreeJobs = freeJobs.filter(isAutoLinkedFreeJob);
-                                const autoFreeByEmployeeId = new Map<string, ScheduleItem>();
-                                autoLinkedFreeJobs.forEach((j) => {
-                                  if (j.employeeId && !autoFreeByEmployeeId.has(j.employeeId)) {
-                                    autoFreeByEmployeeId.set(j.employeeId, j);
-                                  }
-                                });
                                 const unlinkedFreeJobs = freeJobs.filter((j) => !isAutoLinkedFreeJob(j));
 
                                 // If the user chose "Combine Them" for an actionable pairing in this cell,
@@ -3869,7 +3760,9 @@ export function CalendarGrid({
                                 // IMPORTANT: if a real Free job already exists, don't also render the virtual remaining-free-time ghost
                                 // (it looks like an undeletable duplicate Free card).
                                 const visibleJobItems = [
-                                  ...(isCombinedMode && autoLinkedFreeJobs[0] ? [autoLinkedFreeJobs[0]] : []),
+                                  ...(isCombinedMode
+                                    ? (autoLinkedFreeJobs[0] ? [autoLinkedFreeJobs[0]] : [])
+                                    : autoLinkedFreeJobs),
                                   ...unlinkedFreeJobs,
                                   ...bookedJobs,
                                   ...(freeJobs.length === 0 && remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
@@ -3954,53 +3847,6 @@ export function CalendarGrid({
                                                             onBookTimeOff={handleOpenEmployeeTimeOff}
                                                           />
                                                         ))}
-                                                    </div>
-                                                  ) : autoLinkedFreeJobs.length > 0 ? (
-                                                    <div className="w-full flex flex-col gap-1">
-                                                      {peopleItems
-                                                        .filter((i) => i.id && typeof i.id === "string")
-                                                        .map((person) => {
-                                                          const linked = person.employeeId ? autoFreeByEmployeeId.get(person.employeeId) : undefined;
-                                                          return (
-                                                            <div key={person.id} className="w-full flex flex-col gap-1">
-                                                              <OperativeCard
-                                                                item={person}
-                                                                onEdit={handleEditItem}
-                                                                onDelete={(id, mode) => handleDeleteItem(id, mode)}
-                                                                onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
-                                                                employees={employees}
-                                                                vehicles={vehicles}
-                                                                isReadOnly={isReadOnly || isBefore(startOfDay(new Date(person.date)), startOfDay(new Date()))}
-                                                                isSelected={selectedItemIds.has(person.id)}
-                                                                onToggleSelection={handleToggleSelection}
-                                                                selectedItemIds={selectedItemIds}
-                                                                onDuplicateSelected={handleDuplicateSelected}
-                                                                onDeleteSelected={handleDeleteSelected}
-                                                                onBookTimeOff={handleOpenEmployeeTimeOff}
-                                                              />
-                                                              {linked && (
-                                                                <SiteCard
-                                                                  item={linked}
-                                                                  vehicles={vehicles}
-                                                                  onEdit={handleEditItem}
-                                                                  onDelete={(id, mode) => handleDeleteItem(id, mode)}
-                                                                  onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)}
-                                                                  isReadOnly={isReadOnly || isBefore(startOfDay(new Date(linked.date)), startOfDay(new Date()))}
-                                                                  isSelected={selectedItemIds.has(linked.id)}
-                                                                  onToggleSelection={handleToggleSelection}
-                                                                  selectedItemIds={selectedItemIds}
-                                                                  onDuplicateSelected={handleDuplicateSelected}
-                                                                  onDeleteSelected={handleDeleteSelected}
-                                                                  ghostVehicleLabel={ghostVehicleLabel}
-                                                                  colorLabels={colorLabels}
-                                                                  vehicleTypes={vehicleTypes}
-                                                                  peopleItems={peopleItems}
-                                                                  disableDrag
-                                                                />
-                                                              )}
-                                                            </div>
-                                                          );
-                                                        })}
                                                     </div>
                                                   ) : (
                                                     <div className={cn(

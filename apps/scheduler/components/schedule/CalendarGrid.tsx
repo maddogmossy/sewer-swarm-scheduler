@@ -834,14 +834,24 @@ export function CalendarGrid({
                  hasAnyJobsInCell &&
                  !decision
                ) {
-                 setVehiclePairingDialog({
-                   open: true,
-                   cellKey,
-                   vehiclePairing: ghostVehicleLabel,
-                   crewId: targetCrewId,
-                   date: newDate,
-                   vehicleSignature: signature,
-                 });
+                 if (settings.promptVehiclePairingDetected) {
+                   setVehiclePairingDialog({
+                     open: true,
+                     cellKey,
+                     vehiclePairing: ghostVehicleLabel,
+                     crewId: targetCrewId,
+                     date: newDate,
+                     vehicleSignature: signature,
+                   });
+                 } else {
+                   autoCombineVehiclePairing({
+                     cellKey,
+                     vehiclePairing: ghostVehicleLabel!,
+                     crewId: targetCrewId,
+                     date: newDate,
+                     vehicleSignature: signature,
+                   });
+                 }
                }
              }
 
@@ -879,14 +889,21 @@ export function CalendarGrid({
                    return { ...prev, [cellKey]: nextOrder };
                  });
              } else if (!isSameCell) {
-                 // For people items, prompt for scope (day vs remainder of week) and move linked Free jobs too.
+                 // For people items, optionally prompt for scope (day vs remainder of week) and move linked Free jobs too.
                  if (isPersonItem(activeItem)) {
-                   setPersonMoveDialog({
-                     open: true,
-                     activeItem,
-                     targetCrewId,
-                     targetDate: newDate,
-                   });
+                   if (settings.promptOperativeMoveScope) {
+                     setPersonMoveDialog({
+                       open: true,
+                       activeItem,
+                       targetCrewId,
+                       targetDate: newDate,
+                     });
+                     setActiveId(null);
+                     return;
+                   }
+
+                   // If prompt is disabled, default to day-only move.
+                   performPersonMove(activeItem, targetCrewId, newDate, "day");
                    setActiveId(null);
                    return;
                  }
@@ -929,14 +946,24 @@ export function CalendarGrid({
                      hasAnyJobsInCell &&
                      !decision
                    ) {
-                     setVehiclePairingDialog({
-                       open: true,
-                       cellKey,
-                       vehiclePairing: ghostVehicleLabel,
-                       crewId: targetCrewId,
-                       date: newDate,
-                       vehicleSignature: signature,
-                     });
+                     if (settings.promptVehiclePairingDetected) {
+                       setVehiclePairingDialog({
+                         open: true,
+                         cellKey,
+                         vehiclePairing: ghostVehicleLabel,
+                         crewId: targetCrewId,
+                         date: newDate,
+                         vehicleSignature: signature,
+                       });
+                     } else {
+                       autoCombineVehiclePairing({
+                         cellKey,
+                         vehiclePairing: ghostVehicleLabel!,
+                         crewId: targetCrewId,
+                         date: newDate,
+                         vehicleSignature: signature,
+                       });
+                     }
                    }
                  }
                  // Move to new cell
@@ -1499,6 +1526,68 @@ export function CalendarGrid({
     
     setVehiclePairingDialog(null);
   };
+
+  const autoCombineVehiclePairing = (payload: {
+    cellKey: string;
+    crewId: string;
+    date: Date;
+    vehicleSignature: string;
+    vehiclePairing: string;
+  }) => {
+    const { cellKey, crewId, date, vehicleSignature, vehiclePairing } = payload;
+
+    setPairingDecisionByCell((prev) => ({
+      ...prev,
+      [cellKey]: {
+        decision: "combined",
+        vehicleSignature,
+        crewId,
+        date,
+      },
+    }));
+
+    // Apply pairing color to jobs in this cell (same behavior as confirm)
+    const cellJobs = items.filter((item: ScheduleItem) =>
+      item.type === 'job' &&
+      item.crewId === crewId &&
+      isSameDay(new Date(item.date), date)
+    );
+
+    const pairingColor = getColorForVehiclePairing(
+      items.filter(
+        (i) =>
+          (i.type === "operative" || i.type === "assistant") &&
+          i.crewId === crewId &&
+          isSameDay(new Date(i.date), date) &&
+          i.vehicleId
+      ) as ScheduleItem[],
+      vehicles,
+      vehicleTypes
+    );
+
+    if (!pairingColor) return;
+
+    // Apply to group(s): prefer booked jobs; if the cell only has Free jobs, apply to those
+    const bookedJobs = cellJobs.filter(j => j.customer !== 'Free' && j.jobStatus !== 'free');
+    const seedJobs = bookedJobs.length > 0 ? bookedJobs : cellJobs;
+    const idsToUpdate = new Set<string>();
+    seedJobs.forEach(job => {
+      const groupItems = findItemsWithSameJobNumber(job);
+      groupItems.forEach(g => idsToUpdate.add(g.id));
+    });
+
+    // Fallback: if no jobNumber groups found, update only the seed jobs in this cell
+    if (idsToUpdate.size === 0) {
+      seedJobs.forEach(j => idsToUpdate.add(j.id));
+    }
+
+    idsToUpdate.forEach(id => {
+      const item = items.find(i => i.id === id);
+      if (item && item.type === 'job' && item.color !== pairingColor) {
+        onItemUpdate({ ...item, color: pairingColor });
+      }
+    });
+  };
   
   // Handle vehicle pairing dialog cancel
   const handleVehiclePairingCancel = () => {
@@ -1518,10 +1607,7 @@ export function CalendarGrid({
     setVehiclePairingDialog(null);
   };
 
-  const applyPersonMove = (scope: "day" | "week") => {
-    if (!personMoveDialog) return;
-    const { activeItem, targetCrewId, targetDate } = personMoveDialog;
-
+  const performPersonMove = (activeItem: ScheduleItem, targetCrewId: string, targetDate: Date, scope: "day" | "week") => {
     const sourceDate = startOfDay(new Date(activeItem.date));
     const targetDateStart = startOfDay(new Date(targetDate));
     const dayMs = 1000 * 60 * 60 * 24;
@@ -1618,7 +1704,12 @@ export function CalendarGrid({
         vehicleSignature: signature,
       });
     }
+  };
 
+  const applyPersonMove = (scope: "day" | "week") => {
+    if (!personMoveDialog) return;
+    const { activeItem, targetCrewId, targetDate } = personMoveDialog;
+    performPersonMove(activeItem, targetCrewId, targetDate, scope);
     setPersonMoveDialog(null);
   };
 
@@ -2217,14 +2308,24 @@ export function CalendarGrid({
               hasAnyJobsInCell &&
               !decision
             ) {
-              setVehiclePairingDialog({
-                open: true,
-                cellKey,
-                vehiclePairing: ghostVehicleLabel,
-                crewId: updatedItem.crewId,
-                date: cellDate,
-                vehicleSignature: signature,
-              });
+              if (settings.promptVehiclePairingDetected) {
+                setVehiclePairingDialog({
+                  open: true,
+                  cellKey,
+                  vehiclePairing: ghostVehicleLabel,
+                  crewId: updatedItem.crewId,
+                  date: cellDate,
+                  vehicleSignature: signature,
+                });
+              } else {
+                autoCombineVehiclePairing({
+                  cellKey,
+                  vehiclePairing: ghostVehicleLabel!,
+                  crewId: updatedItem.crewId,
+                  date: cellDate,
+                  vehicleSignature: signature,
+                });
+              }
             }
           }
 
@@ -2451,14 +2552,24 @@ export function CalendarGrid({
               !vehiclePairingDialog?.open &&
               !decision
             ) {
-              setVehiclePairingDialog({
-                open: true,
-                cellKey,
-                vehiclePairing: ghostVehicleLabel,
-                crewId: createCrewId,
-                date: createDateObj,
-                vehicleSignature: signature,
-              });
+              if (settings.promptVehiclePairingDetected) {
+                setVehiclePairingDialog({
+                  open: true,
+                  cellKey,
+                  vehiclePairing: ghostVehicleLabel,
+                  crewId: createCrewId,
+                  date: createDateObj,
+                  vehicleSignature: signature,
+                });
+              } else {
+                autoCombineVehiclePairing({
+                  cellKey,
+                  vehiclePairing: ghostVehicleLabel!,
+                  crewId: createCrewId,
+                  date: createDateObj,
+                  vehicleSignature: signature,
+                });
+              }
             }
             
             // Check for vehicle pairings first (e.g., CCTV + Jet Vac/Recycler)
@@ -3109,6 +3220,25 @@ export function CalendarGrid({
                                   }
                                 });
                                 const unlinkedFreeJobs = freeJobs.filter((j) => !isAutoLinkedFreeJob(j));
+
+                                // If the user chose "Combine Them" for an actionable pairing in this cell,
+                                // we should show ONE combined ghost/free card (CCTV/Jet Vac) instead of one per operative.
+                                const decisionCellKey = `${dateStr}-${crew.id}`;
+                                const signatureForDecision = getVehicleSignatureForPeople(
+                                  peopleItems.filter((p) => isPersonItem(p) && p.vehicleId)
+                                );
+                                const rawGhostLabel = getGhostVehicleLabelForCell(peopleItems, vehicles, vehicleTypes);
+                                const pairingColorForDecision = getColorForVehiclePairing(peopleItems, vehicles, vehicleTypes);
+                                const isActionablePairing =
+                                  normalizeVehicleTypeName(rawGhostLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColorForDecision;
+                                const pairingDecision = getEffectivePairingDecision(decisionCellKey, signatureForDecision);
+                                const isCombinedMode = isActionablePairing && pairingDecision === "combined";
+
+                                // #region agent log
+                                if (isActionablePairing) {
+                                  fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'CalendarGrid.tsx:nightCellCombinedMode',message:'Computed combined-mode for night cell',data:{decisionCellKey,pairingDecision,isCombinedMode,signatureForDecision,autoLinkedFreeJobsCount:autoLinkedFreeJobs.length,promptVehiclePairingDetected:settings.promptVehiclePairingDetected},timestamp:Date.now()})}).catch(()=>{});
+                                }
+                                // #endregion
                                 
                                 // Calculate remaining free time ONLY if there are booked jobs and total < 8 hours
                                 const totalBookedDuration = bookedJobs.reduce((sum, job) => {
@@ -3195,6 +3325,7 @@ export function CalendarGrid({
                                 // IMPORTANT: if a real Free job already exists, don't also render the virtual remaining-free-time ghost
                                 // (it looks like an undeletable duplicate Free card).
                                 const visibleJobItems = [
+                                  ...(isCombinedMode && autoLinkedFreeJobs[0] ? [autoLinkedFreeJobs[0]] : []),
                                   ...unlinkedFreeJobs,
                                   ...bookedJobs,
                                   ...(freeJobs.length === 0 && remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
@@ -3245,7 +3376,33 @@ export function CalendarGrid({
                                                 ))}
                                                 {/* Crew names (operatives/assistants) appear after notes */}
                                                 {peopleItems.length > 0 && (
-                                                  autoLinkedFreeJobs.length > 0 ? (
+                                                  isCombinedMode ? (
+                                                    <div className={cn(
+                                                      "w-full grid gap-1",
+                                                      peopleItems.filter(i => i.id && typeof i.id === 'string').length === 1 ? "grid-cols-1" : "grid-cols-2"
+                                                    )}>
+                                                      {peopleItems
+                                                        .filter((i) => i.id && typeof i.id === "string")
+                                                        .map((item) => (
+                                                          <OperativeCard 
+                                                            key={item.id} 
+                                                            item={item}
+                                                            onEdit={handleEditItem} 
+                                                            onDelete={(id, mode) => handleDeleteItem(id, mode)} 
+                                                            onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
+                                                            employees={employees}
+                                                            vehicles={vehicles}
+                                                            isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
+                                                            isSelected={selectedItemIds.has(item.id)}
+                                                            onToggleSelection={handleToggleSelection}
+                                                            selectedItemIds={selectedItemIds}
+                                                            onDuplicateSelected={handleDuplicateSelected}
+                                                            onDeleteSelected={handleDeleteSelected}
+                                                            onBookTimeOff={handleOpenEmployeeTimeOff}
+                                                          />
+                                                        ))}
+                                                    </div>
+                                                  ) : autoLinkedFreeJobs.length > 0 ? (
                                                     <div className="w-full flex flex-col gap-1">
                                                       {peopleItems
                                                         .filter((i) => i.id && typeof i.id === "string")
@@ -3619,6 +3776,25 @@ export function CalendarGrid({
                                   }
                                 });
                                 const unlinkedFreeJobs = freeJobs.filter((j) => !isAutoLinkedFreeJob(j));
+
+                                // If the user chose "Combine Them" for an actionable pairing in this cell,
+                                // we should show ONE combined ghost/free card (CCTV/Jet Vac) instead of one per operative.
+                                const decisionCellKey = `${dateStr}-${crew.id}`;
+                                const signatureForDecision = getVehicleSignatureForPeople(
+                                  peopleItems.filter((p) => isPersonItem(p) && p.vehicleId)
+                                );
+                                const rawGhostLabel = getGhostVehicleLabelForCell(peopleItems, vehicles, vehicleTypes);
+                                const pairingColorForDecision = getColorForVehiclePairing(peopleItems, vehicles, vehicleTypes);
+                                const isActionablePairing =
+                                  normalizeVehicleTypeName(rawGhostLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColorForDecision;
+                                const pairingDecision = getEffectivePairingDecision(decisionCellKey, signatureForDecision);
+                                const isCombinedMode = isActionablePairing && pairingDecision === "combined";
+
+                                // #region agent log
+                                if (isActionablePairing) {
+                                  fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'CalendarGrid.tsx:dayCellCombinedMode',message:'Computed combined-mode for day cell',data:{decisionCellKey,pairingDecision,isCombinedMode,signatureForDecision,autoLinkedFreeJobsCount:autoLinkedFreeJobs.length,promptVehiclePairingDetected:settings.promptVehiclePairingDetected},timestamp:Date.now()})}).catch(()=>{});
+                                }
+                                // #endregion
                                 
                                 // Calculate remaining free time ONLY if there are booked jobs and total < 8 hours
                                 const totalBookedDuration = bookedJobs.reduce((sum, job) => {
@@ -3705,6 +3881,7 @@ export function CalendarGrid({
                                 // IMPORTANT: if a real Free job already exists, don't also render the virtual remaining-free-time ghost
                                 // (it looks like an undeletable duplicate Free card).
                                 const visibleJobItems = [
+                                  ...(isCombinedMode && autoLinkedFreeJobs[0] ? [autoLinkedFreeJobs[0]] : []),
                                   ...unlinkedFreeJobs,
                                   ...bookedJobs,
                                   ...(freeJobs.length === 0 && remainingFreeTimeItem ? [remainingFreeTimeItem] : []),
@@ -3764,7 +3941,33 @@ export function CalendarGrid({
                                                 ))}
                                                 {/* Crew names (operatives/assistants) appear after notes */}
                                                 {peopleItems.filter(i => i.id && typeof i.id === 'string').length > 0 && (
-                                                  autoLinkedFreeJobs.length > 0 ? (
+                                                  isCombinedMode ? (
+                                                    <div className={cn(
+                                                      "w-full grid gap-1",
+                                                      peopleItems.filter(i => i.id && typeof i.id === 'string').length === 1 ? "grid-cols-1" : "grid-cols-2"
+                                                    )}>
+                                                      {peopleItems
+                                                        .filter((i) => i.id && typeof i.id === "string")
+                                                        .map((item) => (
+                                                          <OperativeCard 
+                                                            key={item.id} 
+                                                            item={item}
+                                                            onEdit={handleEditItem} 
+                                                            onDelete={(id, mode) => handleDeleteItem(id, mode)} 
+                                                            onDuplicate={(item, mode, days) => handleDuplicateItem(item, mode, days)} 
+                                                            employees={employees}
+                                                            vehicles={vehicles}
+                                                            isReadOnly={isReadOnly || isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))}
+                                                            isSelected={selectedItemIds.has(item.id)}
+                                                            onToggleSelection={handleToggleSelection}
+                                                            selectedItemIds={selectedItemIds}
+                                                            onDuplicateSelected={handleDuplicateSelected}
+                                                            onDeleteSelected={handleDeleteSelected}
+                                                            onBookTimeOff={handleOpenEmployeeTimeOff}
+                                                          />
+                                                        ))}
+                                                    </div>
+                                                  ) : autoLinkedFreeJobs.length > 0 ? (
                                                     <div className="w-full flex flex-col gap-1">
                                                       {peopleItems
                                                         .filter((i) => i.id && typeof i.id === "string")

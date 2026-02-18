@@ -5,6 +5,10 @@ export interface UISettings {
   showOnsiteTime: boolean;
   showOffsiteTime: boolean;
   showDurationBadge: boolean;
+  // Whether to prompt for scope when moving operatives/assistants (day vs remainder of week)
+  promptOperativeMoveScope: boolean;
+  // Whether to show the vehicle pairing detected popup (CCTV + Jet Vac/Recycler)
+  promptVehiclePairingDetected: boolean;
   // Whether to auto-calculate job start time from employee/depot location
   autoCalculateStartFromLocation: boolean;
   // Default start times for jobs (24h)
@@ -22,6 +26,8 @@ const DEFAULT_SETTINGS: UISettings = {
   showOnsiteTime: true,
   showOffsiteTime: true,
   showDurationBadge: true,
+  promptOperativeMoveScope: true,
+  promptVehiclePairingDetected: true,
   autoCalculateStartFromLocation: true,
   defaultDayStartTime: "08:30",
   defaultNightStartTime: "20:00",

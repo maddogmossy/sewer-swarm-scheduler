@@ -3,7 +3,7 @@ import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useUISettings } from "@/hooks/useUISettings";
-import { Clock, MapPin, Timer, Calendar, Mail, Bell } from "lucide-react";
+import { Clock, MapPin, Timer, Calendar, Mail, Bell, ArrowRightLeft } from "lucide-react";
 
 export function UISettings() {
   const { settings, updateSetting } = useUISettings();
@@ -135,6 +135,59 @@ export function UISettings() {
             checked={settings.autoCalculateStartFromLocation}
             onCheckedChange={(checked) => updateSetting("autoCalculateStartFromLocation", checked)}
             className="data-[state=checked]:bg-blue-600"
+          />
+        </div>
+      </div>
+
+      <div className="space-y-4 pt-2 border-t border-slate-100">
+        <div>
+          <h4 className="text-sm font-semibold text-slate-900">Scheduling</h4>
+          <p className="text-xs text-slate-600 mt-0.5">
+            Control prompts and behaviors while editing the schedule.
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 bg-white">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-indigo-100 flex items-center justify-center border border-indigo-200">
+              <ArrowRightLeft className="h-5 w-5 text-indigo-600" />
+            </div>
+            <div>
+              <Label htmlFor="prompt-operative-move-scope" className="text-slate-900 font-medium cursor-pointer">
+                Prompt for operative move scope
+              </Label>
+              <p className="text-sm text-slate-600 mt-0.5">
+                When dragging an operative/assistant to another day, ask whether to apply to this day only or remainder of week.
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="prompt-operative-move-scope"
+            checked={settings.promptOperativeMoveScope}
+            onCheckedChange={(checked) => updateSetting("promptOperativeMoveScope", checked)}
+            className="data-[state=checked]:bg-indigo-600"
+          />
+        </div>
+
+        <div className="flex items-center justify-between p-4 rounded-lg border border-slate-200 bg-white">
+          <div className="flex items-center gap-3">
+            <div className="h-10 w-10 rounded-full bg-pink-100 flex items-center justify-center border border-pink-200">
+              <Bell className="h-5 w-5 text-pink-600" />
+            </div>
+            <div>
+              <Label htmlFor="prompt-vehicle-pairing" className="text-slate-900 font-medium cursor-pointer">
+                Vehicle Pairing Detected
+              </Label>
+              <p className="text-sm text-slate-600 mt-0.5">
+                Show the popup when CCTV is paired with Jet Vac/Recycler, asking whether to combine or keep separate.
+              </p>
+            </div>
+          </div>
+          <Switch
+            id="prompt-vehicle-pairing"
+            checked={settings.promptVehiclePairingDetected}
+            onCheckedChange={(checked) => updateSetting("promptVehiclePairingDetected", checked)}
+            className="data-[state=checked]:bg-pink-600"
           />
         </div>
       </div>

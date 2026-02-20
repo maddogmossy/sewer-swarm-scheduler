@@ -153,7 +153,7 @@ class API {
       const logUrl = typeof url === 'string' ? url : `${url}`;
       const logStatus = typeof response.status === 'number' ? response.status : Number(response.status);
       const logStatusText = typeof response.statusText === 'string' ? response.statusText : `${response.statusText}`;
-      
+
       const shouldSuppressLog =
         isScheduleItemIdUrl &&
         response.status === 404 &&

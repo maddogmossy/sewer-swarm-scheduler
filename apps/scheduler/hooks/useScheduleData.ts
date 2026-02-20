@@ -223,8 +223,30 @@ export function useScheduleData() {
 
   const deleteScheduleItem = useMutation({
     mutationFn: (id: string) => api.deleteScheduleItem(id),
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["scheduleItems"] });
+    // Optimistic delete - remove from cache immediately so UI doesn't "snap back" / linger
+    onMutate: async (id: string) => {
+      await queryClient.cancelQueries({ queryKey: ["scheduleItems"] });
+      const previousItems = queryClient.getQueryData<ScheduleItem[]>(["scheduleItems"]);
+
+      if (previousItems) {
+        queryClient.setQueryData<ScheduleItem[]>(["scheduleItems"], (old) => {
+          if (!old) return old;
+          return old.filter((item) => item.id !== id);
+        });
+      }
+
+      return { previousItems };
+    },
+    onError: (_err, _id, context) => {
+      if (context?.previousItems) {
+        queryClient.setQueryData(["scheduleItems"], context.previousItems);
+      }
+    },
+    // Only invalidate on error; on success the cache is already correct.
+    onSettled: (_data, error) => {
+      if (error) {
+        queryClient.invalidateQueries({ queryKey: ["scheduleItems"] });
+      }
     },
   });
 

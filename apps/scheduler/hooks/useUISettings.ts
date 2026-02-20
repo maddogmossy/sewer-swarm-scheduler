@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useRef } from "react";
 
 export interface UISettings {
   showStartTime: boolean;
@@ -37,24 +37,88 @@ const DEFAULT_SETTINGS: UISettings = {
 };
 
 const STORAGE_KEY = "sewer-swarm-ui-settings";
+const SETTINGS_CHANGED_EVENT = "sewer-swarm-ui-settings-changed";
+
+function broadcastSettings(updated: UISettings) {
+  try {
+    if (typeof window === "undefined") return;
+    // Defer to avoid cross-component updates during React render.
+    const dispatch = () =>
+      window.dispatchEvent(new CustomEvent(SETTINGS_CHANGED_EVENT, { detail: updated }));
+    if (typeof queueMicrotask === "function") queueMicrotask(dispatch);
+    else Promise.resolve().then(dispatch);
+  } catch {
+    // ignore
+  }
+}
 
 export function useUISettings() {
   const [settings, setSettings] = useState<UISettings>(DEFAULT_SETTINGS);
   const [isLoaded, setIsLoaded] = useState(false);
+  const settingsRef = useRef<UISettings>(DEFAULT_SETTINGS);
+
+  useEffect(() => {
+    settingsRef.current = settings;
+  }, [settings]);
 
   // Load settings from localStorage on mount
   useEffect(() => {
+    const apply = (next: unknown) => {
+      try {
+        // next may be a partial; always merge with defaults
+        const merged = { ...DEFAULT_SETTINGS, ...(next as any) } as UISettings;
+        setSettings(merged);
+      } catch {
+        // ignore
+      }
+    };
+
     try {
       const stored = localStorage.getItem(STORAGE_KEY);
       if (stored) {
         const parsed = JSON.parse(stored);
-        setSettings({ ...DEFAULT_SETTINGS, ...parsed });
+        apply(parsed);
+      } else {
       }
     } catch (error) {
       console.error("Failed to load UI settings:", error);
     } finally {
       setIsLoaded(true);
     }
+
+    const onSettingsChanged = (e: Event) => {
+      const ce = e as CustomEvent;
+      apply(ce.detail);
+    };
+
+    const onStorage = (e: StorageEvent) => {
+      if (e.key !== STORAGE_KEY) return;
+      if (!e.newValue) {
+        apply({});
+        return;
+      }
+      try {
+        apply(JSON.parse(e.newValue));
+      } catch {
+        // ignore
+      }
+    };
+
+    try {
+      window.addEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged as any);
+      window.addEventListener("storage", onStorage);
+    } catch {
+      // ignore
+    }
+
+    return () => {
+      try {
+        window.removeEventListener(SETTINGS_CHANGED_EVENT, onSettingsChanged as any);
+        window.removeEventListener("storage", onStorage);
+      } catch {
+        // ignore
+      }
+    };
   }, []);
 
   // Save settings to localStorage
@@ -62,28 +126,29 @@ export function useUISettings() {
     key: K,
     value: UISettings[K]
   ) => {
-    setSettings((prev) => {
-      const updated = { ...prev, [key]: value };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch (error) {
-        console.error("Failed to save UI settings:", error);
-      }
-      return updated;
-    });
+    const prev = settingsRef.current;
+    const updated = { ...prev, [key]: value };
+
+    setSettings(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch (error) {
+      console.error("Failed to save UI settings:", error);
+    }
+    broadcastSettings(updated);
   }, []);
 
   // Update multiple settings at once
   const updateSettings = useCallback((newSettings: Partial<UISettings>) => {
-    setSettings((prev) => {
-      const updated = { ...prev, ...newSettings };
-      try {
-        localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
-      } catch (error) {
-        console.error("Failed to save UI settings:", error);
-      }
-      return updated;
-    });
+    const prev = settingsRef.current;
+    const updated = { ...prev, ...newSettings };
+    setSettings(updated);
+    try {
+      localStorage.setItem(STORAGE_KEY, JSON.stringify(updated));
+    } catch (error) {
+      console.error("Failed to save UI settings:", error);
+    }
+    broadcastSettings(updated);
   }, []);
 
   return {

@@ -437,6 +437,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, employees = [], d
 
   const selectedColor = form.watch("color");
   const watchedAddress = form.watch("address");
+  const isFreeInitial = initialData?.jobStatus === 'free' || initialData?.customer === 'Free';
   const [editingLabel, setEditingLabel] = useState<string | null>(null);
   const [labelValue, setLabelValue] = useState("");
 

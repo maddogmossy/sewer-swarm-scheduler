@@ -10,27 +10,40 @@ export const runtime = "nodejs";
  * Returns crews for active organization
  */
 export async function GET(request: Request) {
+  const url = new URL(request.url);
+  const includeArchived = url.searchParams.get("includeArchived") === "true";
   try {
     const ctx = await getRequestContext();
 
+    console.log("[GET /api/crews] request", {
+      includeArchived,
+      role: ctx.role,
+      organizationId: ctx.organizationId,
+    });
+
     // Allow admin + operations
     requireAdminOrOperations(ctx);
-
-    // Check for includeArchived query parameter
-    const url = new URL(request.url);
-    const includeArchived = url.searchParams.get("includeArchived") === "true";
 
     const crews = includeArchived
       ? await storage.getAllCrewsByOrg(ctx.organizationId)
       : await storage.getCrewsByOrg(ctx.organizationId);
 
+    console.log("[GET /api/crews] ok", { includeArchived, count: Array.isArray(crews) ? crews.length : null });
     return NextResponse.json(crews);
   } catch (err: any) {
-    console.error("CREWS ROUTE ERROR:", err.message);
+    const msg = typeof err?.message === "string" ? err.message : String(err);
+    const status = msg.includes("Unauthorized") ? 401 : 403;
+    console.error("[GET /api/crews] error", {
+      includeArchived,
+      message: msg,
+      status,
+      name: err?.name || null,
+      stack: typeof err?.stack === "string" ? err.stack.substring(0, 400) : null,
+    });
 
     return NextResponse.json(
-      { error: err.message ?? "Forbidden" },
-      { status: err.message?.includes("Unauthorized") ? 401 : 403 }
+      { error: msg || "Forbidden" },
+      { status }
     );
   }
 }

@@ -269,7 +269,6 @@ interface CalendarGridProps {
   onVehicleTypeCreate?: (type: string, defaultColor?: string) => void;
   onVehicleTypeUpdate?: (oldType: string, newType: string, defaultColor?: string) => void;
   onVehicleTypeDelete?: (type: string) => void;
-  vehicleTypes?: string[];
   allCrews?: Crew[];
   onUndo?: () => void;
   onRedo?: () => void;
@@ -357,7 +356,7 @@ export function CalendarGrid({
     isOpen: boolean;
     type: 'job' | 'operative' | 'assistant' | 'note';
     data?: ScheduleItem;
-    target?: { date: Date; crewId: string };
+    target?: { date: Date; crewId: string; depotId?: string };
   }>({ isOpen: false, type: 'job' });
 
   const [selectionMenu, setSelectionMenu] = useState<{
@@ -469,6 +468,30 @@ export function CalendarGrid({
     return entry.decision;
   };
 
+  const inferCombinedPairingFromPersistedColors = (
+    itemsList: ScheduleItem[],
+    crewId: string,
+    date: Date,
+    pairingColor: string | undefined,
+    signature: string
+  ): boolean => {
+    if (!pairingColor) return false;
+    const day = startOfDay(date);
+    const cellKey = `${format(day, "yyyy-MM-dd")}-${crewId}`;
+    const storedDecision = getEffectivePairingDecision(cellKey, signature);
+    if (storedDecision === "combined") return true;
+
+    // If we have no stored decision (e.g. after dev restart), infer "combined" if any job in the cell
+    // is already colored with the pairingColor (this color is persisted in DB for bookings and auto-Free jobs).
+    const jobsInCell = itemsList.filter(
+      (j) => j.type === "job" && j.crewId === crewId && isSameDay(new Date(j.date), day)
+    ) as any[];
+    const match = jobsInCell.find((j) => j?.color === pairingColor);
+    const inferred = Boolean(match);
+
+    return inferred;
+  };
+
   const getDefaultColorForType = (type: string): string | undefined => {
     if (!vehicleTypes || vehicleTypes.length === 0) return undefined;
     const merged = mergeAndSortVehicleTypes(vehicleTypes);
@@ -569,7 +592,11 @@ export function CalendarGrid({
       normalizeVehicleTypeName(baseLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColor;
 
     // Only show the combined label if the user explicitly chose “Combine”
-    if (isActionablePairing && decision !== "combined") {
+    const inferredCombined = isActionablePairing
+      ? inferCombinedPairingFromPersistedColors(items, crewId, date, pairingColor, signature)
+      : false;
+
+    if (isActionablePairing && decision !== "combined" && !inferredCombined) {
       return getPrimaryCctvLabelForCell(peopleItems) || baseLabel;
     }
 
@@ -595,37 +622,90 @@ export function CalendarGrid({
         isSameDay(new Date(i.date), day)
     );
 
+    const cellJobs = itemsSnapshot.filter(
+      (i) => i.type === "job" && i.crewId === crewId && isSameDay(new Date(i.date), day)
+    );
+    const bookedJobsInCell = cellJobs.filter((j) => !isFreeJobItem(j));
+    const bookedJobsByEmployeeId = new Map<string, number>();
+    bookedJobsInCell.forEach((j: any) => {
+      if (j.employeeId) {
+        bookedJobsByEmployeeId.set(j.employeeId, (bookedJobsByEmployeeId.get(j.employeeId) || 0) + 1);
+      }
+    });
+
     const peopleByEmployeeId = new Map<string, ScheduleItem>();
     cellPeopleWithVehicles.forEach((p) => {
       if (p.employeeId) peopleByEmployeeId.set(p.employeeId, p);
     });
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'CalendarGrid.tsx:syncAutoLinkedFreeJobsForCell:enter',message:'Sync auto-linked Free jobs for cell',data:{crewId,dateKey:format(day,'yyyy-MM-dd'),peopleWithVehicles:cellPeopleWithVehicles.length,autoFreeJobs:cellAutoFreeJobs.length},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
+    const cellKey = `${format(day, "yyyy-MM-dd")}-${crewId}`;
+    const signature = getVehicleSignatureForPeople(cellPeopleWithVehicles);
+    const decision = getEffectivePairingDecision(cellKey, signature);
+    const ghostVehicleLabel = getGhostVehicleLabelForCell(cellPeopleWithVehicles, vehicles, vehicleTypes);
+    const pairingColor = getColorForVehiclePairing(cellPeopleWithVehicles, vehicles, vehicleTypes);
+    const isActionablePairing =
+      normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColor;
+    const inferredCombined = isActionablePairing
+      ? inferCombinedPairingFromPersistedColors(itemsSnapshot, crewId, day, pairingColor, signature)
+      : false;
+    const isCombinedPairing = isActionablePairing && (decision === "combined" || inferredCombined);
+
+    // In combined CCTV/Jet Vac mode, we treat the unit as a single resource:
+    // - If there's ANY booked job in the cell, the unit is not "Free" → remove all auto-Free jobs.
+    // - If there are no booked jobs, keep exactly ONE auto-Free job for the cell.
+    if (isCombinedPairing && bookedJobsInCell.length > 0) {
+      let deletedStale = 0;
+      const ids = cellAutoFreeJobs.map((j) => j.id);
+      cellAutoFreeJobs.forEach((job) => {
+        onItemDelete(job.id);
+        deletedStale++;
+      });
+
+      return;
+    }
 
     // 1) Remove stale auto-Free jobs if the person is no longer in the cell
+    let deletedStale = 0;
     cellAutoFreeJobs.forEach((job) => {
       const empId = job.employeeId;
       if (!empId) return;
       if (!peopleByEmployeeId.has(empId)) {
         onItemDelete(job.id);
+        deletedStale++;
       }
     });
 
-    // 2) Ensure exactly one auto-Free job per person-with-vehicle, and keep it aligned (vehicleId + color)
-    cellPeopleWithVehicles.forEach((person) => {
+    // 2) Ensure auto-Free jobs exist and stay aligned.
+    let createdAuto = 0;
+    let updatedAuto = 0;
+    let deletedDupes = 0;
+    let skippedBecauseBooked = 0;
+    const peopleToEnsure = isCombinedPairing ? cellPeopleWithVehicles.slice(0, 1) : cellPeopleWithVehicles;
+
+    // In combined pairing with NO booked jobs, keep exactly one auto-free job total.
+    if (isCombinedPairing) {
+      // Delete extra auto-free jobs (keep the first)
+      cellAutoFreeJobs.slice(1).forEach((dup) => {
+        onItemDelete(dup.id);
+        deletedDupes++;
+      });
+    }
+
+    peopleToEnsure.forEach((person) => {
       const empId = person.employeeId!;
-      const jobsForPerson = cellAutoFreeJobs.filter((j) => j.employeeId === empId);
+      const jobsForPerson = isCombinedPairing ? cellAutoFreeJobs.slice(0, 1) : cellAutoFreeJobs.filter((j) => j.employeeId === empId);
       const primary = jobsForPerson[0];
 
-      const cellKey = `${format(day, "yyyy-MM-dd")}-${crewId}`;
-      const signature = getVehicleSignatureForPeople(cellPeopleWithVehicles);
-      const decision = getEffectivePairingDecision(cellKey, signature);
-      const ghostVehicleLabel = getGhostVehicleLabelForCell(cellPeopleWithVehicles, vehicles, vehicleTypes);
-      const pairingColor = getColorForVehiclePairing(cellPeopleWithVehicles, vehicles, vehicleTypes);
-      const isActionablePairing =
-        normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColor;
+      // If this employee already has a booked job in this cell/day (bookings converted from Free retain employeeId),
+      // don't keep or recreate an auto-Free slot for them.
+      if (!isCombinedPairing && bookedJobsByEmployeeId.has(empId)) {
+        jobsForPerson.forEach((j) => {
+          onItemDelete(j.id);
+          deletedStale++;
+        });
+        skippedBecauseBooked++;
+        return;
+      }
 
       const desiredColor =
         isActionablePairing && decision === "combined"
@@ -648,6 +728,7 @@ export function CalendarGrid({
           employeeId: empId,
           vehicleId: person.vehicleId,
         });
+        createdAuto++;
       } else {
         const needsVehicleUpdate = person.vehicleId && primary.vehicleId !== person.vehicleId;
         const needsColorUpdate = desiredColor && primary.color !== desiredColor;
@@ -658,12 +739,19 @@ export function CalendarGrid({
             vehicleId: person.vehicleId,
             color: desiredColor,
           });
+          updatedAuto++;
         }
 
         // Remove duplicates (keep the first)
-        jobsForPerson.slice(1).forEach((dup) => onItemDelete(dup.id));
+        if (!isCombinedPairing) {
+          jobsForPerson.slice(1).forEach((dup) => {
+            onItemDelete(dup.id);
+            deletedDupes++;
+          });
+        }
       }
     });
+
   };
 
   // Clear decisions if vehicles change or pairing is no longer actionable
@@ -690,6 +778,17 @@ export function CalendarGrid({
 
       // If vehicles changed, re-prompt next time
       if (signatureNow !== entry.vehicleSignature) {
+        const nowIds = signatureNow ? signatureNow.split(",").filter(Boolean) : [];
+        const entryIds = entry.vehicleSignature ? entry.vehicleSignature.split(",").filter(Boolean) : [];
+        const entrySet = new Set(entryIds);
+        const isSubset =
+          nowIds.length > 0 && nowIds.every((id) => entrySet.has(id));
+
+        // If the "current" signature is only a subset of the stored signature, treat it as inconclusive.
+        // This happens right after a move/duplicate when `items` may not yet reflect all vehicles.
+        if (isSubset) {
+          return;
+        }
         delete next[cellKey];
         didChange = true;
         return;
@@ -710,6 +809,8 @@ export function CalendarGrid({
       setPairingDecisionByCell(next);
     }
   }, [pairingDecisionByCell, items, vehicles, vehicleTypes]);
+
+  
 
   const [crewDeleteDialog, setCrewDeleteDialog] = useState<{
     open: boolean;
@@ -798,10 +899,6 @@ export function CalendarGrid({
             return;
         }
 
-        // #region agent log
-        fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'CalendarGrid.tsx:handleDragEnd:resolvedTarget',message:'DragEnd resolved target',data:{activeId:String(active.id),overId:String(overId),isDroppingOnItem,overItemType:overItem?.type||null,activeType:activeItem.type,source:{crewId:activeItem.crewId,dateKey:format(startOfDay(new Date(activeItem.date)),'yyyy-MM-dd')},target:{crewId:targetCrewId,dateKey:targetDateStr},isSameCell:activeItem.crewId===targetCrewId&&isSameDay(activeItem.date,newDate),ctrlDup:isCtrlPressed,promptMove:settings.promptOperativeMoveScope},timestamp:Date.now()})}).catch(()=>{});
-        // #endregion
-        
         if (isCtrlPressed) {
              // Duplicate
              // Detect if this drop action would create an actionable pairing in the TARGET cell.
@@ -837,17 +934,16 @@ export function CalendarGrid({
 
                // (debug logs removed)
 
-               if (
+               const isActionablePairing =
                  normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") &&
-                 pairingColor &&
-                 hasAnyJobsInCell &&
-                 !decision
-               ) {
-                 if (settings.promptVehiclePairingDetected) {
+                 !!pairingColor;
+
+               if (isActionablePairing && !decision) {
+                 if (settings.promptVehiclePairingDetected && hasAnyJobsInCell) {
                    setVehiclePairingDialog({
                      open: true,
                      cellKey,
-                     vehiclePairing: ghostVehicleLabel,
+                     vehiclePairing: ghostVehicleLabel!,
                      crewId: targetCrewId,
                      date: newDate,
                      vehicleSignature: signature,
@@ -898,17 +994,10 @@ export function CalendarGrid({
                    nextOrder.splice(fromIndex, 1);
                    nextOrder.splice(toIndex, 0, fromId);
 
-                   // #region agent log
-                   fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'CalendarGrid.tsx:handleDragEnd:reorder',message:'Reorder applied',data:{cellKey,fromId,toId,fromIndex,toIndex,baseOrderLen:baseOrder.length,nextOrderHead:nextOrder.slice(0,8)},timestamp:Date.now()})}).catch(()=>{});
-                   // #endregion
-
                    return { ...prev, [cellKey]: nextOrder };
                  });
              } else if (isSameCell && !isDroppingOnItem) {
                  // Dropped back onto the same cell whitespace; no reordering occurs (current behavior).
-                 // #region agent log
-                 fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'CalendarGrid.tsx:handleDragEnd:sameCellWhitespace',message:'Dropped on same-cell whitespace (no reorder branch)',data:{activeId:String(active.id),cellKey:`${targetCrewId}|${targetDateStr}`},timestamp:Date.now()})}).catch(()=>{});
-                 // #endregion
              } else if (!isSameCell) {
                  // For people items, optionally prompt for scope (day vs remainder of week) and move linked Free jobs too.
                  if (isPersonItem(activeItem)) {
@@ -919,18 +1008,12 @@ export function CalendarGrid({
                        targetCrewId,
                        targetDate: newDate,
                      });
-                     // #region agent log
-                     fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'CalendarGrid.tsx:handleDragEnd:promptMove',message:'Opened move-scope dialog (move not applied yet)',data:{activeId:String(active.id),activeType:activeItem.type,from:{crewId:activeItem.crewId,dateKey:format(startOfDay(new Date(activeItem.date)),'yyyy-MM-dd')},to:{crewId:targetCrewId,dateKey:targetDateStr}},timestamp:Date.now()})}).catch(()=>{});
-                     // #endregion
                      setActiveId(null);
                      return;
                    }
 
                    // If prompt is disabled, default to day-only move.
                    performPersonMove(activeItem, targetCrewId, newDate, "day");
-                   // #region agent log
-                   fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'CalendarGrid.tsx:handleDragEnd:personMoveNoPrompt',message:'Performed person move with prompt disabled',data:{activeId:String(active.id),scope:'day',to:{crewId:targetCrewId,dateKey:targetDateStr}},timestamp:Date.now()})}).catch(()=>{});
-                   // #endregion
                    setActiveId(null);
                    return;
                  }
@@ -967,17 +1050,16 @@ export function CalendarGrid({
 
                    // (debug logs removed)
 
-                   if (
+                   const isActionablePairing =
                      normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") &&
-                     pairingColor &&
-                     hasAnyJobsInCell &&
-                     !decision
-                   ) {
-                     if (settings.promptVehiclePairingDetected) {
+                     !!pairingColor;
+
+                   if (isActionablePairing && !decision) {
+                     if (settings.promptVehiclePairingDetected && hasAnyJobsInCell) {
                        setVehiclePairingDialog({
                          open: true,
                          cellKey,
-                         vehiclePairing: ghostVehicleLabel,
+                         vehiclePairing: ghostVehicleLabel!,
                          crewId: targetCrewId,
                          date: newDate,
                          vehicleSignature: signature,
@@ -1063,10 +1145,6 @@ export function CalendarGrid({
 
     // Never allow creating items in the past
     if (isBefore(startOfDay(selectionMenu.date), startOfDay(new Date()))) return;
-
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H2',location:'CalendarGrid.tsx:handleSelection',message:'Opening create modal from selection menu',data:{type,crewId:selectionMenu.crewId,dateKey:format(selectionMenu.date,'yyyy-MM-dd')},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     // For jobs we ONLY want to drop a "ghost" / free box on the diary.
     // The full site UI (Convert Free Job to Booking) is used later when editing that box.
@@ -1624,15 +1702,10 @@ export function CalendarGrid({
       touchedDates.forEach((dt) => {
         const dateKey = format(dt, "yyyy-MM-dd");
         const ck = `${dateKey}-${crewId}`;
-        const dayPeople = items.filter(
-          (i: ScheduleItem) =>
-            (i.type === "operative" || i.type === "assistant") &&
-            i.crewId === crewId &&
-            isSameDay(new Date(i.date), dt) &&
-            i.vehicleId
-        ) as ScheduleItem[];
-        const daySig = dayPeople.length ? getVehicleSignatureForPeople(dayPeople) : vehicleSignature;
-        next[ck] = { decision: "combined", vehicleSignature: daySig, crewId, date: dt };
+        // For period auto-combine, always store the triggering signature for every touched day.
+        // This avoids persisting a partial signature on later days when `items` is not yet updated,
+        // which would make the decision fail to match once both vehicles are present.
+        next[ck] = { decision: "combined", vehicleSignature, crewId, date: dt };
       });
       return next;
     });
@@ -1707,10 +1780,6 @@ export function CalendarGrid({
             return (isSameDay(d, sourceDate) || isAfter(d, sourceDate)) && (isSameDay(d, viewEnd) || isBefore(d, viewEnd));
           });
 
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'CalendarGrid.tsx:performPersonMove:enter',message:'Performing person move',data:{activeId:activeItem.id,activeType:activeItem.type,scope,from:{crewId:activeItem.crewId,dateKey:format(sourceDate,'yyyy-MM-dd')},to:{crewId:targetCrewId,dateKey:format(targetDateStart,'yyyy-MM-dd')},peopleToMoveCount:peopleToMove.length},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
     let itemsAfter = [...items];
     const touchedCells = new Map<string, { crewId: string; date: Date }>();
     const touch = (crewId: string, date: Date) => {
@@ -1773,22 +1842,31 @@ export function CalendarGrid({
     const signature = getVehicleSignatureForPeople(destPeople);
     const decision = getEffectivePairingDecision(destCellKey, signature);
 
-    if (
+    const isActionablePairing =
       normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") &&
-      pairingColor &&
-      hasAnyJobsInCell &&
-      !vehiclePairingDialog?.open &&
-      !decision
-    ) {
-      setVehiclePairingDialog({
-        open: true,
-        cellKey: destCellKey,
-        vehiclePairing: ghostVehicleLabel!,
-        crewId: targetCrewId,
-        date: targetDateStart,
-        vehicleSignature: signature,
-        applyPeriod: "none",
-      });
+      !!pairingColor;
+
+    if (isActionablePairing && !vehiclePairingDialog?.open && !decision) {
+      if (settings.promptVehiclePairingDetected && hasAnyJobsInCell) {
+        setVehiclePairingDialog({
+          open: true,
+          cellKey: destCellKey,
+          vehiclePairing: ghostVehicleLabel!,
+          crewId: targetCrewId,
+          date: targetDateStart,
+          vehicleSignature: signature,
+          applyPeriod: "none",
+        });
+      } else {
+        autoCombineVehiclePairing({
+          cellKey: destCellKey,
+          vehiclePairing: ghostVehicleLabel!,
+          crewId: targetCrewId,
+          date: targetDateStart,
+          vehicleSignature: signature,
+          applyPeriod: "none",
+        });
+      }
     }
   };
 
@@ -1893,10 +1971,6 @@ export function CalendarGrid({
   const handleDuplicateItem = (item: ScheduleItem, mode: 'single' | 'week' | 'following_week' | 'custom' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year' = 'single', days = 1, skipSelectedCheck = false) => {
     if (isReadOnly) return;
 
-    // #region agent log
-    {const srcDateKey=format(startOfDay(new Date(item.date)),'yyyy-MM-dd');const srcPeople=items.filter((i)=>isPersonItem(i)&&i.crewId===item.crewId&&isSameDay(new Date(i.date),startOfDay(new Date(item.date))));const srcGhost=getGhostVehicleLabelForCellDisplay(srcPeople,item.crewId,startOfDay(new Date(item.date)));fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'CalendarGrid.tsx:handleDuplicateItem',message:'Duplicate requested',data:{mode,days,skipSelectedCheck,item:{id:item.id,type:item.type,jobStatus:(item as any).jobStatus,customer:(item as any).customer,color:(item as any).color,crewId:item.crewId,dateKey:srcDateKey,vehicleId:(item as any).vehicleId,vehicleType:(item as any).vehicleType,employeeId:(item as any).employeeId},srcCell:{peopleCount:srcPeople.length,srcGhostLabel:srcGhost}},timestamp:Date.now()})}).catch(()=>{});}
-    // #endregion
-
     // Determine which items to process
     // If skipSelectedCheck is true (called from handleDuplicateSelected), only process this one item
     // Otherwise, if item is selected, process all selected items
@@ -1971,10 +2045,6 @@ export function CalendarGrid({
             }
         }
     });
-
-    // #region agent log
-    {const sample=itemsToCreate[0];if(sample){const tDate=startOfDay(new Date(sample.date));const tPeople=items.filter((i)=>isPersonItem(i)&&i.crewId===sample.crewId&&isSameDay(new Date(i.date),tDate));const tGhost=getGhostVehicleLabelForCellDisplay(tPeople,sample.crewId,tDate);fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H4',location:'CalendarGrid.tsx:handleDuplicateItem:afterBuild',message:'Duplicate build complete',data:{createCount:itemsToCreate.length,sample:{id:sample.id,type:sample.type,jobStatus:(sample as any).jobStatus,customer:(sample as any).customer,color:(sample as any).color,crewId:sample.crewId,dateKey:format(tDate,'yyyy-MM-dd'),vehicleId:(sample as any).vehicleId,vehicleType:(sample as any).vehicleType,employeeId:(sample as any).employeeId},targetCell:{peopleCount:tPeople.length,targetGhostLabel:tGhost}},timestamp:Date.now()})}).catch(()=>{});}}
-    // #endregion
 
     itemsToCreate.forEach(newItem => onItemCreate(newItem));
   };
@@ -2321,10 +2391,10 @@ export function CalendarGrid({
           }
           
           // Check if only color is being changed
-          const hasNonColorChanges = Object.keys(data).some(key => {
+          const hasNonColorChanges = Object.keys(data).some((key) => {
             if (key === 'color') return false;
             // Check if the value actually changed
-            return data[key] !== modalState.data[key];
+            return (data as any)[key] !== (modalState.data as any)?.[key];
           });
           
           if (hasNonColorChanges) {
@@ -2334,7 +2404,7 @@ export function CalendarGrid({
         }
         
         const updatedItem = { ...modalState.data, ...data };
-        
+
         // Check if color changed - for ANY job (past or future), show grouping dialog if there's a group
         if (data.color && data.color !== modalState.data.color && updatedItem.type === 'job') {
           const groupItems = findItemsWithSameJobNumber(updatedItem);
@@ -2371,6 +2441,20 @@ export function CalendarGrid({
         // Maintain Free/ghost jobs as a function of people+vehicles (single source of truth)
         let itemsAfterUpdate = items.map((i) => (i.id === updatedItem.id ? updatedItem : i));
 
+        const isEditingFreeJob =
+          updatedItem.type === "job" &&
+          (normalizeVehicleTypeName((modalState.data as any)?.customer) === normalizeVehicleTypeName("Free") ||
+            (modalState.data as any)?.jobStatus === "free" ||
+            isFreeJobItem(modalState.data as any) ||
+            isAutoLinkedFreeJob(modalState.data as any));
+
+        // If we just converted a Free/ghost slot into a booking, re-sync auto-Free jobs for this cell.
+        // This is especially important in combined CCTV/Jet Vac mode, where any booking should remove the remaining auto-Free ghost.
+        if (isEditingFreeJob) {
+          const cellDate = startOfDay(new Date(updatedItem.date));
+          syncAutoLinkedFreeJobsForCell(itemsAfterUpdate, updatedItem.crewId, cellDate);
+        }
+
         if (isPersonItem(updatedItem)) {
           const cellDate = startOfDay(new Date(updatedItem.date));
 
@@ -2396,17 +2480,16 @@ export function CalendarGrid({
             const signature = getVehicleSignatureForPeople(cellPeopleItems);
             const decision = getEffectivePairingDecision(cellKey, signature);
 
-            if (
+            const isActionablePairing =
               normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") &&
-              pairingColor &&
-              hasAnyJobsInCell &&
-              !decision
-            ) {
-              if (settings.promptVehiclePairingDetected) {
+              !!pairingColor;
+
+            if (isActionablePairing && !decision) {
+              if (settings.promptVehiclePairingDetected && hasAnyJobsInCell) {
                 setVehiclePairingDialog({
                   open: true,
                   cellKey,
-                  vehiclePairing: ghostVehicleLabel,
+                  vehiclePairing: ghostVehicleLabel!,
                   crewId: updatedItem.crewId,
                   date: cellDate,
                   vehicleSignature: signature,
@@ -2436,7 +2519,109 @@ export function CalendarGrid({
           }
         }
         
-        if (applyPeriod !== 'none') {
+        if (applyPeriod !== 'none' && isEditingFreeJob) {
+            // Special-case: converting a Free/ghost slot to a booking across a period.
+            // Never match by customer === "Free" (that would hit other ghost slots).
+            // Instead, apply only to this person's own auto-linked Free jobs (employeeId) on future days.
+            const employeeId = (modalState.data as any)?.employeeId as string | undefined;
+            const vehicleId = (modalState.data as any)?.vehicleId as string | undefined;
+
+            if (employeeId) {
+              // Calculate end date based on period (same as the normal applyPeriod logic)
+              const startDate = new Date(updatedItem.date);
+              let endDate: Date;
+              switch (applyPeriod) {
+                case 'week':
+                  endDate = addDays(weekStart, viewDays - 1);
+                  break;
+                case 'month':
+                  endDate = calculateWeekdayEndDate(startDate, 'month');
+                  break;
+                case '6months':
+                  endDate = calculateWeekdayEndDate(startDate, '6months');
+                  break;
+                case '12months':
+                  endDate = calculateWeekdayEndDate(startDate, '12months');
+                  break;
+                default:
+                  endDate = addDays(weekStart, viewDays - 1);
+              }
+
+              const skipWeekends = applyPeriod === 'month' || applyPeriod === '6months' || applyPeriod === '12months';
+
+              let nextDate = addDays(startDate, 1);
+              let safetyCounter = 0;
+              const MAX_ITEMS = 1000;
+
+              let updatedSlots = 0;
+              let createdSlots = 0;
+              const touched: Array<{ id: string; dateKey: string; action: "updated" | "created" }> = [];
+              const periodUpdatedById = new Map<string, Partial<ScheduleItem>>();
+              const periodCreatedItems: ScheduleItem[] = [];
+
+              while ((isSameDay(nextDate, endDate) || isBefore(nextDate, endDate)) && safetyCounter < MAX_ITEMS) {
+                if (skipWeekends && !isWeekday(nextDate)) {
+                  nextDate = addDays(nextDate, 1);
+                  continue;
+                }
+
+                const day = startOfDay(nextDate);
+                // Prefer updating this person's auto-linked Free job on that date (if it exists)
+                const existingSlot = items.find((i: any) =>
+                  isAutoLinkedFreeJob(i) &&
+                  i.type === 'job' &&
+                  i.crewId === updatedItem.crewId &&
+                  isSameDay(new Date(i.date), day) &&
+                  i.employeeId === employeeId &&
+                  (!vehicleId || i.vehicleId === vehicleId)
+                );
+
+                if (existingSlot) {
+                  onItemUpdate({ ...existingSlot, ...data, customer: data.customer, jobStatus: data.jobStatus });
+                  updatedSlots++;
+                  touched.push({ id: existingSlot.id, dateKey: format(day, "yyyy-MM-dd"), action: "updated" });
+                  periodUpdatedById.set(existingSlot.id, { ...existingSlot, ...data, customer: data.customer, jobStatus: data.jobStatus });
+                } else {
+                  // If no slot exists (e.g. missing auto-free), create a booking job for that person/day
+                  const created: ScheduleItem = {
+                    ...updatedItem,
+                    id: generateUniqueId(),
+                    date: new Date(day),
+                    employeeId,
+                    vehicleId,
+                  };
+                  onItemCreate(created);
+                  createdSlots++;
+                  touched.push({ id: "(new)", dateKey: format(day, "yyyy-MM-dd"), action: "created" });
+                  periodCreatedItems.push(created);
+                }
+
+                nextDate = addDays(nextDate, 1);
+                safetyCounter++;
+              }
+
+              // After period updates, immediately sync each touched day so combined cells don't leave behind an auto-Free ghost.
+              // We use a snapshot that includes the period updates we just issued.
+              const snapshotAfterPeriod: ScheduleItem[] = (() => {
+                const base = itemsAfterUpdate.map((i) => {
+                  const patch = periodUpdatedById.get(i.id);
+                  return patch ? ({ ...i, ...patch } as ScheduleItem) : i;
+                });
+                // Add any created items that aren't already present
+                const ids = new Set(base.map((i) => i.id));
+                periodCreatedItems.forEach((c) => {
+                  if (!ids.has(c.id)) base.push(c);
+                });
+                return base;
+              })();
+
+              const touchedDateKeys = Array.from(new Set(touched.map((t) => t.dateKey))).slice(0, 31);
+              touchedDateKeys.forEach((dk) => {
+                const dObj = new Date(dk);
+                syncAutoLinkedFreeJobsForCell(snapshotAfterPeriod, updatedItem.crewId, dObj);
+              });
+            }
+        } else if (applyPeriod !== 'none' && !isEditingFreeJob) {
             // Calculate end date based on period
             const startDate = new Date(updatedItem.date);
             let endDate: Date;
@@ -2501,7 +2686,7 @@ export function CalendarGrid({
               cellsNeedingSync.forEach((key) => {
                 const [crewId, dStr] = key.split("|");
                 if (!crewId || !dStr) return;
-                syncAutoLinkedFreeJobsForCell(itemsAfterUpdate, crewId, new Date(dStr));
+                syncAutoLinkedFreeJobsForCell(itemsAfterUpdate, crewId, new Date(dStr!));
               });
             }
         }
@@ -2515,6 +2700,11 @@ export function CalendarGrid({
         
         if (!createDate) {
             console.error('[handleModalSubmit] Missing date for create:', { target: modalState.target, data: modalState.data });
+            return;
+        }
+
+        if (!createCrewId) {
+            console.error('[handleModalSubmit] Missing crewId for create:', { target: modalState.target, data: modalState.data });
             return;
         }
         
@@ -2650,14 +2840,10 @@ export function CalendarGrid({
                 date: createDateObj,
                 crewId: createCrewId,
                 depotId: createDepotId,
-                employeeId: data.employeeId,
-                vehicleId: data.vehicleId,
+                employeeId: data.employeeId!,
+                vehicleId: data.vehicleId!,
               } as ScheduleItem,
             ];
-
-            // #region agent log
-            {const v=vehicles.find((vv:any)=>vv.id===data.vehicleId);const vType=(v?.vehicleType||'');const isJetVac=normalizeVehicleTypeName(vType)===normalizeVehicleTypeName('Jet Vac');if(isJetVac){const ops=simulatedPeopleItems.filter((p)=>p.type==='operative');const assts=simulatedPeopleItems.filter((p)=>p.type==='assistant');const newOpIndex=(()=>{const inter:ScheduleItem[]=[];const maxLen=Math.max(ops.length,assts.length);for(let idx=0;idx<maxLen;idx++){if(ops[idx]) inter.push(ops[idx]);if(assts[idx]) inter.push(assts[idx]);}return inter.findIndex((p)=>p.id===baseItem.id);})();fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H1',location:'CalendarGrid.tsx:handleModalSubmit:create:jetVac',message:'Creating Jet Vac operative; predicted grid placement',data:{cellKey,crewId:createCrewId,dateKey:format(createDateObj,'yyyy-MM-dd'),vehicleType:vType,existingPeopleWithVehiclesCount:cellPeopleItems.length,simPeopleCount:simulatedPeopleItems.length,predictedIndex:newOpIndex,predictedRow:newOpIndex>=0?Math.floor(newOpIndex/2):null,predictedCol:newOpIndex>=0?(newOpIndex%2):null,manualOrderCount:(cellItemOrder[cellKey]?.length||0)},timestamp:Date.now()})}).catch(()=>{});}}
-            // #endregion
 
             const ghostVehicleLabel = getGhostVehicleLabelForCell(simulatedPeopleItems, vehicles, vehicleTypes);
             const pairingColor = getColorForVehiclePairing(simulatedPeopleItems, vehicles, vehicleTypes);
@@ -2675,11 +2861,11 @@ export function CalendarGrid({
                 setVehiclePairingDialog({
                   open: true,
                   cellKey,
-                  vehiclePairing: ghostVehicleLabel,
+                  vehiclePairing: ghostVehicleLabel!,
                   crewId: createCrewId,
                   date: createDateObj,
                   vehicleSignature: signature,
-                  applyPeriod,
+                  applyPeriod: applyPeriod === "group" ? "none" : applyPeriod,
                 });
               } else {
                 autoCombineVehiclePairing({
@@ -2688,7 +2874,7 @@ export function CalendarGrid({
                   crewId: createCrewId,
                   date: createDateObj,
                   vehicleSignature: signature,
-                  applyPeriod,
+                  applyPeriod: applyPeriod === "group" ? "none" : applyPeriod,
                 });
               }
             }
@@ -2723,8 +2909,8 @@ export function CalendarGrid({
                 startTime: '08:00',
                 duration: 8,
                 color: freeJobColor,
-                employeeId: data.employeeId,
-                vehicleId: data.vehicleId,
+                employeeId: data.employeeId!,
+                vehicleId: data.vehicleId!,
             });
             
             // 2. Only add operative and free jobs for additional days if applyPeriod is not 'none'
@@ -2801,8 +2987,8 @@ export function CalendarGrid({
                         startTime: '08:00',
                         duration: 8,
                         color: freeJobColor,
-                        employeeId: data.employeeId,
-                        vehicleId: data.vehicleId,
+                        employeeId: data.employeeId!,
+                        vehicleId: data.vehicleId!,
                     });
                     
                     nextDate = addDays(nextDate, 1);
@@ -3338,7 +3524,18 @@ export function CalendarGrid({
                                 const isActionablePairing =
                                   normalizeVehicleTypeName(rawGhostLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColorForDecision;
                                 const pairingDecision = getEffectivePairingDecision(decisionCellKey, signatureForDecision);
-                                const isCombinedMode = isActionablePairing && pairingDecision === "combined";
+                                const inferredCombinedMode = isActionablePairing
+                                  ? inferCombinedPairingFromPersistedColors(
+                                      items,
+                                      crew.id,
+                                      day,
+                                      pairingColorForDecision,
+                                      signatureForDecision
+                                    )
+                                  : false;
+                                const isCombinedMode =
+                                  isActionablePairing && (pairingDecision === "combined" || inferredCombinedMode);
+
                                 
                                 // Calculate remaining free time ONLY if there are booked jobs and total < 8 hours
                                 const totalBookedDuration = bookedJobs.reduce((sum, job) => {
@@ -3388,7 +3585,7 @@ export function CalendarGrid({
                                   const isNight = crew?.shift === 'night';
                                   const defaultStart = isNight ? "20:00" : "08:00";
                                   const latestEndTime = actualEndTime || (sortedJobs.length > 0 && sortedJobs[sortedJobs.length - 1].startTime 
-                                    ? calculateJobEndTime(sortedJobs[sortedJobs.length - 1].startTime, Number(sortedJobs[sortedJobs.length - 1].duration || 0))
+                                    ? calculateJobEndTime(sortedJobs[sortedJobs.length - 1].startTime!, Number(sortedJobs[sortedJobs.length - 1].duration || 0))
                                     : defaultStart);
                                   
                                   // Calculate free time end (8 hours from default start)
@@ -3833,7 +4030,17 @@ export function CalendarGrid({
                                 const isActionablePairing =
                                   normalizeVehicleTypeName(rawGhostLabel) === normalizeVehicleTypeName("CCTV/Jet Vac") && !!pairingColorForDecision;
                                 const pairingDecision = getEffectivePairingDecision(decisionCellKey, signatureForDecision);
-                                const isCombinedMode = isActionablePairing && pairingDecision === "combined";
+                                const inferredCombinedMode = isActionablePairing
+                                  ? inferCombinedPairingFromPersistedColors(
+                                      items,
+                                      crew.id,
+                                      day,
+                                      pairingColorForDecision,
+                                      signatureForDecision
+                                    )
+                                  : false;
+                                const isCombinedMode =
+                                  isActionablePairing && (pairingDecision === "combined" || inferredCombinedMode);
                                 
                                 // Calculate remaining free time ONLY if there are booked jobs and total < 8 hours
                                 const totalBookedDuration = bookedJobs.reduce((sum, job) => {
@@ -3883,7 +4090,7 @@ export function CalendarGrid({
                                   const isNight = crew?.shift === 'night';
                                   const defaultStart = isNight ? "20:00" : "08:00";
                                   const latestEndTime = actualEndTime || (sortedJobs.length > 0 && sortedJobs[sortedJobs.length - 1].startTime 
-                                    ? calculateJobEndTime(sortedJobs[sortedJobs.length - 1].startTime, Number(sortedJobs[sortedJobs.length - 1].duration || 0))
+                                    ? calculateJobEndTime(sortedJobs[sortedJobs.length - 1].startTime!, Number(sortedJobs[sortedJobs.length - 1].duration || 0))
                                     : defaultStart);
                                   
                                   // Calculate free time end (8 hours from default start)

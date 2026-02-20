@@ -189,9 +189,6 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
       | "next_6_months",
     days?: number
   ) => {
-    // #region agent log
-    fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify({runId:'pre-fix',hypothesisId:'H3',location:'SiteCard.tsx:handleDuplicateClick',message:'Duplicate menu clicked',data:{mode,days,item:{id:item.id,type:item.type,jobStatus:(item as any).jobStatus,customer:(item as any).customer,color:(item as any).color,crewId:(item as any).crewId,dateKey:item.date?format(startOfDay(new Date(item.date)),'yyyy-MM-dd'):null,vehicleId:(item as any).vehicleId,vehicleType:(item as any).vehicleType},ui:{isFreeJob,isRemainingFreeTimeGhost,ghostVehicleLabel,freeJobVehicleLabel}},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     onDuplicate(item, mode, days);
   };
 

@@ -419,11 +419,11 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                 }
             }}
             onClick={(e) => {
+                e.stopPropagation();
                 if (e.shiftKey && onToggleSelection) {
-                    e.stopPropagation();
                     onToggleSelection(item.id, true);
                 } else if (onToggleSelection) {
-                    // onToggleSelection(item.id, false);
+                    onToggleSelection(item.id, false);
                 }
             }}
             className={cn(

@@ -318,7 +318,7 @@ interface CalendarGridProps {
   onLogout?: () => void;
 }
 
-function DroppableCell({ id, children, className, style, onDoubleClick, disabled }: { id: string, children: React.ReactNode, className?: string, style?: React.CSSProperties, onDoubleClick?: (e: React.MouseEvent) => void, disabled?: boolean }) {
+function DroppableCell({ id, children, className, style, onDoubleClick, onClick, disabled }: { id: string, children: React.ReactNode, className?: string, style?: React.CSSProperties, onDoubleClick?: (e: React.MouseEvent) => void, onClick?: () => void, disabled?: boolean }) {
   const { setNodeRef, isOver } = useDroppable({ id, disabled });
   
   return (
@@ -332,6 +332,7 @@ function DroppableCell({ id, children, className, style, onDoubleClick, disabled
       )}
       style={style}
       onDoubleClick={disabled ? undefined : onDoubleClick}
+      onClick={disabled ? undefined : onClick}
     >
       {children}
     </td>
@@ -377,6 +378,8 @@ export function CalendarGrid({
   const [cellItemOrder, setCellItemOrder] = useState<Record<string, string[]>>({});
   const [isCtrlPressed, setIsCtrlPressed] = useState(false);
   const [selectedItemIds, setSelectedItemIds] = useState<Set<string>>(new Set());
+  // Capture selection at drag start so we move all items that were selected when drag began (avoids stale/cleared selection on drop)
+  const selectionAtDragStartRef = useRef<Set<string>>(new Set());
   const [searchQuery, setSearchQuery] = useState("");
 
   // Generate a unique ID to avoid collisions
@@ -933,6 +936,7 @@ export function CalendarGrid({
     const activeItem = items.find(i => i.id === event.active.id);
     if (activeItem && isBefore(startOfDay(new Date(activeItem.date)), startOfDay(new Date()))) return;
 
+    selectionAtDragStartRef.current = new Set(selectedItemIds);
     setActiveId(event.active.id as string);
     // Check if Ctrl is held down at start of drag
     // @ts-ignore - dnd-kit doesn't expose native event directly in DragStartEvent type easily but it exists
@@ -956,8 +960,6 @@ export function CalendarGrid({
 
     const activeItem = items.find(i => i.id === active.id);
     if (!activeItem) return;
-
-    // (debug logs removed)
 
     let targetCrewId = "";
     let targetDateStr = "";
@@ -1087,6 +1089,18 @@ export function CalendarGrid({
              } else if (isSameCell && !isDroppingOnItem) {
                  // Dropped back onto the same cell whitespace; no reordering occurs (current behavior).
              } else if (!isSameCell) {
+                 // Move all items that were selected when the drag started: change row (crew) only, keep each item's day.
+                 const selectionAtStart = selectionAtDragStartRef.current;
+                 if (selectionAtStart.has(activeItem.id) && selectionAtStart.size > 1) {
+                   const toMove = Array.from(selectionAtStart)
+                     .map((id) => items.find((i) => i.id === id))
+                     .filter((item): item is ScheduleItem => item != null);
+                   toMove.forEach((item) =>
+                     onItemUpdate({ ...item, crewId: targetCrewId })
+                   );
+                   setActiveId(null);
+                   return;
+                 }
                  // For people items, optionally prompt for scope (day vs remainder of week) and move linked Free jobs too.
                  if (isPersonItem(activeItem)) {
                    if (settings.promptOperativeMoveScope) {
@@ -1165,7 +1179,7 @@ export function CalendarGrid({
                      }
                    }
                  }
-                 // Move to new cell
+                 // Move to new cell (single item)
                  onItemUpdate({ ...activeItem, crewId: targetCrewId, date: newDate });
              }
         }
@@ -1288,9 +1302,11 @@ export function CalendarGrid({
                   newSet.add(id);
               }
           } else {
-              // If not holding shift, just select this one (clearing others)
-              // This mimics standard file explorer behavior
-              newSet.add(id);
+              // If clicking (no shift) on an item that is already in a multi-selection, keep selection so drag moves all
+              if (prev.size > 1 && prev.has(id)) return prev;
+              const single = new Set<string>();
+              single.add(id);
+              return single;
           }
           return newSet;
       });
@@ -1965,9 +1981,6 @@ export function CalendarGrid({
       )
     );
     if (!allCellsReady) return;
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e9596'},body:JSON.stringify({sessionId:'7e9596',location:'CalendarGrid.tsx:duplicatePairingEffect',message:'Running pairing for duplicated cells',data:{cellCount: cells.length},timestamp:Date.now(),hypothesisId:'C'})}).catch(()=>{});
-    // #endregion
     cells.forEach(({ date, crewId, cellKey }) => {
       const cellPeople = items.filter(
         (i: ScheduleItem) =>
@@ -2263,11 +2276,6 @@ export function CalendarGrid({
         : items.filter(i => selectedItemIds.has(i.id));
 
     const itemsToCreate: ScheduleItem[] = [];
-
-    // #region agent log
-    const isOperativeWithVehicle = targetItems.some((i: ScheduleItem) => (i.type === 'operative' || i.type === 'assistant') && !!i.vehicleId && !!i.employeeId);
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e9596'},body:JSON.stringify({sessionId:'7e9596',location:'CalendarGrid.tsx:handleDuplicateItem',message:'Duplicate started',data:{mode, targetCount: targetItems.length, isOperativeWithVehicle, firstSourceType: targetItems[0]?.type, firstHasVehicle: !!(targetItems[0] as any)?.vehicleId},timestamp:Date.now(),hypothesisId:'B'})}).catch(()=>{});
-    // #endregion
 
     targetItems.forEach(sourceItem => {
         const startDate = new Date(sourceItem.date);
@@ -3212,9 +3220,6 @@ export function CalendarGrid({
             // Only apply paired color automatically if decision is “combined”
             const hasActionablePairing = isCombinationLabel(ghostVehicleLabel) && !!pairingColor;
             let freeJobColor = hasActionablePairing ? pairingColor : (decision === "combined" ? pairingColor : undefined);
-            // #region agent log
-            fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e9596'},body:JSON.stringify({sessionId:'7e9596',location:'CalendarGrid.tsx:operativeCreate',message:'Add operative pairing color',data:{decision, pairingColor: pairingColor ?? null, hasActionablePairing, freeJobColor: freeJobColor ?? null},timestamp:Date.now(),hypothesisId:'A'})}).catch(()=>{});
-            // #endregion
             if (!freeJobColor) {
                 // Fallback: use the vehicle's color from vehicleTypes or vehicle.color
                 const vehicle = vehicles.find((v: any) => v.id === data.vehicleId);
@@ -3443,7 +3448,12 @@ export function CalendarGrid({
 
   return (
     <div className="h-full flex flex-col bg-slate-50 text-slate-900"
-        onKeyDown={(e) => { if(e.ctrlKey && !isReadOnly) setIsCtrlPressed(true); }}
+        onKeyDown={(e) => {
+          if (/^Arrow/.test(e.key)) {
+            e.preventDefault();
+          }
+          if(e.ctrlKey && !isReadOnly) setIsCtrlPressed(true);
+        }}
         onKeyUp={(e) => { if(!e.ctrlKey && !isReadOnly) setIsCtrlPressed(false); }}
         tabIndex={0} // Make div focusable to catch key events
     >
@@ -3981,6 +3991,7 @@ export function CalendarGrid({
                                         key={cellId}
                                         id={cellId}
                                         disabled={isReadOnly || isBefore(startOfDay(day), today)}
+                                        onClick={() => setSelectedItemIds(new Set())}
                                         onDoubleClick={(e) => {
                                             e.stopPropagation();
                                             handleCellDoubleClick(day, crew.id);
@@ -4502,6 +4513,7 @@ export function CalendarGrid({
                                         key={cellId}
                                         id={cellId}
                                         disabled={isReadOnly || isBefore(startOfDay(day), today)}
+                                        onClick={() => setSelectedItemIds(new Set())}
                                         onDoubleClick={(e) => {
                                             e.stopPropagation();
                                             handleCellDoubleClick(day, crew.id);

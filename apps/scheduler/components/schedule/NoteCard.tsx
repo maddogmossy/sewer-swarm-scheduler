@@ -78,12 +78,11 @@ export function NoteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                 onEdit(item);
             }}
             onClick={(e) => {
+                e.stopPropagation();
                 if (e.shiftKey && onToggleSelection) {
-                    e.stopPropagation();
                     onToggleSelection(item.id, true);
                 } else if (onToggleSelection) {
-                    // Optional: Click without shift selects just this one?
-                    // onToggleSelection(item.id, false);
+                    onToggleSelection(item.id, false);
                 }
             }}
             className={cn(

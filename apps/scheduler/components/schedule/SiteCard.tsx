@@ -26,7 +26,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { ScheduleItem } from "./CalendarGrid";
 import { useUISettings } from "@/hooks/useUISettings";
-import { getVehicleTypeDisplayName, normalizeVehicleTypeName } from "@/lib/vehicleTypes";
+import { getVehicleTypeDisplayName, normalizeVehicleTypeName, type VehicleCombinationConfig } from "@/lib/vehicleTypes";
 
 interface SiteCardProps {
   item: ScheduleItem;
@@ -48,11 +48,15 @@ interface SiteCardProps {
   colorLabels?: Record<string, string>;
   /** Vehicle types configuration to look up colors for categories like "CCTV/Jet Vac" */
   vehicleTypes?: string[] | Array<{ type: string; defaultColor?: string }>;
+  /** Combination config from Scheduling settings; when ghostVehicleLabel matches a combination, use its color */
+  vehicleCombinations?: VehicleCombinationConfig[];
   /** People items from the same cell (to find actual vehicles for color lookup) */
   peopleItems?: ScheduleItem[];
+  /** When true, user chose "Keep Separate" for this cell; do not use combination color */
+  pairingDecisionIsSeparate?: boolean;
 }
 
-export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, disableDrag = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [], ghostVehicleLabel, colorLabels, vehicleTypes, peopleItems = [] }: SiteCardProps) {
+export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = false, disableDrag = false, isSelected = false, onToggleSelection, selectedItemIds, onDuplicateSelected, onDeleteSelected, vehicles = [], ghostVehicleLabel, colorLabels, vehicleTypes, vehicleCombinations, peopleItems = [], pairingDecisionIsSeparate = false }: SiteCardProps) {
   // (debug logs removed)
   const hasMultipleSelected = selectedItemIds && selectedItemIds.size > 1 && selectedItemIds.has(item.id);
   const { settings } = useUISettings();
@@ -146,7 +150,10 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
   // - If this cell is paired (CCTV + Jet Vac/Recycler), show CCTV/Jet Vac (as named in Vehicle Types config)
   // - Otherwise show the vehicle's own type (as named in Vehicle Types config), falling back to ghostVehicleLabel
   const isPairedLabel =
-    normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac");
+    !!ghostVehicleLabel &&
+    (vehicleCombinations?.some(
+      (c) => normalizeVehicleTypeName(c.label) === normalizeVehicleTypeName(ghostVehicleLabel)
+    ) ?? normalizeVehicleTypeName(ghostVehicleLabel) === normalizeVehicleTypeName("CCTV/Jet Vac"));
 
   const deriveVehicleTypeLabel = (): string | undefined => {
     if (!vehicle) return undefined;
@@ -163,8 +170,8 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
   };
 
   const freeJobVehicleLabel =
-    (isFreeJob && !isRemainingFreeTimeGhost && isPairedLabel
-      ? getVehicleTypeDisplayName("CCTV/Jet Vac", vehicleTypes)
+    (isFreeJob && !isRemainingFreeTimeGhost && isPairedLabel && ghostVehicleLabel
+      ? (getVehicleTypeDisplayName(ghostVehicleLabel, vehicleTypes) || ghostVehicleLabel)
       : undefined) ||
     (isFreeJob && !isRemainingFreeTimeGhost && vehicle
       ? getVehicleTypeDisplayName(deriveVehicleTypeLabel(), vehicleTypes)
@@ -196,10 +203,16 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
 
   // Look up color from vehicleTypes config based on ghostVehicleLabel (for both free and booked jobs)
   let effectiveVehicleColor = vehicleColor;
-  
+
   if (ghostVehicleLabel) {
-    // PRIORITY: For "CCTV/Jet Vac", always check vehicleTypes for "CCTV/Jet Vac" type first
-    if (ghostVehicleLabel === "CCTV/Jet Vac") {
+    // If label matches a combination from Scheduling settings, use that combination's color
+    const comboMatch = vehicleCombinations?.find(
+      (c) => normalizeVehicleTypeName(c.label) === normalizeVehicleTypeName(ghostVehicleLabel)
+    );
+    if (comboMatch) {
+      effectiveVehicleColor = comboMatch.defaultColor;
+    } else if (ghostVehicleLabel === "CCTV/Jet Vac") {
+      // PRIORITY: For "CCTV/Jet Vac", always check vehicleTypes for "CCTV/Jet Vac" type first (fallback when no combination config)
       // 1. First check for "CCTV/Jet Vac" type in vehicleTypes (this is where the pink color is set)
       const cctvJetVacTypeColor = getDefaultColorForType("CCTV/Jet Vac");
       if (cctvJetVacTypeColor) {
@@ -353,6 +366,19 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
     }
   }
 
+  // Always prefer combination color from Scheduling settings when this cell's label matches a combination—
+  // unless the user chose "Keep Separate" for this cell.
+  const finalComboMatch =
+    !pairingDecisionIsSeparate &&
+    ghostVehicleLabel
+      ? vehicleCombinations?.find(
+          (c) => normalizeVehicleTypeName(c.label) === normalizeVehicleTypeName(ghostVehicleLabel)
+        )
+      : undefined;
+  if (finalComboMatch) {
+    effectiveVehicleColor = finalComboMatch.defaultColor;
+  }
+
   // Use vehicle color as base color if available, otherwise use item color, otherwise default to blue
   const baseColorKey = effectiveVehicleColor || item.color || 'blue';
   const baseColor = colorClasses[baseColorKey] || colorClasses.blue;
@@ -377,7 +403,11 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
         <ContextMenuTrigger>
             <div
             ref={setNodeRef}
-            style={style}
+            style={{
+                ...style,
+                ...(effectiveVehicleColor?.startsWith('#') ? { borderLeftColor: effectiveVehicleColor } :
+                    item.color?.startsWith('#') ? { borderLeftColor: item.color } : {})
+            }}
             {...attributes}
             {...listeners}
             onDoubleClick={(e) => {
@@ -409,11 +439,6 @@ export function SiteCard({ item, onEdit, onDelete, onDuplicate, isReadOnly = fal
                   ? colorClasses[effectiveVehicleColor || item.color || 'blue'].replace('bg-', 'border-l-').split(' ')[1] 
                   : 'border-l-blue-500'
             )}
-            style={{
-                // Use hex color directly for border if available
-                ...(effectiveVehicleColor?.startsWith('#') ? { borderLeftColor: effectiveVehicleColor } :
-                    item.color?.startsWith('#') ? { borderLeftColor: item.color } : {})
-            }}
             >
             {/* Top Row: Customer | Site | Onsite Time */}
             <div 

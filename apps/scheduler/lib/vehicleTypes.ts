@@ -1,5 +1,21 @@
 export type VehicleTypesConfig = string[] | Array<{ type: string; defaultColor?: string }>;
 
+/** Config for combined unit display (e.g. CCTV + Jet Vac). Defined in Scheduling settings, not in Vehicle Type dropdown. */
+export interface VehicleCombinationConfig {
+  label: string;
+  defaultColor: string;
+  groupA: string[];
+  groupB: string[];
+}
+
+/** Default combination for backward compatibility; stored in Scheduling settings. */
+export const DEFAULT_VEHICLE_COMBINATION: VehicleCombinationConfig = {
+  label: "CCTV/Jet Vac",
+  defaultColor: "pink",
+  groupA: ["CCTV", "CCTV/Van Pack"],
+  groupB: ["Jet Vac", "Recycler"],
+};
+
 // Normalize type names so lookups tolerate formatting/plural differences.
 // Example: "CCTV/Van Packs" -> "cctvvanpack", "Jet-Vac" -> "jetvac", "Recyclers" -> "recycler"
 export function normalizeVehicleTypeName(value?: string): string {
@@ -16,8 +32,6 @@ export const CANONICAL_VEHICLE_TYPES: Array<{ type: string; defaultColor: string
   { type: "CCTV", defaultColor: "blue" },
   { type: "CCTV/Van Pack", defaultColor: "indigo" },
   { type: "Jet Vac", defaultColor: "teal" },
-  // paired/combined type used for job coloring when CCTV is paired with Jet Vac or Recycler
-  { type: "CCTV/Jet Vac", defaultColor: "pink" },
 ];
 
 function getTypeName(t: string | { type: string; defaultColor?: string }): string {

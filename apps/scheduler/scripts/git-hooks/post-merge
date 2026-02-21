@@ -1,0 +1,5 @@
+#!/bin/sh
+# Post-merge hook: run dev DB migrations after git pull so both machines stay in sync.
+# Install once per machine: see apps/scheduler/scripts/README-DB-MIGRATE.md
+ROOT="$(git rev-parse --show-toplevel)"
+node "$ROOT/apps/scheduler/scripts/run-migrations.js" 2>&1 || true

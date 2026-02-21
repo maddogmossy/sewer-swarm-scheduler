@@ -187,7 +187,7 @@ export function ResourcesModal({
         } else {
             // For vehicles, create with the selected vehicle type
             onVehicleCreate(newItemName, newVehicleType, undefined, newVehicleColor);
-            setNewItemName("");
+        setNewItemName("");
             setNewVehicleType(typeNames[0] || "Van");
             setNewVehicleColor(getDefaultColorForType(typeNames[0] || "Van"));
         }
@@ -355,7 +355,7 @@ export function ResourcesModal({
                                                       <span className="text-[11px] text-slate-500">
                                                         Home: {emp.homePostcode}{" "}
                                                         {emp.startsFromHome ? "(starts from home)" : "(starts from depot)"}
-                                                      </span>
+                                                        </span>
                                                     )}
                                                 </div>
                                             </div>
@@ -531,7 +531,7 @@ export function ResourcesModal({
                                                                     ))}
                                                                 </div>
                                                             </div>
-                                                            <div className="flex gap-2">
+                        <div className="flex gap-2">
                                                                 {editingType && (
                                                                     <Button 
                                                                         size="sm" 
@@ -809,11 +809,11 @@ export function ResourcesModal({
                                                     {veh.category && (
                                                         <Badge variant="outline" className="text-xs">{veh.category}</Badge>
                                                     )}
-                                                    {veh.status !== 'active' && (
-                                                        <span className="text-xs text-red-600 font-medium uppercase tracking-wider flex items-center gap-1">
-                                                            <AlertCircle className="w-3 h-3" /> {veh.status === 'off_road' ? 'VOR' : veh.status}
-                                                        </span>
-                                                    )}
+                                                {veh.status !== 'active' && (
+                                                    <span className="text-xs text-red-600 font-medium uppercase tracking-wider flex items-center gap-1">
+                                                        <AlertCircle className="w-3 h-3" /> {veh.status === 'off_road' ? 'VOR' : veh.status}
+                                                    </span>
+                                                )}
                                                 </div>
                                             </div>
                                         </div>
@@ -846,7 +846,7 @@ export function ResourcesModal({
                                         </div>
                                     )}
                                 </div>
-                                        ))}
+                            ))}
                                     </div>
                                 </div>
                             );
@@ -1257,8 +1257,8 @@ function VehicleOffRoadModal({ open, onOpenChange, vehicleName }: VehicleOffModa
           >
             Save
           </Button>
-        </DialogFooter>
-      </DialogContent>
-    </Dialog>
-  );
+                </DialogFooter>
+            </DialogContent>
+        </Dialog>
+    );
 }

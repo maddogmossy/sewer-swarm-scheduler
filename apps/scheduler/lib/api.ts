@@ -154,10 +154,12 @@ class API {
       const logStatus = typeof response.status === 'number' ? response.status : Number(response.status);
       const logStatusText = typeof response.statusText === 'string' ? response.statusText : `${response.statusText}`;
 
+      const isScheduleItemsBaseUrl = typeof url === "string" && url === "/api/schedule-items";
       const shouldSuppressLog =
-        isScheduleItemIdUrl &&
-        response.status === 404 &&
-        (method === "PATCH" || method === "DELETE");
+        (isScheduleItemIdUrl &&
+          response.status === 404 &&
+          (method === "PATCH" || method === "DELETE")) ||
+        (isScheduleItemsBaseUrl && method === "GET" && response.status === 401);
 
       // Log error in a structured way that's easy to read (except expected 404s on optimistic PATCH/DELETE)
       if (!shouldSuppressLog) {

@@ -8,7 +8,8 @@
     "start": "next start",
     "lint": "eslint",
     "setup:neon": "node scripts/setup-neon.js",
-    "update-role": "node scripts/update-user-role.js"
+    "update-role": "node scripts/update-user-role.js",
+    "db:migrate": "node scripts/run-migrations.js"
   },
   "dependencies": {
     "@dnd-kit/core": "^6.3.1",

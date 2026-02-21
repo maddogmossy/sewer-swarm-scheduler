@@ -13,8 +13,9 @@ import { Users, Settings } from "lucide-react";
 import { useScheduleData } from "@/hooks/useScheduleData";
 import { useOrganization, canManageResources, canManageTeam } from "@/hooks/useOrganization";
 import { api } from "@/lib/api";
-import { startOfWeek, startOfDay, isBefore, isAfter, isSameDay, addDays } from "date-fns";
-import { CANONICAL_VEHICLE_TYPES, mergeAndSortVehicleTypes } from "@/lib/vehicleTypes";
+import { startOfWeek, startOfDay, isBefore, isAfter, isSameDay, addDays, format } from "date-fns";
+import { CANONICAL_VEHICLE_TYPES, mergeAndSortVehicleTypes, normalizeVehicleTypeName } from "@/lib/vehicleTypes";
+import { useVehicleCombinations } from "@/hooks/useVehicleCombinations";
 
 const INITIAL_COLOR_LABELS: Record<string, string> = {
   blue: "Standard Job",
@@ -79,14 +80,24 @@ export default function SchedulePage() {
     return INITIAL_COLOR_LABELS;
   });
 
+  const vehicleCombinationsState = useVehicleCombinations();
+  const vehicleCombinations = vehicleCombinationsState.combinations;
+  const combinationLabelsNorm = new Set(vehicleCombinations.map((c) => normalizeVehicleTypeName(c.label)));
+  const displayVehicleTypes = vehicleTypes.filter((t) => {
+    const typeName = typeof t === "string" ? t : t.type;
+    return !combinationLabelsNorm.has(normalizeVehicleTypeName(typeName));
+  }) as typeof vehicleTypes;
+
   // Undo/Redo state - track operations instead of full state
-  type Operation = 
+  type Operation =
     | { type: 'create'; item: ScheduleItem }
     | { type: 'update'; item: ScheduleItem; previousItem: ScheduleItem }
-    | { type: 'delete'; item: ScheduleItem };
+    | { type: 'delete'; item: ScheduleItem }
+    | { type: 'batch-update'; updates: { item: ScheduleItem; previousItem: ScheduleItem }[] };
   
   const [history, setHistory] = useState<Operation[]>([]);
   const [future, setFuture] = useState<Operation[]>([]);
+  const [revertedPairingCellKeys, setRevertedPairingCellKeys] = useState<string[]>([]);
 
   const {
     depots,
@@ -247,16 +258,26 @@ const transformedDepots: Depot[] = depots.map((d) => ({
             id: item.id,
             data: itemData,
           });
-        } catch (error) {
+        } catch (error: unknown) {
           // Important: many call-sites don't await `onItemUpdate`, so a thrown error becomes an
           // unhandled rejection and can crash dev runtime. Log and swallow so the UI stays usable.
-          console.error("[handleItemUpdate] Failed to update schedule item:", {
-            id: item.id,
-            type: item.type,
-            crewId: item.crewId,
-            date: item.date,
-            error,
-          });
+          const errMessage = error instanceof Error ? error.message : String(error);
+          const isNotFound =
+            typeof errMessage === "string" &&
+            (errMessage.includes("not found") || errMessage.includes("Schedule item not found"));
+          if (isNotFound) {
+            // Expected when item was deleted (e.g. undo) or no longer exists; avoid noisy error log
+            if (process.env.NODE_ENV === "development") {
+              console.warn("[handleItemUpdate] Schedule item no longer exists (skipping update):", item.id);
+            }
+          } else {
+            console.error("[handleItemUpdate] Failed to update schedule item:", errMessage, {
+              id: item.id,
+              type: item.type,
+              crewId: item.crewId,
+              date: item.date,
+            });
+          }
         }
       };
 
@@ -297,6 +318,16 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           duration: durationValue,
         } as any);
         setFuture((f) => [{ type: 'delete', item: operation.item }, ...f]);
+      } else if (operation.type === 'batch-update') {
+        // Undo batch (e.g. combine) = restore all previous states
+        for (const { previousItem } of operation.updates) {
+          const { id, ...itemData } = previousItem;
+          await mutations.updateScheduleItem.mutateAsync({ id, data: itemData });
+        }
+        // Clear pairing decision for reverted cells so UI shows reverted item colors, not combination color
+        const cellKeys = [...new Set(operation.updates.map((u) => `${format(new Date(u.previousItem.date), "yyyy-MM-dd")}-${u.previousItem.crewId}`))];
+        setRevertedPairingCellKeys(cellKeys);
+        setFuture((f) => [{ type: 'batch-update', updates: operation.updates }, ...f]);
       }
       setHistory(newHistory);
     } catch (error) {
@@ -334,6 +365,13 @@ const transformedDepots: Depot[] = depots.map((d) => ({
         // Redo delete = delete again
         await mutations.deleteScheduleItem.mutateAsync(operation.item.id);
         setHistory((h) => [...h, { type: 'create', item: operation.item }]);
+      } else if (operation.type === 'batch-update') {
+        // Redo batch = re-apply all updates
+        for (const { item } of operation.updates) {
+          const { id, ...itemData } = item;
+          await mutations.updateScheduleItem.mutateAsync({ id, data: itemData });
+        }
+        setHistory((h) => [...h, { type: 'batch-update', updates: operation.updates }]);
       }
       setFuture(newFuture);
     } catch (error) {
@@ -343,6 +381,27 @@ const transformedDepots: Depot[] = depots.map((d) => ({
 
   const canUndo = history.length > 0;
   const canRedo = future.length > 0;
+
+  const handleBatchItemUpdates = useCallback(
+    async (updates: { item: ScheduleItem; previousItem: ScheduleItem }[]) => {
+      if (updates.length === 0) return;
+      saveOperationToHistory({ type: 'batch-update', updates });
+      for (const { item } of updates) {
+        const { id, ...itemData } = item;
+        if (!id || typeof id !== 'string') {
+          console.warn("[handleBatchItemUpdates] Skipping item with missing id:", item);
+          continue;
+        }
+        try {
+          await mutations.updateScheduleItem.mutateAsync({ id, data: itemData });
+        } catch (error: unknown) {
+          const message = error instanceof Error ? error.message : String(error);
+          console.error("[handleBatchItemUpdates] Failed to update:", { id, message });
+        }
+      }
+    },
+    [mutations, saveOperationToHistory]
+  );
 
   const handleItemCreate = useCallback(
     async (item: ScheduleItem) => {
@@ -824,6 +883,9 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           depots={transformedDepots}
           allItems={transformedItems}
           onItemUpdate={handleItemUpdate}
+          onBatchItemUpdates={handleBatchItemUpdates}
+          revertedPairingCellKeys={revertedPairingCellKeys}
+          onClearedRevertedPairing={() => setRevertedPairingCellKeys([])}
           onItemCreate={handleItemCreate}
           onItemDelete={handleItemDelete}
           onItemReorder={handleItemReorder}
@@ -838,6 +900,7 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           onVehicleDelete={handleVehicleDelete}
           onColorLabelUpdate={handleColorLabelUpdate}
           vehicleTypes={vehicleTypes}
+          vehicleCombinations={vehicleCombinations}
           allCrews={transformedCrews}
           onLogout={handleLogout}
           onUndo={handleUndo}
@@ -867,7 +930,7 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           onVehicleUpdate={handleVehicleUpdate}
           onVehicleDelete={handleVehicleDelete}
           onVehicleMoveDepot={handleVehicleMoveDepot}
-          vehicleTypes={vehicleTypes}
+          vehicleTypes={displayVehicleTypes}
           onVehicleTypeCreate={handleVehicleTypeCreate}
           onVehicleTypeUpdate={handleVehicleTypeUpdate}
           onVehicleTypeDelete={handleVehicleTypeDelete}
@@ -909,7 +972,13 @@ const transformedDepots: Depot[] = depots.map((d) => ({
             </TabsContent>
             
             <TabsContent value="settings" className="mt-4">
-              <UISettings />
+              <UISettings
+                vehicleTypes={vehicleTypes}
+                vehicleCombinations={vehicleCombinationsState.combinations}
+                onAddCombination={vehicleCombinationsState.addCombination}
+                onUpdateCombination={vehicleCombinationsState.updateCombination}
+                onRemoveCombination={vehicleCombinationsState.removeCombination}
+              />
             </TabsContent>
           </Tabs>
         </DialogContent>

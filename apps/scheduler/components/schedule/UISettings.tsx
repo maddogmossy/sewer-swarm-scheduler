@@ -2,11 +2,61 @@ import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
 import { Input } from "@/components/ui/input";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import { useUISettings } from "@/hooks/useUISettings";
-import { Clock, MapPin, Timer, Calendar, Mail, Bell, ArrowRightLeft } from "lucide-react";
+import { useVehicleCombinations } from "@/hooks/useVehicleCombinations";
+import { mergeAndSortVehicleTypes, normalizeVehicleTypeName } from "@/lib/vehicleTypes";
+import type { VehicleTypesConfig, VehicleCombinationConfig } from "@/lib/vehicleTypes";
+import { Clock, MapPin, Timer, Calendar, Mail, Bell, ArrowRightLeft, Plus, Trash2 } from "lucide-react";
+import { cn } from "@/lib/utils";
 
-export function UISettings() {
+const AVAILABLE_COLORS = [
+  { value: "blue", class: "bg-[#BFDBFE] border-[#3B82F6]" },
+  { value: "green", class: "bg-[#BBF7D0] border-[#22C55E]" },
+  { value: "yellow", class: "bg-[#FEF08A] border-[#EAB308]" },
+  { value: "orange", class: "bg-[#FED7AA] border-[#F97316]" },
+  { value: "red", class: "bg-[#FECACA] border-[#EF4444]" },
+  { value: "purple", class: "bg-[#E9D5FF] border-[#A855F7]" },
+  { value: "pink", class: "bg-[#FBCFE8] border-[#EC4899]" },
+  { value: "teal", class: "bg-[#99F6E4] border-[#14B8A6]" },
+  { value: "gray", class: "bg-[#E2E8F0] border-[#64748B]" },
+  { value: "indigo", class: "bg-[#C7D2FE] border-[#6366F1]" },
+  { value: "cyan", class: "bg-[#A5F3FC] border-[#06B6D4]" },
+  { value: "lime", class: "bg-[#D9F99D] border-[#84CC16]" },
+];
+
+interface UISettingsProps {
+  vehicleTypes?: VehicleTypesConfig;
+  /** When provided, Settings uses this state so the schedule grid updates when you change combination color */
+  vehicleCombinations?: VehicleCombinationConfig[];
+  onAddCombination?: () => void;
+  onUpdateCombination?: (index: number, updated: Partial<VehicleCombinationConfig>) => void;
+  onRemoveCombination?: (index: number) => void;
+}
+
+export function UISettings({
+  vehicleTypes,
+  vehicleCombinations: vehicleCombinationsFromParent,
+  onAddCombination,
+  onUpdateCombination,
+  onRemoveCombination,
+}: UISettingsProps) {
   const { settings, updateSetting } = useUISettings();
+  const hook = useVehicleCombinations();
+  const useParent = vehicleCombinationsFromParent != null && onUpdateCombination != null;
+  const combinations = useParent ? vehicleCombinationsFromParent : hook.combinations;
+  const addCombination = useParent ? (onAddCombination ?? (() => {})) : hook.addCombination;
+  const updateCombination = useParent ? (onUpdateCombination ?? (() => {})) : hook.updateCombination;
+  const removeCombination = useParent ? (onRemoveCombination ?? (() => {})) : hook.removeCombination;
+
+  const combinationLabelsNorm = new Set(combinations.map((c) => normalizeVehicleTypeName(c.label)));
+  const typeOptions = vehicleTypes
+    ? mergeAndSortVehicleTypes(vehicleTypes)
+        .map((t) => t.type)
+        .filter((type) => !combinationLabelsNorm.has(normalizeVehicleTypeName(type)))
+    : [];
 
   return (
     <div className="space-y-6" data-testid="ui-settings">
@@ -189,6 +239,156 @@ export function UISettings() {
             onCheckedChange={(checked) => updateSetting("promptVehiclePairingDetected", checked)}
             className="data-[state=checked]:bg-pink-600"
           />
+        </div>
+
+        <div className="space-y-3 pt-2">
+          <div>
+            <h5 className="text-sm font-medium text-slate-800">Vehicle unit combinations</h5>
+            <p className="text-xs text-slate-600 mt-0.5">
+              When these unit types appear together in a cell, show one combined label and colour. First match wins.
+            </p>
+          </div>
+          <div className="space-y-3">
+            {combinations.map((combo, index) => (
+              <div
+                key={index}
+                className="flex flex-wrap items-start gap-3 p-4 rounded-lg border border-slate-200 bg-white"
+              >
+                <div className="space-y-1 min-w-[120px]">
+                  <Label className="text-xs text-slate-600">Label</Label>
+                  <Input
+                    value={combo.label}
+                    onChange={(e) => updateCombination(index, { label: e.target.value.trim() || combo.label })}
+                    placeholder="e.g. CCTV/Jet Vac"
+                    className="h-8 text-sm bg-white border-slate-300 text-slate-900"
+                  />
+                </div>
+                <div className="space-y-1">
+                  <Label className="text-xs text-slate-600">Colour</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className={cn(
+                          "h-8 gap-1.5 border-slate-300 text-slate-700",
+                          AVAILABLE_COLORS.find((c) => c.value === combo.defaultColor)?.class
+                        )}
+                      >
+                        <span className="w-3 h-3 rounded-full border border-slate-400 shrink-0" />
+                        {combo.defaultColor}
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-48 p-2 bg-white" align="start">
+                      <div className="flex flex-wrap gap-1">
+                        {AVAILABLE_COLORS.map((c) => (
+                          <button
+                            key={c.value}
+                            type="button"
+                            onClick={() => updateCombination(index, { defaultColor: c.value })}
+                            className={cn(
+                              "w-6 h-6 rounded border-2 shrink-0",
+                              c.class,
+                              combo.defaultColor === c.value ? "ring-2 ring-offset-1 ring-slate-400" : "border-transparent"
+                            )}
+                            title={c.value}
+                          />
+                        ))}
+                      </div>
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="space-y-1 min-w-[140px]">
+                  <Label className="text-xs text-slate-600">Group A (at least one)</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 w-full justify-between border-slate-300 text-slate-700 text-xs">
+                        {combo.groupA.length ? `${combo.groupA.length} selected` : "Select types"}
+                        <span className="ml-1 opacity-70">▼</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56 p-2 bg-white max-h-48 overflow-auto" align="start">
+                      {typeOptions.length === 0 ? (
+                        <p className="text-xs text-slate-500 py-2">Add vehicle types in Manage Depot first.</p>
+                      ) : (
+                        typeOptions.map((type) => (
+                          <label
+                            key={type}
+                            className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-slate-50 cursor-pointer text-sm"
+                          >
+                            <Checkbox
+                              checked={combo.groupA.includes(type)}
+                              onCheckedChange={(checked) => {
+                                const next = checked
+                                  ? [...combo.groupA, type]
+                                  : combo.groupA.filter((t) => t !== type);
+                                updateCombination(index, { groupA: next });
+                              }}
+                            />
+                            {type}
+                          </label>
+                        ))
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <div className="space-y-1 min-w-[140px]">
+                  <Label className="text-xs text-slate-600">Group B (at least one)</Label>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button variant="outline" size="sm" className="h-8 w-full justify-between border-slate-300 text-slate-700 text-xs">
+                        {combo.groupB.length ? `${combo.groupB.length} selected` : "Select types"}
+                        <span className="ml-1 opacity-70">▼</span>
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-56 p-2 bg-white max-h-48 overflow-auto" align="start">
+                      {typeOptions.length === 0 ? (
+                        <p className="text-xs text-slate-500 py-2">Add vehicle types in Manage Depot first.</p>
+                      ) : (
+                        typeOptions.map((type) => (
+                          <label
+                            key={type}
+                            className="flex items-center gap-2 py-1.5 px-2 rounded hover:bg-slate-50 cursor-pointer text-sm"
+                          >
+                            <Checkbox
+                              checked={combo.groupB.includes(type)}
+                              onCheckedChange={(checked) => {
+                                const next = checked
+                                  ? [...combo.groupB, type]
+                                  : combo.groupB.filter((t) => t !== type);
+                                updateCombination(index, { groupB: next });
+                              }}
+                            />
+                            {type}
+                          </label>
+                        ))
+                      )}
+                    </PopoverContent>
+                  </Popover>
+                </div>
+                <Button
+                  type="button"
+                  variant="ghost"
+                  size="sm"
+                  onClick={() => removeCombination(index)}
+                  className="h-8 text-slate-500 hover:text-red-600 shrink-0"
+                  title="Remove combination"
+                >
+                  <Trash2 className="h-4 w-4" />
+                </Button>
+              </div>
+            ))}
+            <Button
+              type="button"
+              variant="outline"
+              size="sm"
+              onClick={addCombination}
+              className="border-slate-300 text-slate-700"
+            >
+              <Plus className="h-4 w-4 mr-1.5" />
+              Add combination
+            </Button>
+          </div>
         </div>
       </div>
 

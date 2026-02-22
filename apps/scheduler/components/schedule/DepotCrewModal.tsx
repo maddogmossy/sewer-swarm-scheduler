@@ -8,8 +8,11 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Trash2, Edit, Plus, Users, Truck, Mail, Settings, X, Check, Calendar as CalendarIcon, ArrowRightLeft } from "lucide-react";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle, AlertDialogTrigger } from "@/components/ui/alert-dialog";
+import { format, isAfter, isBefore, isSameDay, startOfDay } from "date-fns";
 import { cn } from "@/lib/utils";
 import { CANONICAL_VEHICLE_TYPES, mergeAndSortVehicleTypes, normalizeVehicleTypeName } from "@/lib/vehicleTypes";
+import { EmployeeTimeOffDialog, type EmployeeTimeOffDialogPayload } from "@/components/schedule/EmployeeTimeOffDialog";
 
 interface DepotCrewModalProps {
   open: boolean;
@@ -35,6 +38,8 @@ interface DepotCrewModalProps {
     category?: string
     color?: string
   }[];
+  scheduleItems?: any[];
+  onScheduleItemDelete?: (id: string) => void | Promise<void>;
   onCrewCreate: (name: string, shift: 'day' | 'night') => void;
   onCrewUpdate: (id: string, name: string, shift: 'day' | 'night') => void;
   onCrewDelete: (id: string) => void;
@@ -70,6 +75,7 @@ export function DepotCrewModal({
   crews = [],
   employees = [],
   vehicles = [],
+  scheduleItems = [],
   onCrewCreate,
   onCrewUpdate,
   onCrewDelete,
@@ -86,6 +92,7 @@ export function DepotCrewModal({
   onVehicleTypeUpdate = () => {},
   onVehicleTypeDelete = () => {},
   isReadOnly = false,
+  onScheduleItemDelete = () => {},
 }: DepotCrewModalProps) {
   // Available colors matching Job Status style
   const AVAILABLE_COLORS = [
@@ -144,7 +151,115 @@ export function DepotCrewModal({
     open: boolean;
     employeeId: string | null;
     employeeName: string;
-  }>({ open: false, employeeId: null, employeeName: "" });
+    defaultDate: Date | null;
+  }>({ open: false, employeeId: null, employeeName: "", defaultDate: null });
+
+  const [employeeTimeOffConfirm, setEmployeeTimeOffConfirm] = useState<{
+    open: boolean;
+    payload: EmployeeTimeOffDialogPayload;
+    employeeId: string;
+    employeeName: string;
+    impacted: Array<{
+      dateIso: string;
+      crewName: string;
+      shift: "day" | "night" | "unknown";
+      itemId: string;
+    }>;
+  } | null>(null);
+
+  const handleEmployeeTimeOffApplied = (payload: EmployeeTimeOffDialogPayload) => {
+    if (!employeeTimeOffModal.employeeId) return;
+    const employeeId = employeeTimeOffModal.employeeId;
+    const employeeName = employeeTimeOffModal.employeeName;
+    const today = startOfDay(new Date());
+    const start = startOfDay(payload.startDate);
+    const end = startOfDay(payload.endDate);
+
+    const impacted = (scheduleItems as any[])
+      .filter((item) => item && item.employeeId === employeeId)
+      .filter((item) => item.type === "operative" || item.type === "assistant")
+      .filter((item) => {
+        const itemDate = startOfDay(new Date(item.date));
+        if (isBefore(itemDate, today)) return false;
+        const inRange =
+          (isSameDay(itemDate, start) || isAfter(itemDate, start)) &&
+          (isSameDay(itemDate, end) || isBefore(itemDate, end));
+        return inRange;
+      })
+      .map((item) => {
+        const crew = crews.find((c) => c.id === item.crewId);
+        const shift: "day" | "night" | "unknown" =
+          crew?.shift === "night" ? "night" : crew?.shift === "day" ? "day" : "unknown";
+        return {
+          dateIso: format(startOfDay(new Date(item.date)), "yyyy-MM-dd"),
+          crewName: crew?.name || "Unknown crew",
+          shift,
+          itemId: item.id,
+        };
+      })
+      .sort((a, b) => a.dateIso.localeCompare(b.dateIso));
+
+    setEmployeeTimeOffConfirm({ open: true, payload, employeeId, employeeName, impacted });
+  };
+
+  const applyEmployeeTimeOffConfirmed = async (confirm: NonNullable<typeof employeeTimeOffConfirm>) => {
+    const payload = confirm.payload;
+    const employeeId = confirm.employeeId;
+    const start = startOfDay(payload.startDate);
+    const end = startOfDay(payload.endDate);
+    const today = startOfDay(new Date());
+
+    const isAutoLinkedFreeJob = (item: any) =>
+      item &&
+      item.type === "job" &&
+      !!item.employeeId &&
+      (item.jobStatus === "free" || item.customer === "Free" || item.address === "Free");
+
+    (scheduleItems as any[]).forEach((item) => {
+      if (!item || item.employeeId !== employeeId) return;
+      if (item.type !== "operative" && item.type !== "assistant") return;
+      const itemDate = startOfDay(new Date(item.date));
+      if (isBefore(itemDate, today)) return;
+      const inRange =
+        (isSameDay(itemDate, start) || isAfter(itemDate, start)) &&
+        (isSameDay(itemDate, end) || isBefore(itemDate, end));
+      if (!inRange) return;
+
+      // Delete linked Free jobs in that cell too.
+      const linkedFreeJobs = (scheduleItems as any[]).filter(
+        (i) =>
+          isAutoLinkedFreeJob(i) &&
+          i.crewId === item.crewId &&
+          isSameDay(new Date(i.date), itemDate) &&
+          i.employeeId === employeeId
+      );
+      linkedFreeJobs.forEach((j) => onScheduleItemDelete(j.id));
+
+      onScheduleItemDelete(item.id);
+    });
+
+    if (payload.absenceType === "holiday" || payload.absenceType === "sick") {
+      await fetch("/api/employee-absences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId,
+          absenceType: payload.absenceType,
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+        }),
+      }).catch(() => {});
+    }
+
+    if (payload.absenceType === "sick") {
+      const emp = employees.find((e) => e.id === employeeId);
+      const name = emp?.name || confirm.employeeName || "Employee";
+      onEmployeeUpdate(employeeId, name, "sick");
+    }
+
+    setEmployeeTimeOffModal((prev) => ({ ...prev, open: false }));
+    setEmployeeTimeOffConfirm(null);
+  };
 
   const [vehicleOffModal, setVehicleOffModal] = useState<{
     open: boolean;
@@ -470,11 +585,23 @@ export function DepotCrewModal({
                                   open: true,
                                   employeeId: emp.id,
                                   employeeName: emp.name,
+                                  defaultDate: new Date(),
                                 })
                               }
                             >
                               <CalendarIcon className="w-4 h-4" />
                             </Button>
+                            {emp.status === "sick" && (
+                              <Button
+                                size="sm"
+                                variant="ghost"
+                                className="h-8 px-2 text-blue-700 hover:bg-blue-50"
+                                title="Mark Active"
+                                onClick={() => onEmployeeUpdate(emp.id, emp.name, "active")}
+                              >
+                                <Check className="w-4 h-4 mr-1" /> Active
+                              </Button>
+                            )}
                             {/* Move to another depot (permanent) */}
                             {depots.length > 1 && (
                               <Popover>
@@ -537,17 +664,34 @@ export function DepotCrewModal({
                             >
                               <Edit className="w-4 h-4 text-slate-500" />
                             </Button>
-                            <Button
-                              size="icon"
-                              variant="ghost"
-                              onClick={(e) => {
-                                e.preventDefault();
-                                handleDeleteEmployee(emp.id);
-                              }}
-                              className="h-8 w-8"
-                            >
-                              <Trash2 className="w-4 h-4 text-red-500" />
-                            </Button>
+                            <AlertDialog>
+                              <AlertDialogTrigger asChild>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  className="h-8 w-8"
+                                >
+                                  <Trash2 className="w-4 h-4 text-red-500" />
+                                </Button>
+                              </AlertDialogTrigger>
+                              <AlertDialogContent className="bg-white text-slate-900">
+                                <AlertDialogHeader>
+                                  <AlertDialogTitle className="text-slate-900">Delete employee?</AlertDialogTitle>
+                                  <AlertDialogDescription className="text-slate-700">
+                                    Are you sure you want to remove {emp.name} from this depot? They will be removed from all crews and schedules.
+                                  </AlertDialogDescription>
+                                </AlertDialogHeader>
+                                <AlertDialogFooter>
+                                  <AlertDialogCancel className="border-slate-300 text-slate-700">Cancel</AlertDialogCancel>
+                                  <AlertDialogAction
+                                    onClick={() => handleDeleteEmployee(emp.id)}
+                                    className="bg-red-600 text-white hover:bg-red-700"
+                                  >
+                                    Delete
+                                  </AlertDialogAction>
+                                </AlertDialogFooter>
+                              </AlertDialogContent>
+                            </AlertDialog>
                           </div>
                         </>
                       )}
@@ -970,9 +1114,30 @@ export function DepotCrewModal({
                                   >
                                     <Edit className="w-4 h-4 text-slate-500" />
                                   </Button>
-                                  <Button size="icon" variant="ghost" onClick={() => handleDeleteVehicle(veh.id)}>
-                                    <Trash2 className="w-4 h-4 text-red-500" />
-                                  </Button>
+                                  <AlertDialog>
+                                    <AlertDialogTrigger asChild>
+                                      <Button size="icon" variant="ghost">
+                                        <Trash2 className="w-4 h-4 text-red-500" />
+                                      </Button>
+                                    </AlertDialogTrigger>
+                                    <AlertDialogContent className="bg-white text-slate-900">
+                                      <AlertDialogHeader>
+                                        <AlertDialogTitle className="text-slate-900">Delete vehicle?</AlertDialogTitle>
+                                        <AlertDialogDescription className="text-slate-700">
+                                          Are you sure you want to remove {veh.name} from this depot? This cannot be undone.
+                                        </AlertDialogDescription>
+                                      </AlertDialogHeader>
+                                      <AlertDialogFooter>
+                                        <AlertDialogCancel className="border-slate-300 text-slate-700">Cancel</AlertDialogCancel>
+                                        <AlertDialogAction
+                                          onClick={() => handleDeleteVehicle(veh.id)}
+                                          className="bg-red-600 text-white hover:bg-red-700"
+                                        >
+                                          Delete
+                                        </AlertDialogAction>
+                                      </AlertDialogFooter>
+                                    </AlertDialogContent>
+                                  </AlertDialog>
                                 </div>
                               )}
                             </div>
@@ -999,17 +1164,84 @@ export function DepotCrewModal({
               </Button>
             )}
           </div>
-          <Button onClick={() => onOpenChange(false)}>Done</Button>
+          <Button
+            onClick={() => onOpenChange(false)}
+            className="bg-blue-600 hover:bg-blue-700 text-white shadow-sm"
+          >
+            Done
+          </Button>
         </DialogFooter>
       </DialogContent>
       {/* Inline modals so they share the same Dialog root */}
-      <EmployeeTimeOffModal
+      <EmployeeTimeOffDialog
         open={employeeTimeOffModal.open}
-        onOpenChange={(open) =>
-          setEmployeeTimeOffModal((prev) => ({ ...prev, open }))
-        }
+        onOpenChange={(open) => setEmployeeTimeOffModal((prev) => ({ ...prev, open }))}
         employeeName={employeeTimeOffModal.employeeName}
+        initialDate={employeeTimeOffModal.defaultDate || undefined}
+        onApply={handleEmployeeTimeOffApplied}
       />
+      {employeeTimeOffConfirm && (
+        <AlertDialog
+          open={employeeTimeOffConfirm.open}
+          onOpenChange={(open) => {
+            if (!open) setEmployeeTimeOffConfirm(null);
+          }}
+        >
+          <AlertDialogContent className="bg-white text-slate-900">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-slate-900">
+                {employeeTimeOffConfirm.payload.absenceType === "sick"
+                  ? "Mark employee sick and remove them from schedule?"
+                  : employeeTimeOffConfirm.payload.absenceType === "holiday"
+                    ? "Book holiday and remove them from schedule?"
+                    : "Apply time off and remove them from schedule?"}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-slate-700">
+                {employeeTimeOffConfirm.payload.absenceType === "sick" ? (
+                  <div className="space-y-2">
+                    <div>
+                      This will remove {employeeTimeOffConfirm.employeeName} from any scheduled day(s) below and mark them as <span className="font-semibold">Sick</span> (they stay unavailable until you mark them Active).
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div>
+                      This will remove {employeeTimeOffConfirm.employeeName} from any scheduled day(s) below.
+                    </div>
+                  </div>
+                )}
+                {employeeTimeOffConfirm.impacted.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    <div className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                      Impacted assignments
+                    </div>
+                    <ul className="max-h-48 overflow-auto text-sm list-disc pl-5">
+                      {employeeTimeOffConfirm.impacted.map((i) => (
+                        <li key={i.itemId}>
+                          {i.dateIso} — {i.crewName} ({i.shift === "unknown" ? "shift?" : i.shift})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-sm">No current assignments found in that date range.</div>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-slate-300 text-slate-700">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-blue-600 text-white hover:bg-blue-700"
+                onClick={() => applyEmployeeTimeOffConfirmed(employeeTimeOffConfirm)}
+              >
+                Confirm
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
       <VehicleOffRoadModal
         open={vehicleOffModal.open}
         onOpenChange={(open) =>

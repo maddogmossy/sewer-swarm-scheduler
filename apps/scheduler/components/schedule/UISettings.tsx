@@ -252,9 +252,9 @@ export function UISettings({
             {combinations.map((combo, index) => (
               <div
                 key={index}
-                className="flex flex-wrap items-start gap-3 p-4 rounded-lg border border-slate-200 bg-white"
+                className="grid grid-cols-[minmax(120px,1fr)_auto_minmax(140px,1fr)_minmax(140px,1fr)_auto] items-start gap-3 p-4 rounded-lg border border-slate-200 bg-white"
               >
-                <div className="space-y-1 min-w-[120px]">
+                <div className="space-y-1 min-w-0">
                   <Label className="text-xs text-slate-600">Label</Label>
                   <Input
                     value={combo.label}
@@ -265,6 +265,7 @@ export function UISettings({
                 </div>
                 <div className="space-y-1">
                   <Label className="text-xs text-slate-600">Colour</Label>
+                  <div className="mt-0.5">
                   <Popover>
                     <PopoverTrigger asChild>
                       <Button
@@ -297,8 +298,9 @@ export function UISettings({
                       </div>
                     </PopoverContent>
                   </Popover>
+                  </div>
                 </div>
-                <div className="space-y-1 min-w-[140px]">
+                <div className="space-y-1 min-w-0">
                   <Label className="text-xs text-slate-600">Group A (at least one)</Label>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -332,7 +334,7 @@ export function UISettings({
                     </PopoverContent>
                   </Popover>
                 </div>
-                <div className="space-y-1 min-w-[140px]">
+                <div className="space-y-1 min-w-0">
                   <Label className="text-xs text-slate-600">Group B (at least one)</Label>
                   <Popover>
                     <PopoverTrigger asChild>
@@ -366,16 +368,18 @@ export function UISettings({
                     </PopoverContent>
                   </Popover>
                 </div>
-                <Button
-                  type="button"
-                  variant="ghost"
-                  size="sm"
-                  onClick={() => removeCombination(index)}
-                  className="h-8 text-slate-500 hover:text-red-600 shrink-0"
-                  title="Remove combination"
-                >
-                  <Trash2 className="h-4 w-4" />
-                </Button>
+                <div className="flex items-end pb-0.5">
+                  <Button
+                    type="button"
+                    variant="ghost"
+                    size="sm"
+                    onClick={() => removeCombination(index)}
+                    className="h-8 text-slate-500 hover:text-red-600 shrink-0"
+                    title="Remove combination"
+                  >
+                    <Trash2 className="h-4 w-4" />
+                  </Button>
+                </div>
               </div>
             ))}
             <Button

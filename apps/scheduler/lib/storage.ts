@@ -7,6 +7,8 @@ import {
     type InsertCrew,
     type Employee,
     type InsertEmployee,
+    type EmployeeAbsence,
+    type InsertEmployeeAbsence,
     type Vehicle,
     type InsertVehicle,
     type ScheduleItem,
@@ -25,6 +27,7 @@ import {
     depots,
     crews,
     employees,
+    employeeAbsences,
     vehicles,
     scheduleItems,
     colorLabels,
@@ -33,7 +36,7 @@ import {
     teamInvites,
   } from "@shared/schema";
   import { db } from "@/lib/db";
-  import { eq, and, sql, desc, isNull, gte } from "drizzle-orm";
+  import { eq, and, sql, desc, isNull, isNotNull, gte } from "drizzle-orm";
   
   // Helper to ensure db is available
   function getDb() {
@@ -161,10 +164,13 @@ import {
     
     // Depots (by organization)
     getDepotsByOrg(organizationId: string): Promise<Depot[]>;
+    getArchivedDepotsByOrg(organizationId: string): Promise<Depot[]>;
     getDepots(userId: string): Promise<Depot[]>;
     getDepot(id: string): Promise<Depot | undefined>;
     createDepot(depot: InsertDepot): Promise<Depot>;
     updateDepot(id: string, depot: Partial<InsertDepot>): Promise<Depot | undefined>;
+    archiveDepot(id: string): Promise<Depot | undefined>;
+    restoreDepot(id: string): Promise<Depot | undefined>;
     deleteDepot(id: string): Promise<void>;
     
     // Crews (by organization) - active only by default
@@ -184,6 +190,10 @@ import {
     createEmployee(employee: InsertEmployee): Promise<Employee>;
     updateEmployee(id: string, employee: Partial<InsertEmployee>): Promise<Employee | undefined>;
     deleteEmployee(id: string): Promise<void>;
+
+    // Employee absences (by organization)
+    getEmployeeAbsencesByOrg(organizationId: string): Promise<EmployeeAbsence[]>;
+    createEmployeeAbsence(absence: InsertEmployeeAbsence): Promise<EmployeeAbsence>;
     
     // Vehicles (by organization)
     getVehiclesByOrg(organizationId: string): Promise<Vehicle[]>;
@@ -404,10 +414,19 @@ import {
   
     // ============= DEPOTS =============
     async getDepotsByOrg(organizationId: string): Promise<Depot[]> {
-      return await getDb().select().from(depots).where(eq(depots.organizationId, organizationId));
+      return await getDb().select().from(depots).where(
+        and(eq(depots.organizationId, organizationId), isNull(depots.archivedAt))
+      );
+    }
+    async getArchivedDepotsByOrg(organizationId: string): Promise<Depot[]> {
+      return await getDb().select().from(depots).where(
+        and(eq(depots.organizationId, organizationId), isNotNull(depots.archivedAt))
+      );
     }
     async getDepots(userId: string): Promise<Depot[]> {
-      return await getDb().select().from(depots).where(eq(depots.userId, userId));
+      return await getDb().select().from(depots).where(
+        and(eq(depots.userId, userId), isNull(depots.archivedAt))
+      );
     }
   
     async getDepot(id: string): Promise<Depot | undefined> {
@@ -450,6 +469,14 @@ import {
       return result[0];
     }
   
+    async archiveDepot(id: string): Promise<Depot | undefined> {
+      const result = await getDb().update(depots).set({ archivedAt: new Date() }).where(eq(depots.id, id)).returning();
+      return result[0];
+    }
+    async restoreDepot(id: string): Promise<Depot | undefined> {
+      const result = await getDb().update(depots).set({ archivedAt: null }).where(eq(depots.id, id)).returning();
+      return result[0];
+    }
     async deleteDepot(id: string): Promise<void> {
       await getDb().delete(depots).where(eq(depots.id, id));
     }
@@ -531,6 +558,32 @@ import {
   
     async deleteEmployee(id: string): Promise<void> {
       await getDb().delete(employees).where(eq(employees.id, id));
+    }
+
+    // ============= EMPLOYEE ABSENCES =============
+    async getEmployeeAbsencesByOrg(organizationId: string): Promise<EmployeeAbsence[]> {
+      return await handleDbError(
+        async () => {
+          return await getDb()
+            .select()
+            .from(employeeAbsences)
+            .where(eq(employeeAbsences.organizationId, organizationId));
+        },
+        "getEmployeeAbsencesByOrg"
+      );
+    }
+
+    async createEmployeeAbsence(absence: InsertEmployeeAbsence): Promise<EmployeeAbsence> {
+      return await handleDbError(
+        async () => {
+          const result = await getDb()
+            .insert(employeeAbsences)
+            .values(absence)
+            .returning();
+          return result[0];
+        },
+        "createEmployeeAbsence"
+      );
     }
   
     // ============= VEHICLES =============

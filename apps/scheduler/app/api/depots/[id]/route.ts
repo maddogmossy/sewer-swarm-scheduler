@@ -42,11 +42,17 @@ export async function DELETE(
     requireAdminOrOperations(ctx);
 
     const { id } = await params;
-    await storage.deleteDepot(id);
-    return NextResponse.json({ ok: true });
+    const depot = await storage.archiveDepot(id);
+    if (!depot) {
+      return NextResponse.json(
+        { error: "Depot not found" },
+        { status: 404 }
+      );
+    }
+    return NextResponse.json(depot);
   } catch (err: any) {
     return NextResponse.json(
-      { error: err.message ?? "Failed to delete depot" },
+      { error: err.message ?? "Failed to archive depot" },
       { status: 400 }
     );
   }

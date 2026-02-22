@@ -32,6 +32,7 @@ export const CANONICAL_VEHICLE_TYPES: Array<{ type: string; defaultColor: string
   { type: "CCTV", defaultColor: "blue" },
   { type: "CCTV/Van Pack", defaultColor: "indigo" },
   { type: "Jet Vac", defaultColor: "teal" },
+  { type: "Directional Water Cutter", defaultColor: "purple" },
 ];
 
 function getTypeName(t: string | { type: string; defaultColor?: string }): string {

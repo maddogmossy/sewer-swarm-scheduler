@@ -58,8 +58,8 @@ export default function SchedulePage() {
   const updateQueueRef = useRef<Promise<void>>(Promise.resolve());
   // Serialize deletes as well (some flows can delete multiple items at once).
   const deleteQueueRef = useRef<Promise<void>>(Promise.resolve());
-  // Vehicle types can be stored as string[] (legacy) or Array<{type: string, defaultColor?: string}>
-  const [vehicleTypes, setVehicleTypes] = useState<string[] | Array<{type: string; defaultColor?: string}>>(() => {
+  // Vehicle types are normalized to object form for consistent updates.
+  const [vehicleTypes, setVehicleTypes] = useState<Array<{type: string; defaultColor?: string}>>(() => {
     if (typeof window !== "undefined") {
       const saved = localStorage.getItem("scheduler_vehicle_types");
       if (saved) {
@@ -84,9 +84,8 @@ export default function SchedulePage() {
   const vehicleCombinations = vehicleCombinationsState.combinations;
   const combinationLabelsNorm = new Set(vehicleCombinations.map((c) => normalizeVehicleTypeName(c.label)));
   const displayVehicleTypes = vehicleTypes.filter((t) => {
-    const typeName = typeof t === "string" ? t : t.type;
-    return !combinationLabelsNorm.has(normalizeVehicleTypeName(typeName));
-  }) as typeof vehicleTypes;
+    return !combinationLabelsNorm.has(normalizeVehicleTypeName(t.type));
+  });
 
   // Undo/Redo state - track operations instead of full state
   type Operation =
@@ -101,13 +100,21 @@ export default function SchedulePage() {
 
   const {
     depots,
+    archivedDepots,
     crews,
     employees,
+    employeeAbsences,
     vehicles,
     scheduleItems,
     isLoading,
     mutations,
   } = useScheduleData();
+
+  useEffect(() => {
+    // #region agent log
+    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'post-fix',hypothesisId:'P1',location:'apps/scheduler/app/(main)/schedule/page.tsx:SchedulePage:mount',message:'SchedulePage mounted',data:{path:typeof window!=='undefined'?window.location?.pathname:null},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  }, []);
 
   // Get user's organization and role
   const { data: orgData, isLoading: orgLoading } = useOrganization();
@@ -232,6 +239,14 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   address: d.address,
   employees: employees.filter(e => e.depotId === d.id).length,
   vehicles: vehicles.filter(v => v.depotId === d.id).length,
+}));
+
+const transformedArchivedDepots: Depot[] = archivedDepots.map((d: { id: string; name: string; address: string }) => ({
+  id: d.id,
+  name: d.name,
+  address: d.address,
+  employees: 0,
+  vehicles: 0,
 }));
 
   // Helper to save operation to history
@@ -640,7 +655,7 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   const handleVehicleTypeCreate = useCallback(
     (type: string, defaultColor?: string) => {
       if (!type.trim()) return;
-      const typeNames = vehicleTypes.map(t => typeof t === 'string' ? t : t.type);
+      const typeNames = vehicleTypes.map((t) => t.type);
       if (typeNames.includes(type.trim())) return;
       
       const newType = { type: type.trim(), defaultColor: defaultColor || 'blue' };
@@ -661,33 +676,18 @@ const transformedDepots: Depot[] = depots.map((d) => ({
         trimmedName = oldType;
       }
 
-      const typeNames = vehicleTypes.map(t => typeof t === "string" ? t : t.type);
+      const typeNames = vehicleTypes.map((t) => t.type);
       const isNameChanged = trimmedName !== oldType;
 
       // If we're renaming, prevent duplicates; if only color changes, allow same name.
       if (isNameChanged && typeNames.includes(trimmedName)) return;
 
       // Get the old default color before updating
-      const oldTypeObj = vehicleTypes.find(t => {
-        const typeName = typeof t === "string" ? t : t.type;
-        return typeName === oldType;
-      });
-      const oldDefaultColor = typeof oldTypeObj === "object" && oldTypeObj?.defaultColor 
-        ? oldTypeObj.defaultColor 
-        : "blue";
+      const oldTypeObj = vehicleTypes.find((t) => t.type === oldType);
+      const oldDefaultColor = oldTypeObj?.defaultColor ? oldTypeObj.defaultColor : "blue";
 
-      const newTypes = vehicleTypes.map(t => {
-        const typeName = typeof t === "string" ? t : t.type;
-        if (typeName !== oldType) return t;
-
-        if (typeof t === "string") {
-          // Upgrade to object form when tracking a default color.
-          if (defaultColor) {
-            return { type: trimmedName, defaultColor };
-          }
-          return trimmedName;
-        }
-
+      const newTypes = vehicleTypes.map((t) => {
+        if (t.type !== oldType) return t;
         return {
           ...t,
           type: trimmedName,
@@ -740,10 +740,7 @@ const transformedDepots: Depot[] = depots.map((d) => ({
 
   const handleVehicleTypeDelete = useCallback(
     (type: string) => {
-      const newTypes = vehicleTypes.filter(t => {
-        const typeName = typeof t === 'string' ? t : t.type;
-        return typeName !== type;
-      });
+      const newTypes = vehicleTypes.filter((t) => t.type !== type);
       setVehicleTypes(newTypes);
       if (typeof window !== "undefined") {
         localStorage.setItem("scheduler_vehicle_types", JSON.stringify(newTypes));
@@ -776,7 +773,18 @@ const transformedDepots: Depot[] = depots.map((d) => ({
 
   const handleDepotDelete = useCallback(
     async (id: string) => {
+      // #region agent log
+      fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e9596'},body:JSON.stringify({sessionId:'7e9596',location:'page.tsx:handleDepotDelete',message:'handleDepotDelete called',data:{depotId:id,depotsLengthBefore:depots.length,selectedDepotId},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       await mutations.deleteDepot.mutateAsync(id);
+    },
+    [mutations, depots.length, selectedDepotId]
+  );
+
+  const handleRestoreDepot = useCallback(
+    async (id: string) => {
+      await mutations.restoreDepot.mutateAsync(id);
+      setSelectedDepotId(id);
     },
     [mutations]
   );
@@ -811,6 +819,9 @@ const transformedDepots: Depot[] = depots.map((d) => ({
   }
 
   if (depots.length === 0) {
+    // #region agent log
+    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e9596'},body:JSON.stringify({sessionId:'7e9596',location:'page.tsx:empty-state',message:'Rendering empty state (Create first depot)',data:{depotsLength:depots.length,selectedDepotId},hypothesisId:'H2,H3,H4',timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <div className="text-center max-w-md px-6">
@@ -860,10 +871,12 @@ const transformedDepots: Depot[] = depots.map((d) => ({
       <Sidebar
         key={`sidebar-${userRole}-${isReadOnly}`}
         depots={transformedDepots}
+        archivedDepots={transformedArchivedDepots}
         selectedDepotId={selectedDepotId}
         onSelectDepot={setSelectedDepotId}
         onUpdateDepot={handleDepotUpdate}
         onDeleteDepot={handleDepotDelete}
+        onRestoreDepot={handleRestoreDepot}
         onAddDepot={handleAddDepot}
         onEditDepot={() => {
           setIsDepotCrewModalOpen(true);
@@ -872,11 +885,12 @@ const transformedDepots: Depot[] = depots.map((d) => ({
         onOpenSettings={() => setIsSettingsModalOpen(true)}
         canAccessSettings={canAccessSettings}
       />
-      <div className="flex-1 overflow-auto">
+      <div className="flex-1 min-w-0 overflow-auto">
         <CalendarGrid
           items={transformedItems}
           crews={transformedCrews}
           employees={transformedEmployees}
+          employeeAbsences={employeeAbsences}
           vehicles={transformedVehicles}
           colorLabels={colorLabels}
           isReadOnly={isReadOnly}
@@ -919,6 +933,7 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           crews={transformedCrews}
           employees={transformedEmployees}
           vehicles={transformedVehicles}
+          scheduleItems={transformedItems}
           onCrewCreate={handleCrewCreate}
           onCrewUpdate={handleCrewUpdate}
           onCrewDelete={handleCrewDelete}
@@ -935,6 +950,7 @@ const transformedDepots: Depot[] = depots.map((d) => ({
           onVehicleTypeUpdate={handleVehicleTypeUpdate}
           onVehicleTypeDelete={handleVehicleTypeDelete}
           isReadOnly={isReadOnly}
+          onScheduleItemDelete={handleItemDelete}
         />
       )}
       

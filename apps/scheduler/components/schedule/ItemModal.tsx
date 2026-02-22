@@ -10,7 +10,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Textarea } from "@/components/ui/textarea";
 import { Calendar } from "@/components/ui/calendar";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
-import { format, isSameDay, isBefore, startOfDay } from "date-fns";
+import { format, isSameDay, isBefore, isAfter, startOfDay } from "date-fns";
 import { CalendarIcon, MapPin, Briefcase, Check, User, Truck, Edit2, AlertCircle, Plus, X, Trash2, Search, FileText } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ScheduleItem } from "./CalendarGrid";
@@ -122,6 +122,13 @@ interface ItemModalProps {
     startsFromHome?: boolean;
     depotId?: string;
   }[];
+  employeeAbsences?: Array<{
+    id: string;
+    employeeId: string;
+    absenceType: "holiday" | "sick";
+    startDate: string;
+    endDate: string;
+  }>;
   vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance' }[];
   items: ScheduleItem[]; // For conflict detection
   crews?: { id: string; shift?: 'day' | 'night'; depotId?: string }[]; // For validating assignments against active crews
@@ -136,7 +143,7 @@ const noteSchema = z.object({
   noteContent: z.string().min(1, "Note content is required"),
 });
 
-export function ItemModal({ open, onOpenChange, onSubmit, type, initialData, employees, vehicles, items, crews, depots, colorLabels, onColorLabelUpdate, isReadOnly = false, onMoveDate }: ItemModalProps) {
+export function ItemModal({ open, onOpenChange, onSubmit, type, initialData, employees, employeeAbsences, vehicles, items, crews, depots, colorLabels, onColorLabelUpdate, isReadOnly = false, onMoveDate }: ItemModalProps) {
   // We conditionally render different forms based on type
   if (type === 'job') {
     return <SiteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} employees={employees} depots={depots} crews={crews} colorLabels={colorLabels} onColorLabelUpdate={onColorLabelUpdate} isReadOnly={isReadOnly} onMoveDate={onMoveDate} items={items} />;
@@ -144,7 +151,7 @@ export function ItemModal({ open, onOpenChange, onSubmit, type, initialData, emp
   if (type === 'note') {
       return <NoteForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} initialData={initialData} />;
   }
-  return <OperativeForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} type={type} initialData={initialData} employees={employees} vehicles={vehicles} items={items} crews={crews} />;
+  return <OperativeForm open={open} onOpenChange={onOpenChange} onSubmit={onSubmit} type={type} initialData={initialData} employees={employees} employeeAbsences={employeeAbsences} vehicles={vehicles} items={items} crews={crews} />;
 }
 
 // ------------------- NOTE FORM -------------------
@@ -284,7 +291,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, employees = [], d
   // Get crew shift for day/night default
   const getCrewShift = (): 'day' | 'night' => {
     if (initialData?.crewId && crews) {
-      const crew = crews.find(c => c.id === initialData.crewId);
+      const crew = crews.find((c: any) => c.id === initialData.crewId);
       return crew?.shift === 'night' ? 'night' : 'day';
     }
     return 'day';
@@ -345,14 +352,14 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, employees = [], d
 
     // First, try to use employee location if employee is assigned
     if (employeeId) {
-      const employee = employees.find(e => e.id === employeeId);
+      const employee = employees.find((e: any) => e.id === employeeId);
       if (employee) {
         if (employee.startsFromHome && employee.homePostcode) {
           // Employee starts from home - use their postcode
           startLocation = employee.homePostcode;
         } else if (employee.depotId && depots) {
           // Employee starts from depot - use depot address
-          const depot = depots.find(d => d.id === employee.depotId);
+          const depot = depots.find((d: any) => d.id === employee.depotId);
           if (depot) {
             startLocation = depot.address;
           }
@@ -362,9 +369,9 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, employees = [], d
 
     // If no employee location, try to use crew's depot
     if (!startLocation && crewId && crews && depots) {
-      const crew = crews.find(c => c.id === crewId);
+      const crew = crews.find((c: any) => c.id === crewId);
       if (crew?.depotId) {
-        const depot = depots.find(d => d.id === crew.depotId);
+        const depot = depots.find((d: any) => d.id === crew.depotId);
         if (depot) {
           startLocation = depot.address;
         }
@@ -1239,7 +1246,7 @@ function SiteForm({ open, onOpenChange, onSubmit, initialData, employees = [], d
 
 // ------------------- OPERATIVE FORM -------------------
 
-function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employees, vehicles, items, crews }: any) {
+function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employees, employeeAbsences = [], vehicles, items, crews }: any) {
   const [applyPeriod, setApplyPeriod] = useState<'none' | 'week' | 'month' | '6months' | '12months'>('none');
   const form = useForm({
     resolver: zodResolver(operativeSchema),
@@ -1248,6 +1255,41 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
       vehicleId: initialData?.vehicleId || "",
     },
   });
+
+  useEffect(() => {
+    if (!open) return;
+
+    const debugTargetDay = startOfDay(initialData?.date ? new Date(initialData.date) : new Date());
+
+    const holidayCount = (employees as any[]).reduce((acc, e) => {
+      const isOnHoliday = (employeeAbsences as any[])
+        .filter((a) => a && a.employeeId === e?.id && a.absenceType === "holiday")
+        .some((a) => {
+          const start = startOfDay(new Date(a.startDate));
+          const end = startOfDay(new Date(a.endDate));
+          return (
+            (isSameDay(debugTargetDay, start) || isAfter(debugTargetDay, start)) &&
+            (isSameDay(debugTargetDay, end) || isBefore(debugTargetDay, end))
+          );
+        });
+      return acc + (isOnHoliday ? 1 : 0);
+    }, 0);
+
+    const colorBuckets: Record<string, number> = {};
+    (vehicles as any[]).forEach((v) => {
+      const hex =
+        typeof v?.color === "string" && v.color.startsWith("#") ? v.color : "#3B82F6";
+      colorBuckets[hex] = (colorBuckets[hex] || 0) + 1;
+    });
+    const topColors = Object.entries(colorBuckets)
+      .sort((a, b) => b[1] - a[1])
+      .slice(0, 5);
+
+    // #region agent log
+    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H1,H2',location:'apps/scheduler/components/schedule/ItemModal.tsx:OperativeForm:open-summary',message:'OperativeForm opened; summary of badge colors/unavailable',data:{formType:type,targetDay:debugTargetDay.toISOString().slice(0,10),employeesCount:(employees as any[])?.length||0,holidayCount,vehiclesCount:(vehicles as any[])?.length||0,topColors,hasRedLikeColor:Object.keys(colorBuckets).some((c)=>/^#?ef4444$/i.test(c)||/^#?dc2626$/i.test(c)||/^#?b91c1c$/i.test(c))},timestamp:Date.now()})}).catch(()=>{});
+    // #endregion
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open]);
 
   // Reset form when initialData changes or modal opens
   useEffect(() => {
@@ -1263,6 +1305,7 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
 
   // Check for conflicts
   const targetDate = initialData?.date ? new Date(initialData.date) : new Date();
+  const targetDay = startOfDay(targetDate);
   
   // Get valid crew IDs set for efficient lookup
   const validCrewIds = crews ? new Set(crews.map((c: any) => c.id)) : null;
@@ -1285,17 +1328,19 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
   // Get vehicles who are already assigned on this day, AND their shift
   const assignedVehiclesInfo = items
     .filter((item: ScheduleItem) => 
-        item.type === 'operative' && 
+        (item.type === 'operative' || item.type === 'assistant') && 
         isSameDay(new Date(item.date), targetDate) &&
         item.id !== initialData?.id && // Exclude self if editing
         (!validCrewIds || validCrewIds.has(item.crewId)) && // Only count items for valid crews
         item.vehicleId
     )
-    .reduce((acc: Record<string, string>, item: ScheduleItem) => {
+    .reduce((acc: Record<string, Set<'day' | 'night'>>, item: ScheduleItem) => {
         // Find the shift of this assignment
         const itemCrew = crews?.find((c: any) => c.id === item.crewId);
-        const itemShift = itemCrew?.shift || 'day';
-        acc[item.vehicleId!] = itemShift;
+        const itemShift = itemCrew?.shift === 'night' ? 'night' : 'day';
+        const key = item.vehicleId!;
+        if (!acc[key]) acc[key] = new Set();
+        acc[key].add(itemShift);
         return acc;
     }, {});
 
@@ -1311,8 +1356,13 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px] bg-white text-slate-900">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2">
-            <User className="w-5 h-5 text-blue-600" />
+          <DialogTitle className="flex items-center gap-3">
+            <div
+              className="w-8 h-8 rounded-full flex items-center justify-center border-2 shrink-0"
+              style={{ backgroundColor: "#3B82F620", borderColor: "#3B82F6" }}
+            >
+              <User className="w-4 h-4" style={{ color: "#3B82F6" }} />
+            </div>
             {type === 'operative' ? "Add Operative (Driver)" : "Add Assistant"}
           </DialogTitle>
         </DialogHeader>
@@ -1329,7 +1379,9 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                                 value={field.value || ""} 
                                 onValueChange={field.onChange}
                             >
-                                <SelectTrigger><SelectValue placeholder="Select Person" /></SelectTrigger>
+                                <SelectTrigger className="bg-white border-slate-300 text-slate-900">
+                                  <SelectValue placeholder="Select Person" />
+                                </SelectTrigger>
                                 <SelectContent className="bg-white max-h-72 overflow-y-auto">
                                     {employees
                                         .filter((e: any) => {
@@ -1341,7 +1393,17 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                                         .sort((a: any, b: any) => a.name.localeCompare(b.name))
                                         .map((e: any) => {
                                         const isAssigned = assignedEmployeeIds.includes(e.id);
-                                        const isUnavailable = e.status !== 'active';
+                                        const isOnHoliday = (employeeAbsences as any[])
+                                          .filter((a) => a && a.employeeId === e.id && a.absenceType === "holiday")
+                                          .some((a) => {
+                                            const start = startOfDay(new Date(a.startDate));
+                                            const end = startOfDay(new Date(a.endDate));
+                                            return (
+                                              (isSameDay(targetDay, start) || isAfter(targetDay, start)) &&
+                                              (isSameDay(targetDay, end) || isBefore(targetDay, end))
+                                            );
+                                          });
+                                        const isUnavailable = e.status !== 'active' || isOnHoliday;
                                         const isDisabled = isAssigned || isUnavailable;
                                         return (
                                             <SelectItem 
@@ -1353,19 +1415,27 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                                                     isDisabled && "bg-slate-50 text-slate-600 cursor-not-allowed"
                                                 )}
                                             >
-                                                <div className="flex items-center justify-between w-full gap-2 min-w-[220px]">
-                                                    <span className="font-medium">{e.name}</span>
-                                                    <div className="flex items-center gap-2 text-xs">
+                                                <div className="flex items-center gap-3 w-full min-w-[240px]">
+                                                    <div
+                                                      className="w-8 h-8 rounded-full flex items-center justify-center border-2 shrink-0"
+                                                      style={{ backgroundColor: "#3B82F620", borderColor: "#3B82F6" }}
+                                                    >
+                                                      <User className="w-4 h-4" style={{ color: "#3B82F6" }} />
+                                                    </div>
+                                                    <div className="flex-1 min-w-0">
+                                                      <div className="font-medium truncate">{e.name}</div>
+                                                      <div className="flex items-center gap-2 text-xs text-slate-500">
                                                         {isUnavailable && (
-                                                            <span className="text-red-500 font-semibold">
-                                                                ({e.status})
-                                                            </span>
+                                                          <span className="text-red-500 font-semibold">
+                                                            {isOnHoliday ? "holiday" : e.status}
+                                                          </span>
                                                         )}
                                                         {isAssigned && (
-                                                            <span className="text-slate-500 italic">
-                                                                (Already Scheduled)
-                                                            </span>
+                                                          <span className="italic">
+                                                            Already Scheduled
+                                                          </span>
                                                         )}
+                                                      </div>
                                                     </div>
                                                 </div>
                                             </SelectItem>
@@ -1380,7 +1450,7 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                     )}
                 </div>
 
-                {type === 'operative' && (
+                {(type === 'operative' || type === 'assistant') && (
                     <div className="space-y-2">
                         <Label>Vehicle</Label>
                         <Controller
@@ -1391,7 +1461,9 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                                     value={field.value || ""} 
                                     onValueChange={field.onChange}
                                 >
-                                    <SelectTrigger><SelectValue placeholder="Select Vehicle" /></SelectTrigger>
+                                    <SelectTrigger className="bg-white border-slate-300 text-slate-900">
+                                      <SelectValue placeholder="Select Vehicle" />
+                                    </SelectTrigger>
                             <SelectContent className="bg-white max-h-72 overflow-y-auto">
                                 {Object.entries(groupedVehicles).sort(([typeA], [typeB]) => typeA.localeCompare(typeB)).map(([type, typeVehicles]) => (
                                     <div key={type}>
@@ -1399,10 +1471,22 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                                             {type}
                                         </div>
                                         {(typeVehicles as any[]).map((v: any) => {
-                                            const assignedShift = assignedVehiclesInfo[v.id];
+                                            const assignedShifts = assignedVehiclesInfo[v.id];
                                             const isGlobalUnavailable = v.status !== 'active';
-                                            const isAssignedToSameShift = assignedShift === targetShift;
-                                            const isAssignedToDifferentShift = assignedShift && assignedShift !== targetShift;
+                                            const isAssignedToSameShift = !!assignedShifts && assignedShifts.has(targetShift);
+                                            const isAssignedToDifferentShift = !!assignedShifts && !assignedShifts.has(targetShift);
+                                            const assignedShiftLabel =
+                                              assignedShifts?.has('day') && assignedShifts?.has('night')
+                                                ? 'both'
+                                                : assignedShifts?.has('day')
+                                                  ? 'day'
+                                                  : assignedShifts?.has('night')
+                                                    ? 'night'
+                                                    : undefined;
+                                            const hex =
+                                              typeof v.color === "string" && v.color.startsWith("#")
+                                                ? v.color
+                                                : "#3B82F6";
                                             
                                             // FIX: Ensure disabled is ONLY true if global unavailable or same shift conflict
                                             const isDisabled = isGlobalUnavailable || isAssignedToSameShift;
@@ -1416,11 +1500,33 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
                                                         isDisabled && "opacity-50"
                                                     )}
                                                 >
-                                                    <div className="flex items-center justify-between w-full gap-2">
-                                                        <span>{v.name}</span>
-                                                        {isGlobalUnavailable && <span className="text-xs text-red-500">({v.status === 'off_road' ? 'VOR' : v.status})</span>}
-                                                        {isAssignedToSameShift && <span className="text-xs text-blue-500">(In Use)</span>}
-                                                        {isAssignedToDifferentShift && <span className="text-xs text-amber-600 font-medium">(Used on {assignedShift === 'day' ? 'Day' : 'Night'})</span>}
+                                                    <div className="flex items-center gap-3 w-full min-w-[240px]">
+                                                        <div 
+                                                          className="w-8 h-8 rounded-full flex items-center justify-center border-2 shrink-0"
+                                                          style={{ backgroundColor: `${hex}20`, borderColor: hex }}
+                                                        >
+                                                          <Truck className="w-4 h-4" style={{ color: hex }} />
+                                                        </div>
+                                                        <div className="flex-1 min-w-0">
+                                                          <div className="font-medium truncate">{v.name}</div>
+                                                          <div className="flex flex-wrap items-center gap-x-2 gap-y-1 text-xs">
+                                                            {isGlobalUnavailable && (
+                                                              <span className="text-red-500 font-semibold">
+                                                                {v.status === 'off_road' ? 'VOR' : v.status}
+                                                              </span>
+                                                            )}
+                                                            {isAssignedToSameShift && (
+                                                              <span className="text-blue-600 font-medium">
+                                                                In Use
+                                                              </span>
+                                                            )}
+                                                            {isAssignedToDifferentShift && (
+                                                              <span className="text-amber-600 font-medium">
+                                                                Used on {assignedShiftLabel === 'both' ? 'Day+Night' : assignedShiftLabel === 'day' ? 'Day' : 'Night'}
+                                                              </span>
+                                                            )}
+                                                          </div>
+                                                        </div>
                                                     </div>
                                                 </SelectItem>
                                             );

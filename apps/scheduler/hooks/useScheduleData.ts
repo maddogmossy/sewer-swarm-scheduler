@@ -19,6 +19,10 @@ export function useScheduleData() {
   const queryClient = useQueryClient();
   const pollingInterval = getPollingInterval();
 
+  // #region agent log
+  fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'post-fix',hypothesisId:'V2',location:'apps/scheduler/hooks/useScheduleData.ts:useScheduleData:entry',message:'useScheduleData hook invoked',data:{pollingInterval},timestamp:Date.now()})}).catch(()=>{});
+  // #endregion
+
   const depots = useQuery({
     queryKey: ["depots"],
     queryFn: () => api.getDepots(),
@@ -34,6 +38,28 @@ export function useScheduleData() {
   const employees = useQuery({
     queryKey: ["employees"],
     queryFn: () => api.getEmployees(),
+    refetchInterval: pollingInterval,
+  });
+
+  const employeeAbsences = useQuery({
+    queryKey: ["employeeAbsences"],
+    queryFn: async () => {
+      // #region agent log
+      fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'post-fix',hypothesisId:'V1',location:'apps/scheduler/hooks/useScheduleData.ts:employeeAbsences:queryFn:start',message:'employeeAbsences queryFn start',data:{path:typeof window!=='undefined'?window.location?.pathname:null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      try {
+        const data = await api.getEmployeeAbsences();
+        // #region agent log
+        fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'post-fix',hypothesisId:'V1',location:'apps/scheduler/hooks/useScheduleData.ts:employeeAbsences:queryFn:ok',message:'employeeAbsences queryFn ok',data:{count:Array.isArray(data)?data.length:null},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        return data;
+      } catch (err: any) {
+        // #region agent log
+        fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'post-fix',hypothesisId:'V1',location:'apps/scheduler/hooks/useScheduleData.ts:employeeAbsences:queryFn:error',message:'employeeAbsences queryFn error',data:{errorType:err?.constructor?.name,msg:typeof err?.message==='string'?err.message:String(err),status:(err as any)?.status,url:(err as any)?.url},timestamp:Date.now()})}).catch(()=>{});
+        // #endregion
+        throw err;
+      }
+    },
     refetchInterval: pollingInterval,
   });
 
@@ -281,7 +307,7 @@ export function useScheduleData() {
   });
 
   const createVehicle = useMutation({
-    mutationFn: (vehicle: { name: string; status: string; vehicleType: string; depotId: string }) =>
+    mutationFn: (vehicle: { name: string; status: string; vehicleType: string; category?: string; color?: string; depotId: string }) =>
       api.createVehicle(vehicle),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["vehicles"] });
@@ -318,9 +344,23 @@ export function useScheduleData() {
   });
 
   const deleteDepot = useMutation({
-    mutationFn: (id: string) => api.deleteDepot(id),
+    mutationFn: (id: string) => api.archiveDepot(id),
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["depots"] });
+      queryClient.invalidateQueries({ queryKey: ["archivedDepots"] });
+    },
+  });
+
+  const archivedDepots = useQuery({
+    queryKey: ["archivedDepots"],
+    queryFn: () => api.getArchivedDepots(),
+  });
+
+  const restoreDepot = useMutation({
+    mutationFn: (id: string) => api.restoreDepot(id),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["depots"] });
+      queryClient.invalidateQueries({ queryKey: ["archivedDepots"] });
     },
   });
 
@@ -371,8 +411,10 @@ export function useScheduleData() {
 
   return {
     depots: depots.data || [],
+    archivedDepots: archivedDepots.data || [],
     crews: crews.data || [],
     employees: employees.data || [],
+    employeeAbsences: employeeAbsences.data || [],
     vehicles: vehicles.data || [],
     scheduleItems: scheduleItems.data || [],
     colorLabels: colorLabels.data || {},
@@ -380,6 +422,7 @@ export function useScheduleData() {
       depots.isLoading ||
       crews.isLoading ||
       employees.isLoading ||
+      employeeAbsences.isLoading ||
       vehicles.isLoading ||
       scheduleItems.isLoading ||
       colorLabels.isLoading,
@@ -391,6 +434,7 @@ export function useScheduleData() {
       createDepot,
       updateDepot,
       deleteDepot,
+      restoreDepot,
       createCrew,
       updateCrew,
       archiveCrew,

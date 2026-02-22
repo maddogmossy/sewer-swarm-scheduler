@@ -1,1 +1,5 @@
 .cursor/
+
+# local debug logs / scratch
+debug-*.log
+note pad

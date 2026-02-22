@@ -1,11 +1,11 @@
-import { useState, useEffect } from "react";
+import { useMemo, useState, useEffect } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Calendar as CalendarIcon } from "lucide-react";
-import { format, startOfDay } from "date-fns";
+import { addDays, format, startOfDay, startOfWeek, endOfWeek } from "date-fns";
 
 export interface EmployeeTimeOffDialogPayload {
   absenceType: "holiday" | "sick" | "other";
@@ -87,6 +87,15 @@ export function EmployeeTimeOffDialog({
   };
 
   const todayIso = format(startOfDay(new Date()), "yyyy-MM-dd");
+  const baseDate = useMemo(() => {
+    return startOfDay(initialDate ? initialDate : new Date());
+  }, [initialDate]);
+  const baseIso = useMemo(() => format(baseDate, "yyyy-MM-dd"), [baseDate]);
+  const tomorrowIso = useMemo(() => format(addDays(baseDate, 1), "yyyy-MM-dd"), [baseDate]);
+  const weekStart = useMemo(() => startOfWeek(baseDate, { weekStartsOn: 1 }), [baseDate]);
+  const weekEnd = useMemo(() => endOfWeek(baseDate, { weekStartsOn: 1 }), [baseDate]);
+  const weekStartIso = useMemo(() => format(weekStart, "yyyy-MM-dd"), [weekStart]);
+  const weekEndIso = useMemo(() => format(weekEnd, "yyyy-MM-dd"), [weekEnd]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -115,6 +124,41 @@ export function EmployeeTimeOffDialog({
 
           <div className="space-y-2">
             <Label className="text-sm font-semibold">Dates</Label>
+            <div className="flex flex-wrap gap-2">
+              <button
+                type="button"
+                className="text-xs px-3 py-1 rounded-full border border-slate-300 text-slate-700 hover:bg-slate-50"
+                onClick={() => {
+                  setMode("single");
+                  setStartDate(baseIso);
+                  setEndDate(baseIso);
+                }}
+              >
+                Today
+              </button>
+              <button
+                type="button"
+                className="text-xs px-3 py-1 rounded-full border border-slate-300 text-slate-700 hover:bg-slate-50"
+                onClick={() => {
+                  setMode("single");
+                  setStartDate(tomorrowIso);
+                  setEndDate(tomorrowIso);
+                }}
+              >
+                Tomorrow
+              </button>
+              <button
+                type="button"
+                className="text-xs px-3 py-1 rounded-full border border-slate-300 text-slate-700 hover:bg-slate-50"
+                onClick={() => {
+                  setMode("range");
+                  setStartDate(weekStartIso);
+                  setEndDate(weekEndIso);
+                }}
+              >
+                Full week
+              </button>
+            </div>
             <div className="flex gap-3 items-center">
               <div className="flex items-center gap-1">
                 <input

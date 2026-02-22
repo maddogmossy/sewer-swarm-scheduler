@@ -1,12 +1,13 @@
-import { useState, useEffect } from "react";
+import { useRef, useState, useEffect } from "react";
 import { cn } from "@/lib/utils";
-import { Search, MapPin, Users, Truck, Check, ChevronLeft, ChevronRight, Trash2, Edit, MoreVertical, Plus, Settings, UserCog, CreditCard } from "lucide-react";
+import { Search, MapPin, Users, Truck, Check, ChevronLeft, ChevronRight, Trash2, Edit, MoreVertical, Plus, Settings, UserCog, CreditCard, RotateCcw } from "lucide-react";
 import { Input } from "@/components/ui/input";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuTrigger, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 
-interface Depot {
+export interface Depot {
   id: string;
   name: string;
   address: string;
@@ -16,10 +17,12 @@ interface Depot {
 
 interface SidebarProps {
   depots: Depot[];
+  archivedDepots?: Depot[];
   selectedDepotId: string | null;
   onSelectDepot: (id: string) => void;
   onEditDepot: () => void;
   onDeleteDepot?: (id: string) => void;
+  onRestoreDepot?: (id: string) => void;
   onUpdateDepot?: (id: string, updates: { name?: string, address?: string }) => void;
   onAddDepot?: () => void;
   isReadOnly?: boolean;
@@ -27,16 +30,46 @@ interface SidebarProps {
   canAccessSettings?: boolean;
 }
 
-export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = () => {}, onDeleteDepot = () => {}, onUpdateDepot = () => {}, onAddDepot = () => {}, isReadOnly = false, onOpenSettings, canAccessSettings = false }: SidebarProps) {
+export function Sidebar({ depots, archivedDepots = [], selectedDepotId, onSelectDepot, onEditDepot = () => {}, onDeleteDepot = () => {}, onRestoreDepot = () => {}, onUpdateDepot = () => {}, onAddDepot = () => {}, isReadOnly = false, onOpenSettings, canAccessSettings = false }: SidebarProps) {
   const [search, setSearch] = useState("");
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const rootRef = useRef<HTMLDivElement | null>(null);
+  const scrollContentRef = useRef<HTMLDivElement | null>(null);
   
   // Debug: Log isReadOnly value
   useEffect(() => {
     console.log("🔐 Sidebar Debug:", { isReadOnly, canAccessSettings });
   }, [isReadOnly, canAccessSettings]);
+
+  // #region agent log
+  useEffect(() => {
+    const measure = () => {
+      const root = rootRef.current;
+      const content = scrollContentRef.current;
+      if (!root) return;
+
+      const rect = root.getBoundingClientRect();
+      const rootClientWidth = root.clientWidth;
+      const rootScrollWidth = root.scrollWidth;
+      const contentClientWidth = content?.clientWidth ?? null;
+      const contentScrollWidth = content?.scrollWidth ?? null;
+
+      const payload = {sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'L1,L2',location:'apps/scheduler/components/schedule/Sidebar.tsx:layout-measure',message:'Sidebar layout measurement',data:{viewportW:typeof window!=='undefined'?window.innerWidth:null,viewportH:typeof window!=='undefined'?window.innerHeight:null,isCollapsed,depotsCount:depots.length,archivedCount:archivedDepots.length,root:{x:Math.round(rect.x),w:Math.round(rect.width),clientW:rootClientWidth,scrollW:rootScrollWidth},scrollContent:{clientW:contentClientWidth,scrollW:contentScrollWidth},hasHorizontalOverflow:rootScrollWidth>rootClientWidth||(contentScrollWidth!==null&&contentClientWidth!==null&&contentScrollWidth>contentClientWidth)},timestamp:Date.now()};
+      // Primary debug ingest (may not persist to workspace file).
+      fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify(payload)}).catch(()=>{});
+      // Persist to workspace log via internal endpoint.
+      fetch('/api/debug-log',{method:'POST',headers:{'Content-Type':'application/json'},body:JSON.stringify(payload)}).catch(()=>{});
+    };
+
+    measure();
+    window.addEventListener("resize", measure);
+    return () => window.removeEventListener("resize", measure);
+  }, [isCollapsed, depots.length, archivedDepots.length]);
+  // #endregion
   const [editingDepotId, setEditingDepotId] = useState<string | null>(null);
   const [editForm, setEditForm] = useState<{ name: string, address: string }>({ name: "", address: "" });
+  const [depotToDelete, setDepotToDelete] = useState<{ id: string; name: string } | null>(null);
+  const [showUnsavedBlockMessage, setShowUnsavedBlockMessage] = useState(false);
 
   const handleToggle = () => {
     setIsCollapsed(!isCollapsed);
@@ -53,8 +86,9 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
 
   return (
     <div 
+      ref={rootRef}
       className={cn(
-        "bg-white border-r border-slate-200 flex flex-col h-full shadow-sm z-20 relative",
+        "bg-white border-r border-slate-200 flex flex-col h-full shadow-sm z-20 relative shrink-0",
         isCollapsed ? "w-14" : "w-72"
       )}
       style={{ transition: "width 300ms ease" }} // Use standard CSS transition instead of Tailwind class for clarity/override
@@ -63,7 +97,7 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
       <Button
         variant="outline"
         size="icon"
-        className="absolute -right-3 top-6 w-6 h-6 rounded-full border-slate-200 shadow-sm z-30 bg-white hover:bg-slate-50 p-0"
+        className="absolute right-2 top-6 w-6 h-6 rounded-full border-slate-200 shadow-sm z-30 bg-white hover:bg-slate-50 p-0"
         onClick={handleToggle}
       >
         {isCollapsed ? <ChevronRight className="w-3 h-3" /> : <ChevronLeft className="w-3 h-3" />}
@@ -95,7 +129,15 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
       </div>
 
       <ScrollArea className="flex-1 bg-white">
-        <div className={cn("space-y-1", isCollapsed ? "p-2" : "p-3")}>
+        <div
+          ref={scrollContentRef}
+          className={cn("space-y-1 w-full min-w-0", isCollapsed ? "p-2" : "p-3")}
+        >
+          {!isCollapsed && showUnsavedBlockMessage && (
+            <p className="text-xs text-amber-600 px-2 py-1 bg-amber-50 border border-amber-200 rounded mb-1">
+              Save or cancel your edits before archiving.
+            </p>
+          )}
           {!isCollapsed && (
             <div className="flex items-center justify-between px-2 py-1.5">
                 <div className="text-xs font-semibold text-slate-700 uppercase tracking-wider">
@@ -202,12 +244,21 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                                       <DropdownMenuItem
                                           onClick={(e) => {
                                               e.stopPropagation();
-                                              onDeleteDepot(depot.id);
+                                              // #region agent log
+                                              const hasUnsavedEdits = editingDepotId === depot.id && (editForm.name !== depot.name || editForm.address !== depot.address);
+                                              fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e9596'},body:JSON.stringify({sessionId:'7e9596',location:'Sidebar.tsx:DeleteDepot-click',message:'Delete Depot menu clicked',data:{depotId:depot.id,depotNameFromList:depot.name,editingDepotId,editFormName:editForm.name,editFormAddress:editForm.address,hasUnsavedEdits},hypothesisId:'H_unsaved',timestamp:Date.now()})}).catch(()=>{});
+                                              // #endregion
+                                              if (hasUnsavedEdits) {
+                                                setShowUnsavedBlockMessage(true);
+                                                setTimeout(() => setShowUnsavedBlockMessage(false), 5000);
+                                                return;
+                                              }
+                                              setDepotToDelete({ id: depot.id, name: depot.name });
                                           }}
                                           className="cursor-pointer flex items-center gap-2 text-red-600 focus:text-red-600 focus:bg-red-50 hover:bg-red-50"
                                       >
                                           <Trash2 className="w-4 h-4" />
-                                          <span>Delete Depot</span>
+                                          <span>Archive depot</span>
                                       </DropdownMenuItem>
                                     </>
                                   ) : null}
@@ -237,8 +288,10 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                             if (e.key === "Enter") {
                               onUpdateDepot(depot.id, editForm);
                               setEditingDepotId(null);
+                              setShowUnsavedBlockMessage(false);
                             } else if (e.key === "Escape") {
                               setEditingDepotId(null);
+                              setShowUnsavedBlockMessage(false);
                             }
                           }}
                           autoFocus
@@ -259,8 +312,10 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                             if (e.key === "Enter") {
                               onUpdateDepot(depot.id, editForm);
                               setEditingDepotId(null);
+                              setShowUnsavedBlockMessage(false);
                             } else if (e.key === "Escape") {
                               setEditingDepotId(null);
+                              setShowUnsavedBlockMessage(false);
                             }
                           }}
                           className="w-full text-xs px-2 py-1.5 rounded border border-slate-300 focus:outline-none focus:ring-2 focus:ring-blue-500 bg-white text-slate-900 placeholder:text-slate-600"
@@ -273,7 +328,7 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                             size="sm"
                             variant="ghost"
                             className="text-xs h-7 px-2 text-slate-700 hover:bg-slate-100"
-                            onClick={() => setEditingDepotId(null)}
+                            onClick={() => { setEditingDepotId(null); setShowUnsavedBlockMessage(false); }}
                           >
                             Cancel
                           </Button>
@@ -283,6 +338,7 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
                             onClick={() => {
                               onUpdateDepot(depot.id, editForm);
                               setEditingDepotId(null);
+                              setShowUnsavedBlockMessage(false);
                             }}
                           >
                             Save Changes
@@ -293,6 +349,38 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
               </div>
             );
           })}
+
+          {!isCollapsed && archivedDepots.length > 0 && (
+            <div className="pt-3 mt-3 border-t border-slate-200">
+              <div className="text-xs font-semibold text-slate-500 uppercase tracking-wider px-2 py-1.5">
+                Archived depots
+              </div>
+              <div className="space-y-1">
+                {archivedDepots.map((d) => (
+                  <div
+                    key={d.id}
+                    className="flex w-full min-w-0 items-center justify-between gap-2 rounded-lg border border-slate-200 bg-slate-50 p-2"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="text-sm font-medium text-slate-700 truncate">{d.name}</div>
+                      <div className="text-xs text-slate-500 truncate">{d.address}</div>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="shrink-0 h-7 w-7 p-0 border-slate-300 text-slate-700 hover:bg-slate-100"
+                      onClick={() => onRestoreDepot(d.id)}
+                      disabled={isReadOnly}
+                      title="Restore"
+                    >
+                      <RotateCcw className="w-3 h-3" />
+                      <span className="sr-only">Restore</span>
+                    </Button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
         </div>
       </ScrollArea>
       
@@ -330,6 +418,34 @@ export function Sidebar({ depots, selectedDepotId, onSelectDepot, onEditDepot = 
           </Button>
         </div>
       )}
+
+      <AlertDialog open={!!depotToDelete} onOpenChange={(open) => { if (!open) setDepotToDelete(null); }}>
+        <AlertDialogContent className="bg-white text-slate-900">
+          <AlertDialogHeader>
+            <AlertDialogTitle className="text-slate-900">Archive depot?</AlertDialogTitle>
+            <AlertDialogDescription className="text-slate-700">
+              Archive {depotToDelete?.name}? It will be hidden from the list. You can restore it later from the Archived section below.
+            </AlertDialogDescription>
+          </AlertDialogHeader>
+          <AlertDialogFooter>
+            <AlertDialogCancel className="border-slate-300 text-slate-700">Cancel</AlertDialogCancel>
+            <AlertDialogAction
+              onClick={() => {
+                if (depotToDelete) {
+                  // #region agent log
+                  fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e9596'},body:JSON.stringify({sessionId:'7e9596',location:'Sidebar.tsx:Delete-confirm',message:'Archive confirmed',data:{depotToDeleteId:depotToDelete.id,depotToDeleteName:depotToDelete.name},hypothesisId:'H_confirm',timestamp:Date.now()})}).catch(()=>{});
+                  // #endregion
+                  onDeleteDepot(depotToDelete.id);
+                  setDepotToDelete(null);
+                }
+              }}
+              className="bg-amber-600 text-white hover:bg-amber-700"
+            >
+              Archive
+            </AlertDialogAction>
+          </AlertDialogFooter>
+        </AlertDialogContent>
+      </AlertDialog>
     </div>
   );
 }

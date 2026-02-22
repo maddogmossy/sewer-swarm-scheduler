@@ -34,6 +34,33 @@ async function runMigration() {
       try {
         await client.query("BEGIN");
 
+        // Create employee_absences table if missing
+        await client.query(`
+          CREATE TABLE IF NOT EXISTS "employee_absences" (
+            "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+            "organization_id" varchar NOT NULL,
+            "employee_id" varchar NOT NULL,
+            "absence_type" text NOT NULL,
+            "start_date" timestamp NOT NULL,
+            "end_date" timestamp NOT NULL,
+            "created_by" varchar,
+            "created_at" timestamp DEFAULT now(),
+            FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE,
+            FOREIGN KEY ("employee_id") REFERENCES "employees"("id") ON DELETE CASCADE,
+            FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE SET NULL
+          );
+        `);
+
+        // Add archived_at to depots if it doesn't exist
+        await client.query(`
+          DO $$ 
+          BEGIN
+            IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'depots' AND column_name = 'archived_at') THEN
+              ALTER TABLE "depots" ADD COLUMN "archived_at" timestamp;
+            END IF;
+          END $$;
+        `);
+
         // Add category and color columns to vehicles if they don't exist
         await client.query(`
           DO $$ 
@@ -159,6 +186,7 @@ async function runMigration() {
           "address" text NOT NULL,
           "user_id" varchar NOT NULL,
           "organization_id" varchar,
+          "archived_at" timestamp,
           FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE,
           FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE
         );
@@ -196,6 +224,23 @@ async function runMigration() {
           FOREIGN KEY ("depot_id") REFERENCES "depots"("id") ON DELETE CASCADE,
           FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE,
           FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE
+        );
+      `);
+
+      // Create employee_absences table
+      await client.query(`
+        CREATE TABLE IF NOT EXISTS "employee_absences" (
+          "id" varchar PRIMARY KEY DEFAULT gen_random_uuid() NOT NULL,
+          "organization_id" varchar NOT NULL,
+          "employee_id" varchar NOT NULL,
+          "absence_type" text NOT NULL,
+          "start_date" timestamp NOT NULL,
+          "end_date" timestamp NOT NULL,
+          "created_by" varchar,
+          "created_at" timestamp DEFAULT now(),
+          FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE,
+          FOREIGN KEY ("employee_id") REFERENCES "employees"("id") ON DELETE CASCADE,
+          FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE SET NULL
         );
       `);
 

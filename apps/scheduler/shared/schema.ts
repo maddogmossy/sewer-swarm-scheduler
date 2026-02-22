@@ -98,6 +98,7 @@ export const depots = pgTable("depots", {
   address: text("address").notNull(),
   userId: varchar("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   organizationId: varchar("organization_id").references(() => organizations.id, { onDelete: "cascade" }),
+  archivedAt: timestamp("archived_at"),
 });
 
 export const insertDepotSchema = createInsertSchema(depots).omit({
@@ -146,6 +147,32 @@ export const insertEmployeeSchema = createInsertSchema(employees).omit({
 
 export type InsertEmployee = z.infer<typeof insertEmployeeSchema>;
 export type Employee = typeof employees.$inferSelect;
+
+// ================= EMPLOYEE ABSENCES =================
+export type EmployeeAbsenceType = "holiday" | "sick";
+
+export const employeeAbsences = pgTable("employee_absences", {
+  id: varchar("id").primaryKey().default(sql`gen_random_uuid()`),
+  organizationId: varchar("organization_id")
+    .notNull()
+    .references(() => organizations.id, { onDelete: "cascade" }),
+  employeeId: varchar("employee_id")
+    .notNull()
+    .references(() => employees.id, { onDelete: "cascade" }),
+  absenceType: text("absence_type").notNull(),
+  startDate: timestamp("start_date").notNull(),
+  endDate: timestamp("end_date").notNull(),
+  createdBy: varchar("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow(),
+});
+
+export const insertEmployeeAbsenceSchema = createInsertSchema(employeeAbsences).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertEmployeeAbsence = z.infer<typeof insertEmployeeAbsenceSchema>;
+export type EmployeeAbsence = typeof employeeAbsences.$inferSelect;
 
 // ================= VEHICLES =================
 export const vehicles = pgTable("vehicles", {

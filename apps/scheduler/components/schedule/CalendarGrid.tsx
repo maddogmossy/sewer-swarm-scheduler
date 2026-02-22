@@ -10,6 +10,7 @@ import { Button } from "@/components/ui/button";
 import { Plus, ChevronLeft, ChevronRight, Calendar as CalendarIcon, Users, MoreHorizontal, Trash2, Briefcase, UserPlus, User, Truck, Settings, Edit, Search, Lock, Mail, Check, Sun, Moon, ChevronDown, ChevronRight as ChevronRightIcon, RotateCcw, RotateCw, FileText, LogOut, Copy, X } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogContent, AlertDialogHeader, AlertDialogTitle, AlertDialogDescription, AlertDialogFooter, AlertDialogCancel, AlertDialogAction } from "@/components/ui/alert-dialog";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
@@ -276,6 +277,13 @@ interface CalendarGridProps {
     startsFromHome?: boolean
   }[];
   vehicles: { id: string; name: string; status: 'active' | 'off_road' | 'maintenance'; vehicleType: string; category?: string; color?: string }[];
+  employeeAbsences?: Array<{
+    id: string;
+    employeeId: string;
+    absenceType: "holiday" | "sick";
+    startDate: string;
+    endDate: string;
+  }>;
   colorLabels: Record<string, string>;
   isReadOnly: boolean;
   depots: { id: string; name: string; address: string }[];
@@ -340,7 +348,7 @@ function DroppableCell({ id, children, className, style, onDoubleClick, onClick,
 }
 
 export function CalendarGrid({ 
-    items, crews, employees, vehicles, colorLabels, isReadOnly,
+    items, crews, employees, vehicles, employeeAbsences = [], colorLabels, isReadOnly,
     onItemUpdate, onBatchItemUpdates, revertedPairingCellKeys = [], onClearedRevertedPairing,
     onItemCreate, onItemDelete, onItemReorder,
     onCrewCreate, onCrewUpdate, onCrewDelete,
@@ -422,6 +430,19 @@ export function CalendarGrid({
     employeeName: "",
     defaultDate: null,
   });
+
+  const [employeeTimeOffConfirm, setEmployeeTimeOffConfirm] = useState<{
+    open: boolean;
+    payload: EmployeeTimeOffDialogPayload;
+    employeeId: string;
+    employeeName: string;
+    impacted: Array<{
+      dateIso: string;
+      crewName: string;
+      shift: "day" | "night" | "unknown";
+      itemId: string;
+    }>;
+  } | null>(null);
   
   const [crewModal, setCrewModal] = useState<{ isOpen: boolean, mode: 'create' | 'edit', id?: string, name: string, shift: 'day' | 'night' }>({ isOpen: false, mode: 'create', name: "", shift: 'day' });
 
@@ -921,6 +942,13 @@ export function CalendarGrid({
     message: string;
   } | null>(null);
 
+  const [scheduleDeleteConfirm, setScheduleDeleteConfirm] = useState<{
+    open: boolean;
+    message: string;
+    count: number;
+    onConfirm: () => void;
+  } | null>(null);
+
   const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
   const weekDays = Array.from({ length: viewDays }).map((_, i) => addDays(weekStart, i));
 
@@ -930,6 +958,20 @@ export function CalendarGrid({
   );
 
   // --- DRAG AND DROP ---
+  const isEmployeeOnHoliday = (employeeId: string | undefined | null, date: Date) => {
+    if (!employeeId) return false;
+    const day = startOfDay(date);
+    return (employeeAbsences || [])
+      .filter((a) => a && a.employeeId === employeeId && a.absenceType === "holiday")
+      .some((a) => {
+        const start = startOfDay(new Date(a.startDate));
+        const end = startOfDay(new Date(a.endDate));
+        return (
+          (isSameDay(day, start) || isAfter(day, start)) &&
+          (isSameDay(day, end) || isBefore(day, end))
+        );
+      });
+  };
 
   const handleDragStart = (event: DragStartEvent) => {
     if (isReadOnly) return;
@@ -987,6 +1029,17 @@ export function CalendarGrid({
         if (isBefore(startOfDay(newDate), startOfDay(new Date()))) {
             setActiveId(null);
             return;
+        }
+
+        // Prevent scheduling on holiday dates (date-based availability).
+        if ((activeItem.type === "operative" || activeItem.type === "assistant") && isEmployeeOnHoliday(activeItem.employeeId, newDate)) {
+          setCrewDeleteErrorDialog({
+            open: true,
+            title: "Employee unavailable",
+            message: "This employee is booked as holiday for that date range. Pick another day or clear/update their holiday booking.",
+          });
+          setActiveId(null);
+          return;
         }
 
         if (isCtrlPressed) {
@@ -2178,40 +2231,102 @@ export function CalendarGrid({
     if (!employeeTimeOffModal.employeeId) return;
 
     const employeeId = employeeTimeOffModal.employeeId;
+    const employeeName = employeeTimeOffModal.employeeName;
     const today = startOfDay(new Date());
     const start = startOfDay(payload.startDate);
     const end = startOfDay(payload.endDate);
 
+    const impacted = items
+      .filter((item) => item.employeeId === employeeId)
+      .filter((item) => item.type === "operative" || item.type === "assistant")
+      .filter((item) => {
+        const itemDate = startOfDay(new Date(item.date));
+        if (isBefore(itemDate, today)) return false;
+        const inRange =
+          (isSameDay(itemDate, start) || isAfter(itemDate, start)) &&
+          (isSameDay(itemDate, end) || isBefore(itemDate, end));
+        return inRange;
+      })
+      .map((item) => {
+        const crew = crews.find((c) => c.id === item.crewId);
+        const shift: "day" | "night" | "unknown" =
+          crew?.shift === "night" ? "night" : crew?.shift === "day" ? "day" : "unknown";
+        return {
+          dateIso: format(startOfDay(new Date(item.date)), "yyyy-MM-dd"),
+          crewName: crew?.name || "Unknown crew",
+          shift,
+          itemId: item.id,
+        };
+      })
+      .sort((a, b) => a.dateIso.localeCompare(b.dateIso));
+
+    setEmployeeTimeOffConfirm({
+      open: true,
+      payload,
+      employeeId,
+      employeeName,
+      impacted,
+    });
+  };
+
+  const applyEmployeeTimeOffConfirmed = async (confirm: NonNullable<typeof employeeTimeOffConfirm>) => {
+    const payload = confirm.payload;
+    const employeeId = confirm.employeeId;
+    const start = startOfDay(payload.startDate);
+    const end = startOfDay(payload.endDate);
+    const today = startOfDay(new Date());
+
+    // Remove assignments in range (future only).
     items.forEach((item) => {
       if (item.employeeId !== employeeId) return;
       if (item.type !== "operative" && item.type !== "assistant") return;
 
       const itemDate = startOfDay(new Date(item.date));
-
-      // Never touch past days
       if (isBefore(itemDate, today)) return;
-
       const inRange =
         (isSameDay(itemDate, start) || isAfter(itemDate, start)) &&
         (isSameDay(itemDate, end) || isBefore(itemDate, end));
+      if (!inRange) return;
 
-      if (inRange) {
-        // Deleting a person should also delete any auto-linked Free jobs for that person on that day
-        if (isPersonItem(item) && item.employeeId) {
-          const cellDate = startOfDay(new Date(item.date));
-          const linkedFreeJobs = items.filter(
-            (i) =>
-              isAutoLinkedFreeJob(i) &&
-              i.crewId === item.crewId &&
-              isSameDay(new Date(i.date), cellDate) &&
-              i.employeeId === item.employeeId
-          );
-          linkedFreeJobs.forEach((j) => onItemDelete(j.id));
-        }
-
-        onItemDelete(item.id);
+      // Delete linked Free jobs in that cell too.
+      if (isPersonItem(item) && item.employeeId) {
+        const cellDate = startOfDay(new Date(item.date));
+        const linkedFreeJobs = items.filter(
+          (i) =>
+            isAutoLinkedFreeJob(i) &&
+            i.crewId === item.crewId &&
+            isSameDay(new Date(i.date), cellDate) &&
+            i.employeeId === item.employeeId
+        );
+        linkedFreeJobs.forEach((j) => onItemDelete(j.id));
       }
+
+      onItemDelete(item.id);
     });
+
+    // Persist absence record for holiday/sick.
+    if (payload.absenceType === "holiday" || payload.absenceType === "sick") {
+      await fetch("/api/employee-absences", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          employeeId,
+          absenceType: payload.absenceType,
+          startDate: start.toISOString(),
+          endDate: end.toISOString(),
+        }),
+      }).catch(() => {});
+    }
+
+    // Sickness: mark employee unavailable until manually cleared.
+    if (payload.absenceType === "sick") {
+      const emp = employees.find((e) => e.id === employeeId);
+      const name = emp?.name || confirm.employeeName || "Employee";
+      onEmployeeUpdate(employeeId, name, "sick");
+    }
+
+    setEmployeeTimeOffModal((prev) => ({ ...prev, open: false }));
+    setEmployeeTimeOffConfirm(null);
   };
 
   const handleOpenItemModal = (initialData: Partial<ScheduleItem>) => {
@@ -2433,27 +2548,102 @@ export function CalendarGrid({
   const handleDeleteItem = (id: string, mode: 'single' | 'week' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year' = 'single') => {
       if (isReadOnly) return;
       
-      // Determine items to delete
       const isSelected = selectedItemIds.has(id);
       const targetIds = isSelected ? Array.from(selectedItemIds) : [id];
 
-      // Filter out past items from deletion
       const validTargetIds = targetIds.filter(tid => {
           const item = items.find(i => i.id === tid);
           if (!item) return false;
-          // Prevent deleting past items
           return !isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()));
       });
 
       if (validTargetIds.length === 0) return;
       
-      // For single delete mode, check if it's a job with a job number group
+      // Helper: collect all ids that would be deleted (including linked free jobs)
+      const collectIdsToDelete = (): string[] => {
+        const allIds: string[] = [];
+        validTargetIds.forEach(targetId => {
+          if (mode === 'single') {
+            const itemToDelete = items.find((i) => i.id === targetId);
+            if (itemToDelete && isPersonItem(itemToDelete) && itemToDelete.employeeId) {
+              allIds.push(targetId);
+              const cellDate = startOfDay(new Date(itemToDelete.date));
+              const linkedFreeJobs = items.filter(
+                (i) =>
+                  isAutoLinkedFreeJob(i) &&
+                  i.crewId === itemToDelete.crewId &&
+                  isSameDay(new Date(i.date), cellDate) &&
+                  i.employeeId === itemToDelete.employeeId
+              );
+              linkedFreeJobs.forEach((j) => allIds.push(j.id));
+              return;
+            }
+            allIds.push(targetId);
+          } else {
+            const itemToDelete = items.find(i => i.id === targetId);
+            if (!itemToDelete) return;
+            const startDate = new Date(itemToDelete.date);
+            let endDate: Date;
+            if (mode === 'week') {
+              endDate = addDays(weekStart, viewDays - 1);
+            } else if (mode === 'remainder_month') {
+              endDate = endOfMonth(startDate);
+            } else if (mode === 'remainder_year') {
+              endDate = endOfYear(startDate);
+            } else {
+              const monthsToAdd = parseInt(mode.split('_')[1]);
+              endDate = addMonths(startDate, monthsToAdd);
+            }
+            const idsInRange = items.filter(i => {
+              if (i.id === targetId) return true;
+              const iDate = new Date(i.date);
+              const isFuture = isAfter(iDate, startDate) && (isBefore(iDate, endDate) || isSameDay(iDate, endDate));
+              if (!isFuture && i.id !== targetId) return false;
+              if (i.crewId !== itemToDelete.crewId) return false;
+              if (i.type !== itemToDelete.type) return false;
+              if (i.type === 'job') {
+                return i.customer === itemToDelete.customer && i.address === itemToDelete.address;
+              }
+              return i.employeeId === itemToDelete.employeeId;
+            });
+            idsInRange.forEach((delItem) => {
+              allIds.push(delItem.id);
+              if (isPersonItem(delItem) && delItem.employeeId) {
+                const cellDate = startOfDay(new Date(delItem.date));
+                const linkedFreeJobs = items.filter(
+                  (i) =>
+                    isAutoLinkedFreeJob(i) &&
+                    i.crewId === delItem.crewId &&
+                    isSameDay(new Date(i.date), cellDate) &&
+                    i.employeeId === delItem.employeeId
+                );
+                linkedFreeJobs.forEach((j) => allIds.push(j.id));
+              }
+            });
+          }
+        });
+        return allIds;
+      };
+
+      const showDeleteConfirm = (ids: string[]) => {
+        const count = ids.length;
+        setScheduleDeleteConfirm({
+          open: true,
+          message: `Are you sure you want to delete ${count} item(s)? This cannot be undone.`,
+          count,
+          onConfirm: () => {
+            ids.forEach((delId) => onItemDelete(delId));
+            if (isSelected) setSelectedItemIds(new Set());
+            setScheduleDeleteConfirm(null);
+          }
+        });
+      };
+      
       if (mode === 'single' && validTargetIds.length === 1) {
         const itemToDelete = items.find(i => i.id === validTargetIds[0]);
         if (itemToDelete && itemToDelete.type === 'job' && itemToDelete.jobNumber) {
           const groupItems = findItemsWithSameJobNumber(itemToDelete);
           if (groupItems.length > 1) {
-            // Show grouping dialog
             setGroupingDialog({
               open: true,
               type: 'delete',
@@ -2461,22 +2651,11 @@ export function CalendarGrid({
               groupCount: groupItems.length,
               groupedItems: groupItems,
               onConfirm: (applyToGroup: boolean) => {
-                if (applyToGroup) {
-                  // Delete all items with the same job number
-                  groupItems.forEach(item => {
-                    const itemDate = new Date(item.date);
-                    if (!isBefore(startOfDay(itemDate), startOfDay(new Date()))) {
-                      onItemDelete(item.id);
-                    }
-                  });
-                } else {
-                  // Delete just this one
-                  onItemDelete(validTargetIds[0]);
-                }
-                // Clear selection if we deleted selected items
-                if (isSelected) {
-                  setSelectedItemIds(new Set());
-                }
+                const ids = applyToGroup
+                  ? groupItems.filter(item => !isBefore(startOfDay(new Date(item.date)), startOfDay(new Date()))).map(item => item.id)
+                  : [validTargetIds[0]];
+                setGroupingDialog(null);
+                showDeleteConfirm(ids);
               }
             });
             return;
@@ -2484,86 +2663,8 @@ export function CalendarGrid({
         }
       }
       
-      // Normal delete flow (no grouping or bulk delete)
-      validTargetIds.forEach(targetId => {
-          if (mode === 'single') {
-              const itemToDelete = items.find((i) => i.id === targetId);
-              if (itemToDelete && isPersonItem(itemToDelete) && itemToDelete.employeeId) {
-                // Delete the person
-                onItemDelete(targetId);
-
-                // Delete any auto-linked Free jobs for this person in the same cell/day
-                const cellDate = startOfDay(new Date(itemToDelete.date));
-                const linkedFreeJobs = items.filter(
-                  (i) =>
-                    isAutoLinkedFreeJob(i) &&
-                    i.crewId === itemToDelete.crewId &&
-                    isSameDay(new Date(i.date), cellDate) &&
-                    i.employeeId === itemToDelete.employeeId
-                );
-                linkedFreeJobs.forEach((j) => onItemDelete(j.id));
-                return;
-              }
-
-              onItemDelete(targetId);
-          } else {
-              // Bulk Delete Modes
-              const itemToDelete = items.find(i => i.id === targetId);
-              if (!itemToDelete) return;
-              
-              const startDate = new Date(itemToDelete.date);
-              let endDate: Date;
-    
-              if (mode === 'week') {
-                  endDate = addDays(weekStart, viewDays - 1);
-              } else if (mode === 'remainder_month') {
-                  endDate = endOfMonth(startDate);
-              } else if (mode === 'remainder_year') {
-                  endDate = endOfYear(startDate);
-              } else {
-                 const monthsToAdd = parseInt(mode.split('_')[1]);
-                 endDate = addMonths(startDate, monthsToAdd);
-              }
-              
-              const idsToDelete = items.filter(i => {
-                  if (i.id === targetId) return true;
-                  
-                  const iDate = new Date(i.date);
-                  const isFuture = isAfter(iDate, startDate) && (isBefore(iDate, endDate) || isSameDay(iDate, endDate));
-                  
-                  if (!isFuture && i.id !== targetId) return false;
-                  if (i.crewId !== itemToDelete.crewId) return false;
-                  if (i.type !== itemToDelete.type) return false;
-                  
-                  if (i.type === 'job') {
-                      return i.customer === itemToDelete.customer && i.address === itemToDelete.address;
-                  } else {
-                      return i.employeeId === itemToDelete.employeeId;
-                  }
-              }).map(i => i.id);
-              
-              idsToDelete.forEach((delId) => {
-                const delItem = items.find((i) => i.id === delId);
-                if (delItem && isPersonItem(delItem) && delItem.employeeId) {
-                  const cellDate = startOfDay(new Date(delItem.date));
-                  const linkedFreeJobs = items.filter(
-                    (i) =>
-                      isAutoLinkedFreeJob(i) &&
-                      i.crewId === delItem.crewId &&
-                      isSameDay(new Date(i.date), cellDate) &&
-                      i.employeeId === delItem.employeeId
-                  );
-                  linkedFreeJobs.forEach((j) => onItemDelete(j.id));
-                }
-                onItemDelete(delId);
-              });
-          }
-      });
-      
-      // Clear selection if we deleted selected items
-      if (isSelected) {
-          setSelectedItemIds(new Set());
-      }
+      const ids = collectIdsToDelete();
+      showDeleteConfirm(ids);
   };
 
   // Duplicate selected items
@@ -2578,15 +2679,11 @@ export function CalendarGrid({
     setSelectedItemIds(new Set());
   };
 
-  // Delete selected items
+  // Delete selected items (call once; handleDeleteItem already uses all selected ids when isSelected)
   const handleDeleteSelected = (mode: 'single' | 'week' | 'remainder_month' | 'next_2_months' | 'next_3_months' | 'next_4_months' | 'next_5_months' | 'next_6_months' | 'remainder_year') => {
     if (selectedItemIds.size === 0) return;
-    
-    const selectedIds = Array.from(selectedItemIds);
-    selectedIds.forEach(id => {
-      handleDeleteItem(id, mode);
-    });
-    setSelectedItemIds(new Set());
+    const firstId = Array.from(selectedItemIds)[0];
+    handleDeleteItem(firstId, mode);
   };
 
   // Copy selected items to week/month (keeping for backward compatibility but not using toolbar)
@@ -4911,6 +5008,31 @@ export function CalendarGrid({
         </Dialog>
       )}
 
+      {/* Schedule item delete confirmation */}
+      {scheduleDeleteConfirm && (
+        <AlertDialog open={scheduleDeleteConfirm.open} onOpenChange={(open) => { if (!open) setScheduleDeleteConfirm(null); }}>
+          <AlertDialogContent className="bg-white text-slate-900">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-slate-900">Delete item(s)?</AlertDialogTitle>
+              <AlertDialogDescription className="text-slate-700">
+                {scheduleDeleteConfirm.message}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-slate-300 text-slate-700">Cancel</AlertDialogCancel>
+              <AlertDialogAction
+                onClick={() => {
+                  scheduleDeleteConfirm.onConfirm();
+                }}
+                className="bg-red-600 text-white hover:bg-red-700"
+              >
+                Delete
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
+
       {/* Item Editor Modal */}
       <ItemModal 
         open={modalState.isOpen} 
@@ -4923,6 +5045,7 @@ export function CalendarGrid({
           ...(modalState.type === 'job' && modalState.data ? modalState.data : {})
         } : undefined)}
         employees={employees}
+        employeeAbsences={employeeAbsences}
         vehicles={vehicles}
         items={items} // Pass items for conflict detection
         crews={crews} // Pass crews for validating assignments
@@ -5032,6 +5155,71 @@ export function CalendarGrid({
         initialDate={employeeTimeOffModal.defaultDate || undefined}
         onApply={handleEmployeeTimeOffApplied}
       />
+
+      {employeeTimeOffConfirm && (
+        <AlertDialog
+          open={employeeTimeOffConfirm.open}
+          onOpenChange={(open) => {
+            if (!open) setEmployeeTimeOffConfirm(null);
+          }}
+        >
+          <AlertDialogContent className="bg-white text-slate-900">
+            <AlertDialogHeader>
+              <AlertDialogTitle className="text-slate-900">
+                {employeeTimeOffConfirm.payload.absenceType === "sick"
+                  ? "Mark employee sick and remove them from schedule?"
+                  : employeeTimeOffConfirm.payload.absenceType === "holiday"
+                    ? "Book holiday and remove them from schedule?"
+                    : "Apply time off and remove them from schedule?"}
+              </AlertDialogTitle>
+              <AlertDialogDescription className="text-slate-700">
+                {employeeTimeOffConfirm.payload.absenceType === "sick" ? (
+                  <div className="space-y-2">
+                    <div>
+                      This will remove {employeeTimeOffConfirm.employeeName} from any scheduled day(s) below and mark them as <span className="font-semibold">Sick</span> (they stay unavailable until you mark them Active).
+                    </div>
+                  </div>
+                ) : (
+                  <div className="space-y-2">
+                    <div>
+                      This will remove {employeeTimeOffConfirm.employeeName} from any scheduled day(s) below.
+                    </div>
+                  </div>
+                )}
+                {employeeTimeOffConfirm.impacted.length > 0 ? (
+                  <div className="mt-2 space-y-1">
+                    <div className="text-xs font-semibold text-slate-600 uppercase tracking-wide">
+                      Impacted assignments
+                    </div>
+                    <ul className="max-h-48 overflow-auto text-sm list-disc pl-5">
+                      {employeeTimeOffConfirm.impacted.map((i) => (
+                        <li key={i.itemId}>
+                          {i.dateIso} — {i.crewName} ({i.shift === "unknown" ? "shift?" : i.shift})
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                ) : (
+                  <div className="mt-2 text-sm">
+                    No current assignments found in that date range.
+                  </div>
+                )}
+              </AlertDialogDescription>
+            </AlertDialogHeader>
+            <AlertDialogFooter>
+              <AlertDialogCancel className="border-slate-300 text-slate-700">
+                Cancel
+              </AlertDialogCancel>
+              <AlertDialogAction
+                className="bg-blue-600 text-white hover:bg-blue-700"
+                onClick={() => applyEmployeeTimeOffConfirmed(employeeTimeOffConfirm)}
+              >
+                Confirm
+              </AlertDialogAction>
+            </AlertDialogFooter>
+          </AlertDialogContent>
+        </AlertDialog>
+      )}
     </div>
   );
 }

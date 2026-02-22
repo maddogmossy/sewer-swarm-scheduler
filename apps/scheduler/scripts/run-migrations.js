@@ -83,6 +83,15 @@ async function runMigration() {
       await client.query(`
         DO $$
         BEGIN
+          IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'depots' AND column_name = 'archived_at') THEN
+            ALTER TABLE "depots" ADD COLUMN "archived_at" timestamp;
+          END IF;
+        END $$;
+      `);
+
+      await client.query(`
+        DO $$
+        BEGIN
           IF NOT EXISTS (SELECT 1 FROM information_schema.columns WHERE table_name = 'vehicles' AND column_name = 'category') THEN
             ALTER TABLE "vehicles" ADD COLUMN "category" text;
           END IF;
@@ -184,6 +193,7 @@ async function runMigration() {
         "address" text NOT NULL,
         "user_id" varchar NOT NULL,
         "organization_id" varchar,
+        "archived_at" timestamp,
         FOREIGN KEY ("user_id") REFERENCES "users"("id") ON DELETE CASCADE,
         FOREIGN KEY ("organization_id") REFERENCES "organizations"("id") ON DELETE CASCADE
       );

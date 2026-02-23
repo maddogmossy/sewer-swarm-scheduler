@@ -18,10 +18,6 @@ async function ensureEmployeeAbsencesTable() {
     `);
     const exists = existsRes.rows?.[0]?.exists === true;
 
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H3',location:'apps/scheduler/app/api/employee-absences/route.ts:ensureEmployeeAbsencesTable:exists',message:'ensureEmployeeAbsencesTable checked',data:{exists},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-
     if (exists) return;
 
     await client.query(`
@@ -39,14 +35,7 @@ async function ensureEmployeeAbsencesTable() {
         FOREIGN KEY ("created_by") REFERENCES "users"("id") ON DELETE SET NULL
       );
     `);
-
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H3',location:'apps/scheduler/app/api/employee-absences/route.ts:ensureEmployeeAbsencesTable:created',message:'ensureEmployeeAbsencesTable created table',data:{created:true},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
   } catch (err: any) {
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H3',location:'apps/scheduler/app/api/employee-absences/route.ts:ensureEmployeeAbsencesTable:error',message:'ensureEmployeeAbsencesTable failed',data:{errorType:err?.constructor?.name,code:err?.code,msg:typeof err?.message==='string'?err.message:String(err)},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     throw err;
   } finally {
     client.release();
@@ -56,19 +45,10 @@ async function ensureEmployeeAbsencesTable() {
 export async function GET() {
   try {
     const ctx = await getRequestContext();
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H1,H2,H3',location:'apps/scheduler/app/api/employee-absences/route.ts:GET:ctx',message:'GET /api/employee-absences ctx resolved',data:{hasUserId:!!ctx?.userId,hasOrgId:!!ctx?.organizationId,role:(ctx as any)?.role,plan:(ctx as any)?.plan},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     requireAdminOrOperations(ctx);
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H1',location:'apps/scheduler/app/api/employee-absences/route.ts:GET:rbac-ok',message:'GET /api/employee-absences RBAC passed',data:{role:(ctx as any)?.role},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     await ensureEmployeeAbsencesTable();
     const absences = await storage.getEmployeeAbsencesByOrg(ctx.organizationId);
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H3',location:'apps/scheduler/app/api/employee-absences/route.ts:GET:ok',message:'GET /api/employee-absences storage ok',data:{count:Array.isArray(absences)?absences.length:null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return NextResponse.json(absences);
   } catch (err: any) {
     const msg = typeof err?.message === "string" ? err.message : String(err);
@@ -79,9 +59,6 @@ export async function GET() {
       msg.toLowerCase().includes("schema") ||
       msg.toLowerCase().includes("migration");
     const status = isUnauthorized ? 401 : isLikelyDbError ? 500 : 403;
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H1,H2,H3',location:'apps/scheduler/app/api/employee-absences/route.ts:GET:catch',message:'GET /api/employee-absences failed',data:{status,msg,errorType:err?.constructor?.name},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return NextResponse.json({ error: msg || "Forbidden" }, { status });
   }
 }

@@ -110,12 +110,6 @@ export default function SchedulePage() {
     mutations,
   } = useScheduleData();
 
-  useEffect(() => {
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'post-fix',hypothesisId:'P1',location:'apps/scheduler/app/(main)/schedule/page.tsx:SchedulePage:mount',message:'SchedulePage mounted',data:{path:typeof window!=='undefined'?window.location?.pathname:null},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
-  }, []);
-
   // Get user's organization and role
   const { data: orgData, isLoading: orgLoading } = useOrganization();
   const userRole = orgData?.membershipRole || "user";
@@ -773,9 +767,6 @@ const transformedArchivedDepots: Depot[] = archivedDepots.map((d: { id: string; 
 
   const handleDepotDelete = useCallback(
     async (id: string) => {
-      // #region agent log
-      fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e9596'},body:JSON.stringify({sessionId:'7e9596',location:'page.tsx:handleDepotDelete',message:'handleDepotDelete called',data:{depotId:id,depotsLengthBefore:depots.length,selectedDepotId},hypothesisId:'H1',timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       await mutations.deleteDepot.mutateAsync(id);
     },
     [mutations, depots.length, selectedDepotId]
@@ -819,9 +810,6 @@ const transformedArchivedDepots: Depot[] = archivedDepots.map((d: { id: string; 
   }
 
   if (depots.length === 0) {
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'7e9596'},body:JSON.stringify({sessionId:'7e9596',location:'page.tsx:empty-state',message:'Rendering empty state (Create first depot)',data:{depotsLength:depots.length,selectedDepotId},hypothesisId:'H2,H3,H4',timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     return (
       <div className="flex h-screen items-center justify-center bg-slate-50">
         <div className="text-center max-w-md px-6">

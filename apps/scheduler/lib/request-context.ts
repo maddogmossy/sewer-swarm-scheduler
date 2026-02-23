@@ -13,9 +13,6 @@ export async function getRequestContext(): Promise<OrganizationContext> {
   const userId = cookieStore.get("userId")?.value;
 
   if (!userId) {
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H2',location:'apps/scheduler/lib/request-context.ts:no-user-cookie',message:'Missing userId cookie in request context',data:{hasUserIdCookie:false},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     console.error("[getRequestContext] No userId cookie found");
     throw new Error("Unauthorized: No user session found");
   }
@@ -33,10 +30,6 @@ export async function getRequestContext(): Promise<OrganizationContext> {
 
     // Normalize role (member → user)
     const normalizedRole = membership.role === "member" ? "user" : membership.role;
-
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H1,H2',location:'apps/scheduler/lib/request-context.ts:membership',message:'Resolved request context',data:{userIdPrefix:String(userId).slice(0,6),organizationIdPrefix:String(membership.organizationId).slice(0,6),role:normalizedRole,plan:membership.organization?.plan},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     return {
       userId,

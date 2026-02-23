@@ -81,9 +81,6 @@ export interface ScheduleItem {
 
 class API {
   private async request<T>(url: string, options?: RequestInit): Promise<T> {
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H1,H2,H3,H4',location:'apps/scheduler/lib/api.ts:request:entry',message:'API.request start',data:{url,method:options?.method||'GET',hasBody:!!options?.body,isBrowser:typeof window!=='undefined'},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
     // Log request details in development
     if (process.env.NODE_ENV === 'development') {
       console.log('🔵 API Request:', {
@@ -105,15 +102,8 @@ class API {
         },
       });
     } catch (err: any) {
-      // #region agent log
-      fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H2,H4',location:'apps/scheduler/lib/api.ts:request:fetch-catch',message:'API.request fetch threw',data:{url,method:options?.method||'GET',errorMessage:err?.message||String(err)},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
       throw err;
     }
-
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H1,H2,H3',location:'apps/scheduler/lib/api.ts:request:response',message:'API.request response received',data:{url,method:options?.method||'GET',ok:response.ok,status:response.status,statusText:response.statusText},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
 
     if (!response.ok) {
       const method = options?.method || "GET";
@@ -174,10 +164,6 @@ class API {
       const logUrl = typeof url === 'string' ? url : `${url}`;
       const logStatus = typeof response.status === 'number' ? response.status : Number(response.status);
       const logStatusText = typeof response.statusText === 'string' ? response.statusText : `${response.statusText}`;
-
-      // #region agent log
-      fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H1,H2,H3',location:'apps/scheduler/lib/api.ts:request:not-ok',message:'API.request non-OK response',data:{url:logUrl,method,status:logStatus,statusText:logStatusText,finalErrorMessage,errorTextLen:typeof errorText==='string'?errorText.length:0},timestamp:Date.now()})}).catch(()=>{});
-      // #endregion
 
       const isScheduleItemsBaseUrl = typeof url === "string" && url === "/api/schedule-items";
       const shouldSuppressLog =

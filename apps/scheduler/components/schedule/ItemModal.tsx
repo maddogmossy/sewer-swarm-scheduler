@@ -1284,10 +1284,6 @@ function OperativeForm({ open, onOpenChange, onSubmit, type, initialData, employ
     const topColors = Object.entries(colorBuckets)
       .sort((a, b) => b[1] - a[1])
       .slice(0, 5);
-
-    // #region agent log
-    fetch('http://127.0.0.1:7833/ingest/14e31b90-ddbd-4f4c-a0e9-ce008196ce47',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'d4c22d'},body:JSON.stringify({sessionId:'d4c22d',runId:'pre-fix',hypothesisId:'H1,H2',location:'apps/scheduler/components/schedule/ItemModal.tsx:OperativeForm:open-summary',message:'OperativeForm opened; summary of badge colors/unavailable',data:{formType:type,targetDay:debugTargetDay.toISOString().slice(0,10),employeesCount:(employees as any[])?.length||0,holidayCount,vehiclesCount:(vehicles as any[])?.length||0,topColors,hasRedLikeColor:Object.keys(colorBuckets).some((c)=>/^#?ef4444$/i.test(c)||/^#?dc2626$/i.test(c)||/^#?b91c1c$/i.test(c))},timestamp:Date.now()})}).catch(()=>{});
-    // #endregion
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
 

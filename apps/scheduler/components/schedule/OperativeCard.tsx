@@ -131,11 +131,18 @@ export function OperativeCard({ item, onEdit, onDelete, onDuplicate, vehicles, e
                             )}
                         </div>
                     )}
-                    {isAssistant && (
+                    {isAssistant &&
+                      (vehicle ? (
+                        <div className={cn("flex items-center gap-1 text-[9px] leading-tight", hasWarning ? "text-red-600" : "text-amber-600")}>
+                          <Truck className="w-2.5 h-2.5" />
+                          <span className="truncate">{vehicle.name}</span>
+                          {isVehicleUnavailable && <AlertCircle className="w-2.5 h-2.5 text-red-500 ml-1" />}
+                        </div>
+                      ) : (
                         <span className="text-[8px] text-amber-600 uppercase font-bold tracking-wider leading-tight">
-                            Assistant
+                          Assistant
                         </span>
-                    )}
+                      ))}
                 </div>
 
             <div className="opacity-0 group-hover:opacity-100 transition-opacity" onPointerDown={(e) => e.stopPropagation()}>

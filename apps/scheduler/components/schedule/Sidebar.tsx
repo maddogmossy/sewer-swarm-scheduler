@@ -15,11 +15,15 @@ export interface Depot {
   vehicles: number;
 }
 
+type UtilMetric = { pct: number; used: number; total: number; avail: number; modeLabel: string };
+type DepotUtilMetrics = { staff: UtilMetric; vehicles: UtilMetric };
+
 interface SidebarProps {
   depots: Depot[];
   archivedDepots?: Depot[];
   selectedDepotId: string | null;
   onSelectDepot: (id: string) => void;
+  depotMetricsById?: Record<string, DepotUtilMetrics>;
   onEditDepot: () => void;
   onDeleteDepot?: (id: string) => void;
   onRestoreDepot?: (id: string) => void;
@@ -30,7 +34,84 @@ interface SidebarProps {
   canAccessSettings?: boolean;
 }
 
-export function Sidebar({ depots, archivedDepots = [], selectedDepotId, onSelectDepot, onEditDepot = () => {}, onDeleteDepot = () => {}, onRestoreDepot = () => {}, onUpdateDepot = () => {}, onAddDepot = () => {}, isReadOnly = false, onOpenSettings, canAccessSettings = false }: SidebarProps) {
+function MiniDonut({ pct, className }: { pct: number; className?: string }) {
+  const r = 7;
+  const c = 2 * Math.PI * r;
+  const clamped = Math.max(0, Math.min(100, pct));
+  const dashOffset = c * (1 - clamped / 100);
+  return (
+    <div className={cn("relative w-5 h-5 shrink-0", className)}>
+      <svg viewBox="0 0 20 20" className="w-5 h-5 -rotate-90">
+        <circle cx="10" cy="10" r={r} fill="none" stroke="currentColor" strokeWidth="3" className="opacity-20" />
+        <circle
+          cx="10"
+          cy="10"
+          r={r}
+          fill="none"
+          stroke="currentColor"
+          strokeWidth="3"
+          strokeLinecap="round"
+          strokeDasharray={`${c} ${c}`}
+          strokeDashoffset={dashOffset}
+          className="transition-[stroke-dashoffset] duration-300 ease-out"
+        />
+      </svg>
+    </div>
+  );
+}
+
+function UtilPill({
+  label,
+  metric,
+  isSelected,
+  kind,
+}: {
+  label: string;
+  metric: UtilMetric | undefined;
+  isSelected: boolean;
+  kind: "staff" | "vehicles";
+}) {
+  const pct = metric?.pct ?? 0;
+  const used = metric?.used ?? 0;
+  const total = metric?.total ?? 0;
+  const avail = metric?.avail ?? Math.max(0, total - used);
+  const modeLabel = metric?.modeLabel ?? "Wk";
+
+  const tone =
+    pct >= 90
+      ? "text-amber-600"
+      : kind === "vehicles"
+        ? "text-teal-600"
+        : isSelected
+          ? "text-green-700"
+          : "text-blue-700";
+
+  return (
+    <div
+      className={cn(
+        "flex items-center gap-1.5 px-2 py-1 rounded-full border bg-white/70 backdrop-blur-sm shadow-sm min-w-0",
+        isSelected ? "border-green-200" : "border-slate-200"
+      )}
+      title={`${label} utilisation (${modeLabel}): ${Math.round(pct)}% • used ${used}/${total} • avail ${avail}`}
+    >
+      <MiniDonut pct={pct} className={tone} />
+      <div className="min-w-0 leading-none">
+        <div className="flex items-baseline gap-1">
+          <span className="text-[9px] font-semibold uppercase tracking-wide text-slate-600">{label}</span>
+          <span className="text-[9px] text-slate-400">{modeLabel}</span>
+        </div>
+        <div className="flex items-baseline gap-1">
+          <span className="text-[10px] font-semibold text-slate-800 tabular-nums">
+            {used}/{total}
+          </span>
+          <span className="text-[9px] text-slate-500 tabular-nums">Avail {avail}</span>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+export function Sidebar({ depots, archivedDepots = [], selectedDepotId, onSelectDepot, depotMetricsById = {}, onEditDepot = () => {}, onDeleteDepot = () => {}, onRestoreDepot = () => {}, onUpdateDepot = () => {}, onAddDepot = () => {}, isReadOnly = false, onOpenSettings, canAccessSettings = false }: SidebarProps) {
   const [search, setSearch] = useState("");
   const [isCollapsed, setIsCollapsed] = useState(false);
   const rootRef = useRef<HTMLDivElement | null>(null);
@@ -164,11 +245,19 @@ export function Sidebar({ depots, archivedDepots = [], selectedDepotId, onSelect
 
                       <div className="flex items-center justify-between mt-2">
                           <div className="flex items-center gap-3">
-                              <div className={cn("flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border", isSelected ? "bg-white border-green-100 text-green-600" : "bg-blue-100 border-blue-200 text-blue-600")}>
-                                  <Users className="w-3 h-3" /> {depot.employees}
-                              </div>
-                              <div className={cn("flex items-center gap-1 text-[10px] px-2 py-0.5 rounded-full border", isSelected ? "bg-white border-green-100 text-green-600" : "bg-blue-100 border-blue-200 text-blue-600")}>
-                                  <Truck className="w-3 h-3" /> {depot.vehicles}
+                              <div className="flex items-center gap-2 min-w-0">
+                                <UtilPill
+                                  label="Staff"
+                                  kind="staff"
+                                  isSelected={isSelected}
+                                  metric={depotMetricsById[depot.id]?.staff}
+                                />
+                                <UtilPill
+                                  label="Vehicles"
+                                  kind="vehicles"
+                                  isSelected={isSelected}
+                                  metric={depotMetricsById[depot.id]?.vehicles}
+                                />
                               </div>
                           </div>
 

@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import { format, startOfWeek, addDays, isSameDay, endOfWeek, isAfter, isBefore, startOfDay, endOfMonth, addMonths, endOfYear, getDay } from "date-fns";
 import { DndContext, DragOverlay, closestCorners, KeyboardSensor, PointerSensor, useSensor, useSensors, DragStartEvent, DragEndEvent, useDroppable, Modifier } from "@dnd-kit/core";
 import { SortableContext, rectSortingStrategy, arrayMove } from "@dnd-kit/sortable";
@@ -324,6 +324,9 @@ interface CalendarGridProps {
   canUndo?: boolean;
   canRedo?: boolean;
   onLogout?: () => void;
+  metricsSelectedDate?: Date | null;
+  onMetricsSelectedDateChange?: (date: Date | null) => void;
+  onVisibleRangeChange?: (range: { weekStart: Date; viewDays: number }) => void;
 }
 
 function DroppableCell({ id, children, className, style, onDoubleClick, onClick, disabled }: { id: string, children: React.ReactNode, className?: string, style?: React.CSSProperties, onDoubleClick?: (e: React.MouseEvent) => void, onClick?: () => void, disabled?: boolean }) {
@@ -356,7 +359,10 @@ export function CalendarGrid({
     onVehicleCreate, onVehicleUpdate, onVehicleDelete,
     onColorLabelUpdate, depots, allItems, vehicleTypes, vehicleCombinations = [], allCrews,
     onUndo, onRedo, canUndo, canRedo, onLogout,
-    onVehicleTypeCreate, onVehicleTypeUpdate, onVehicleTypeDelete
+    onVehicleTypeCreate, onVehicleTypeUpdate, onVehicleTypeDelete,
+    metricsSelectedDate,
+    onMetricsSelectedDateChange,
+    onVisibleRangeChange,
 }: CalendarGridProps) {
   const { settings } = useUISettings();
   const isCombinationLabel = (label: string | undefined) =>
@@ -949,8 +955,11 @@ export function CalendarGrid({
     onConfirm: () => void;
   } | null>(null);
 
-  const weekStart = startOfWeek(currentDate, { weekStartsOn: 1 });
-  const weekDays = Array.from({ length: viewDays }).map((_, i) => addDays(weekStart, i));
+  const weekStart = useMemo(() => startOfWeek(currentDate, { weekStartsOn: 1 }), [currentDate]);
+  const weekDays = useMemo(
+    () => Array.from({ length: viewDays }).map((_, i) => addDays(weekStart, i)),
+    [weekStart, viewDays]
+  );
 
   const sensors = useSensors(
     useSensor(PointerSensor, { activationConstraint: { distance: 8 } }),
@@ -3543,6 +3552,10 @@ export function CalendarGrid({
       return false;
   });
 
+  useEffect(() => {
+    onVisibleRangeChange?.({ weekStart, viewDays });
+  }, [weekStart, viewDays, onVisibleRangeChange]);
+
   return (
     <div className="h-full flex flex-col bg-slate-50 text-slate-900"
         onKeyDown={(e) => {
@@ -3674,11 +3687,28 @@ export function CalendarGrid({
                         </th>
                         {weekDays.map((day) => {
                             const isToday = isSameDay(day, new Date());
+                            const isMetricsSelected = !!metricsSelectedDate && isSameDay(day, metricsSelectedDate);
                             const dateKey = format(day, "yyyy-MM-dd");
                             const status = emailStatus[dateKey];
                             
                             return (
-                                <th key={day.toString()} className={cn("p-3 border-b border-r border-slate-200 relative group/header", isToday ? "bg-blue-50/50" : "bg-white")}>
+                                <th
+                                  key={day.toString()}
+                                  className={cn(
+                                    "p-3 border-b border-r border-slate-200 relative group/header cursor-pointer select-none",
+                                    isToday ? "bg-blue-50/50" : "bg-white",
+                                    isMetricsSelected ? "ring-2 ring-inset ring-blue-300 bg-blue-50" : ""
+                                  )}
+                                  title={isMetricsSelected ? "Click to clear day view" : "Click to view utilisation for this day"}
+                                  onClick={() => {
+                                    if (!onMetricsSelectedDateChange) return;
+                                    if (isMetricsSelected) {
+                                      onMetricsSelectedDateChange(null);
+                                    } else {
+                                      onMetricsSelectedDateChange(day);
+                                    }
+                                  }}
+                                >
                                     <div className="flex flex-col items-center justify-center">
                                         <div className={cn("text-xs font-medium uppercase tracking-wider", isToday ? "text-blue-600" : "text-slate-500")}>
                                             {format(day, "EEEE")}
@@ -3698,7 +3728,10 @@ export function CalendarGrid({
                                                         ? "bg-green-50 text-green-700 border-green-200 hover:bg-green-100" 
                                                         : "bg-red-50 text-red-600 border-red-200 hover:bg-red-100 hover:text-red-700 shadow-sm opacity-70 group-hover/header:opacity-100"
                                                 )}
-                                                onClick={() => handleSendDailyEmails(day)}
+                                                onClick={(e) => {
+                                                  e.stopPropagation();
+                                                  handleSendDailyEmails(day);
+                                                }}
                                                 title={status?.sent ? `Sent at ${status.timestamp}` : "Send daily schedule emails"}
                                             >
                                                 {status?.sent ? (

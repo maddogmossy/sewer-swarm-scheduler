@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect, useCallback, useRef } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { CalendarGrid, type Crew, type ScheduleItem } from "@/components/schedule/CalendarGrid";
 import { Sidebar, type Depot } from "@/components/schedule/Sidebar";
@@ -53,6 +53,11 @@ export default function SchedulePage() {
   const [isDepotCrewModalOpen, setIsDepotCrewModalOpen] = useState(false);
   const [isSettingsModalOpen, setIsSettingsModalOpen] = useState(false);
   const [currentUserId, setCurrentUserId] = useState<string>("");
+  const [metricsSelectedDate, setMetricsSelectedDate] = useState<Date | null>(null);
+  const [visibleWeekStart, setVisibleWeekStart] = useState<Date>(() =>
+    startOfWeek(new Date(), { weekStartsOn: 1 })
+  );
+  const [visibleViewDays, setVisibleViewDays] = useState<number>(5);
   // Serialize item updates to avoid bursts of PATCH requests (group updates can trigger many),
   // which can lead to intermittent "Failed to fetch" and unhandled promise rejections.
   const updateQueueRef = useRef<Promise<void>>(Promise.resolve());
@@ -242,6 +247,109 @@ const transformedArchivedDepots: Depot[] = archivedDepots.map((d: { id: string; 
   employees: 0,
   vehicles: 0,
 }));
+
+  type UtilMetric = { pct: number; used: number; total: number; avail: number; modeLabel: string };
+  type DepotUtilMetrics = { staff: UtilMetric; vehicles: UtilMetric };
+
+  const depotMetricsById: Record<string, DepotUtilMetrics> = useMemo(() => {
+    const dayStrings = Array.from({ length: Math.max(1, visibleViewDays) }).map((_, i) =>
+      format(startOfDay(addDays(visibleWeekStart, i)), "yyyy-MM-dd")
+    );
+    const selectedDayStr = metricsSelectedDate ? format(startOfDay(metricsSelectedDate), "yyyy-MM-dd") : null;
+    const relevantDayStrings = selectedDayStr ? [selectedDayStr] : dayStrings;
+    const dayCount = relevantDayStrings.length;
+
+    const activeEmployeesByDepot = new Map<string, Set<string>>();
+    for (const e of employees) {
+      if (!e?.depotId) continue;
+      if (e.status !== "active") continue;
+      const set = activeEmployeesByDepot.get(e.depotId) ?? new Set<string>();
+      set.add(e.id);
+      activeEmployeesByDepot.set(e.depotId, set);
+    }
+
+    const activeVehiclesByDepot = new Map<string, Set<string>>();
+    for (const v of vehicles) {
+      if (!v?.depotId) continue;
+      if (v.status !== "active") continue;
+      const set = activeVehiclesByDepot.get(v.depotId) ?? new Set<string>();
+      set.add(v.id);
+      activeVehiclesByDepot.set(v.depotId, set);
+    }
+
+    const usedByDepotDay = new Map<string, { staff: Set<string>; vehicles: Set<string> }>();
+    for (const raw of scheduleItems as any[]) {
+      if (!raw || (raw.type !== "operative" && raw.type !== "assistant")) continue;
+      const depotId = raw.depotId as string | undefined;
+      if (!depotId) continue;
+      const rawDate = raw.date;
+      const dateObj = rawDate instanceof Date ? rawDate : new Date(rawDate);
+      if (Number.isNaN(dateObj.getTime())) continue;
+      const dayStr = format(startOfDay(dateObj), "yyyy-MM-dd");
+      if (!relevantDayStrings.includes(dayStr)) continue;
+
+      const activeEmp = activeEmployeesByDepot.get(depotId);
+      const activeVeh = activeVehiclesByDepot.get(depotId);
+      const bucketKey = `${depotId}|${dayStr}`;
+      const bucket =
+        usedByDepotDay.get(bucketKey) ?? { staff: new Set<string>(), vehicles: new Set<string>() };
+
+      const employeeId = raw.employeeId as string | undefined;
+      if (employeeId && activeEmp?.has(employeeId)) bucket.staff.add(employeeId);
+      const vehicleId = raw.vehicleId as string | undefined;
+      if (vehicleId && activeVeh?.has(vehicleId)) bucket.vehicles.add(vehicleId);
+
+      usedByDepotDay.set(bucketKey, bucket);
+    }
+
+    const clampPct = (n: number) => Math.max(0, Math.min(100, n));
+    const modeLabel = metricsSelectedDate
+      ? format(startOfDay(metricsSelectedDate), "EEE d")
+      : "Wk";
+
+    const out: Record<string, DepotUtilMetrics> = {};
+
+    for (const d of depots) {
+      const depotId = d.id;
+      const activeStaffTotal = activeEmployeesByDepot.get(depotId)?.size ?? 0;
+      const activeVehicleTotal = activeVehiclesByDepot.get(depotId)?.size ?? 0;
+
+      let staffSum = 0;
+      let vehicleSum = 0;
+      for (const ds of relevantDayStrings) {
+        const b = usedByDepotDay.get(`${depotId}|${ds}`);
+        staffSum += b?.staff.size ?? 0;
+        vehicleSum += b?.vehicles.size ?? 0;
+      }
+
+      const staffPct =
+        activeStaffTotal > 0 ? clampPct((staffSum / (activeStaffTotal * dayCount)) * 100) : 0;
+      const vehiclePct =
+        activeVehicleTotal > 0 ? clampPct((vehicleSum / (activeVehicleTotal * dayCount)) * 100) : 0;
+
+      const staffUsed = selectedDayStr ? staffSum : Math.round(staffSum / dayCount);
+      const vehicleUsed = selectedDayStr ? vehicleSum : Math.round(vehicleSum / dayCount);
+
+      out[depotId] = {
+        staff: {
+          pct: staffPct,
+          used: staffUsed,
+          total: activeStaffTotal,
+          avail: Math.max(0, activeStaffTotal - staffUsed),
+          modeLabel,
+        },
+        vehicles: {
+          pct: vehiclePct,
+          used: vehicleUsed,
+          total: activeVehicleTotal,
+          avail: Math.max(0, activeVehicleTotal - vehicleUsed),
+          modeLabel,
+        },
+      };
+    }
+
+    return out;
+  }, [depots, employees, vehicles, scheduleItems, visibleWeekStart, visibleViewDays, metricsSelectedDate]);
 
   // Helper to save operation to history
   const saveOperationToHistory = useCallback((operation: Operation) => {
@@ -862,6 +970,7 @@ const transformedArchivedDepots: Depot[] = archivedDepots.map((d: { id: string; 
         archivedDepots={transformedArchivedDepots}
         selectedDepotId={selectedDepotId}
         onSelectDepot={setSelectedDepotId}
+        depotMetricsById={depotMetricsById}
         onUpdateDepot={handleDepotUpdate}
         onDeleteDepot={handleDepotDelete}
         onRestoreDepot={handleRestoreDepot}
@@ -884,6 +993,12 @@ const transformedArchivedDepots: Depot[] = archivedDepots.map((d: { id: string; 
           isReadOnly={isReadOnly}
           depots={transformedDepots}
           allItems={transformedItems}
+          metricsSelectedDate={metricsSelectedDate}
+          onMetricsSelectedDateChange={setMetricsSelectedDate}
+          onVisibleRangeChange={({ weekStart, viewDays }) => {
+            setVisibleWeekStart((prev) => (prev.getTime() === weekStart.getTime() ? prev : weekStart));
+            setVisibleViewDays((prev) => (prev === viewDays ? prev : viewDays));
+          }}
           onItemUpdate={handleItemUpdate}
           onBatchItemUpdates={handleBatchItemUpdates}
           revertedPairingCellKeys={revertedPairingCellKeys}

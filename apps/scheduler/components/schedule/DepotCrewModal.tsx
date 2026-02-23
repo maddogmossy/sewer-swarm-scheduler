@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -143,6 +143,7 @@ export function DepotCrewModal({
     startsFromHome?: boolean
   } | null>(null);
   const [editingVehicle, setEditingVehicle] = useState<{ id: string; name: string; vehicleType: string; status?: 'active' | 'off_road' | 'maintenance'; category?: string; color?: string } | null>(null);
+  const editingVehicleIdRef = useRef<string | null>(null);
   const [newTypeName, setNewTypeName] = useState("");
   const [newTypeColor, setNewTypeColor] = useState<string>("blue");
   const [editingType, setEditingType] = useState<{ type: string; defaultColor: string } | null>(null);
@@ -278,6 +279,9 @@ export function DepotCrewModal({
   // Refresh when modal opens or data changes
   useEffect(() => {
     if (open) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'75aef1'},body:JSON.stringify({sessionId:'75aef1',runId:'pre-fix',hypothesisId:'A',location:'DepotCrewModal.tsx:open-reset-effect',message:'DepotCrewModal reset effect ran while open=true',data:{activeTab,crewsCount:crews?.length??null,employeesCount:employees?.length??null,vehiclesCount:vehicles?.length??null,vehicleTypesCount:(vehicleTypes as any[])?.length??null,editingVehicleId:editingVehicle?.id??null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
       setEditingEmployee(null);
       setEditingVehicle(null);
       const firstType = typeNames[0] || "Van";
@@ -285,6 +289,17 @@ export function DepotCrewModal({
       setNewVehicleColor(getDefaultColorForType(firstType));
     }
   }, [open, crews, employees, vehicles, vehicleTypes]);
+
+  useEffect(() => {
+    const prev = editingVehicleIdRef.current;
+    const next = editingVehicle?.id ?? null;
+    if (prev !== next) {
+      // #region agent log
+      fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'75aef1'},body:JSON.stringify({sessionId:'75aef1',runId:'pre-fix',hypothesisId:'B',location:'DepotCrewModal.tsx:editingVehicle-change',message:'editingVehicle id changed',data:{prev,next,open,activeTab,vehiclesCount:vehicles?.length??null},timestamp:Date.now()})}).catch(()=>{});
+      // #endregion
+      editingVehicleIdRef.current = next;
+    }
+  }, [editingVehicle?.id, open, activeTab, vehicles?.length]);
 
   // Update color when vehicle type changes
   useEffect(() => {
@@ -984,6 +999,11 @@ export function DepotCrewModal({
                                   <Select 
                                     value={editingVehicle.vehicleType} 
                                     onValueChange={(val) => setEditingVehicle({ ...editingVehicle, vehicleType: val })}
+                                    onOpenChange={(isOpen) => {
+                                      // #region agent log
+                                      fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'75aef1'},body:JSON.stringify({sessionId:'75aef1',runId:'pre-fix',hypothesisId:'C',location:'DepotCrewModal.tsx:edit-vehicleType-select-open',message:'Edit vehicle type Select open state changed',data:{vehicleId:editingVehicle.id,isOpen,currentValue:editingVehicle.vehicleType},timestamp:Date.now()})}).catch(()=>{});
+                                      // #endregion
+                                    }}
                                   >
                                     <SelectTrigger className="w-32">
                                       <SelectValue />
@@ -1110,7 +1130,12 @@ export function DepotCrewModal({
                                   <Button
                                     size="icon"
                                     variant="ghost"
-                                    onClick={() => setEditingVehicle({ ...veh, category: veh.category, color: veh.color })}
+                                    onClick={() => {
+                                      // #region agent log
+                                      fetch('http://127.0.0.1:7242/ingest/d3af1916-40ca-4614-aa2a-8e4838942ce0',{method:'POST',headers:{'Content-Type':'application/json','X-Debug-Session-Id':'75aef1'},body:JSON.stringify({sessionId:'75aef1',runId:'pre-fix',hypothesisId:'D',location:'DepotCrewModal.tsx:click-edit-vehicle',message:'Clicked edit vehicle',data:{vehicleId:veh.id,vehicleName:veh.name,vehicleType:veh.vehicleType,vehicleCategory:veh.category??null,vehiclesCount:vehicles?.length??null,activeTab},timestamp:Date.now()})}).catch(()=>{});
+                                      // #endregion
+                                      setEditingVehicle({ ...veh, category: veh.category, color: veh.color });
+                                    }}
                                   >
                                     <Edit className="w-4 h-4 text-slate-500" />
                                   </Button>
